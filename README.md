@@ -4,7 +4,8 @@ Switch between multiple Claude Code accounts without logging out. Track 5-hour a
 
 This is the [mar3co](https://github.com/mar3co/claude-swap) fork of [realiti4/claude-swap](https://github.com/realiti4/claude-swap). It keeps the CLI and TUI, and adds a native macOS menu bar extra, Desktop widget, and a scheduled 5-hour window kickoff.
 
-**User guide:** [docs/](docs/README.md) · [Wiki](https://github.com/mar3co/claude-swap/wiki) · [site](https://mar3co.github.io/claude-swap/)
+**Users:** [Wiki](https://github.com/mar3co/claude-swap/wiki) (features, install, extra, widget, kickoff)  
+**Developers:** [docs/](docs/README.md) (architecture, hacking, tests)
 
 ## Install
 
@@ -42,27 +43,18 @@ cswap auto             # switch for you before a window hits 90%
 
 Do not run `/logout` before `cswap add`: current Claude Code may revoke the refresh token you are about to save.
 
-Full walkthrough: [Getting started](docs/Getting-Started.md).
+Walkthrough: [Getting started](https://github.com/mar3co/claude-swap/wiki/Getting-Started). Every feature: [Features](https://github.com/mar3co/claude-swap/wiki/Features).
 
 ## macOS extras
 
-Keep the extra running after you close the terminal:
-
 ```bash
-cswap menubar --install-service
+cswap menubar --install-service    # extra at login
+cswap widget --install             # Desktop / Notification Center (this checkout + Xcode)
 ```
 
-Click the extra for a usage popover (bars, percents, time until reset). More → Settings turns on auto-switch, consume-first (soonest weekly reset), and the 5-hour kickoff.
+Click the extra for usage bars. More → Settings: auto-switch, consume-first (soonest weekly reset), 5-hour kickoff. Add the widget from Edit Widgets (search **cswap**).
 
-Desktop / Notification Center widget (needs this git checkout and Xcode):
-
-```bash
-cswap widget --install
-```
-
-Then Edit Widgets and add **cswap**. The extra must be running so the widget has live numbers.
-
-Guides: [Menu bar](docs/Menu-Bar.md) · [Desktop widget](docs/Desktop-Widget.md) · [5-hour kickoff](docs/Five-Hour-Kickoff.md)
+[Menu bar](https://github.com/mar3co/claude-swap/wiki/Menu-Bar) · [Widget](https://github.com/mar3co/claude-swap/wiki/Desktop-Widget) · [Kickoff](https://github.com/mar3co/claude-swap/wiki/Five-Hour-Kickoff)
 
 ## Commands
 
@@ -78,24 +70,9 @@ Guides: [Menu bar](docs/Menu-Bar.md) · [Desktop widget](docs/Desktop-Widget.md)
 | `cswap menubar` | macOS extra |
 | `cswap widget --install` | macOS widget |
 
-`cswap help` lists everything. Details: [CLI reference](docs/CLI-Reference.md).
+`cswap help` lists everything. [CLI reference](https://github.com/mar3co/claude-swap/wiki/CLI-Reference).
 
 <img src="assets/tui-watch.png" width="760" alt="cswap watch: live 5h and 7d usage bars for every account">
-
-## Documentation
-
-The [user guide](docs/README.md) (also on the [wiki](https://github.com/mar3co/claude-swap/wiki) and [GitHub Pages](https://mar3co.github.io/claude-swap/)):
-
-- [Getting started](docs/Getting-Started.md)
-- [Accounts](docs/Accounts.md)
-- [Auto-switch](docs/Auto-Switch.md)
-- [Sessions and directory maps](docs/Sessions.md)
-- [Menu bar](docs/Menu-Bar.md)
-- [Desktop widget](docs/Desktop-Widget.md)
-- [5-hour kickoff](docs/Five-Hour-Kickoff.md)
-- [Configuration](docs/Configuration.md)
-- [Backup](docs/Backup.md)
-- [Troubleshooting](docs/Troubleshooting.md)
 
 ## License
 
