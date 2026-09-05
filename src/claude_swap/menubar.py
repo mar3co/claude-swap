@@ -31,10 +31,6 @@ from claude_swap import pace
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
 from claude_swap.switcher import SENTINEL_NOTES
 
-# Claude Code's own CLI glyph (U+273B). Reads as Claude in the menu bar
-# without copying Anthropic's trademarked app icon, and is distinct from
-# the 8-point Grok sparkle that often sits next to it.
-ICON = "✻"
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
@@ -384,9 +380,13 @@ def format_title(
     now: float | None = None,
     alias: str | None = None,
 ) -> str:
-    """Build the menu-bar title from the active account and settings."""
+    """Build the menu-bar title from the active account and settings.
+
+    The circular-swap SF Symbol is the status-item image (not part of this
+    string). Empty string means image-only.
+    """
     if active_email is None:
-        return ICON
+        return ""
     if now is None:
         now = time.time()
     segments: list[str] = []
@@ -409,9 +409,7 @@ def format_title(
             window = _rolled_weekly_window(window, now)
             if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
                 segments.append(f"{window['name']} {window['pct']:.0f}%")
-    if not segments:
-        return ICON
-    return f"{ICON} " + " · ".join(segments)
+    return " · ".join(segments)
 
 
 def format_usage_log(email: str, usage: dict | str | None) -> str | None:
@@ -552,7 +550,7 @@ def run(switcher) -> int:
 
     class MenuBarApp(rumps.App):
         def __init__(self):
-            super().__init__(ICON, quit_button=None)
+            super().__init__("claude-swap", quit_button=None)
             self.switcher = switcher
             self.settings = MenuBarSettings.load(settings_path)
             # The supported paced read path: per refresh it fetches only the
@@ -736,11 +734,15 @@ def run(switcher) -> int:
         def _attach_panel_once(self, timer):
             timer.stop()
             try:
-                from claude_swap.menubar_panel import MenuBarPanel
+                from claude_swap.menubar_panel import MenuBarPanel, apply_status_symbol
                 nsitem = self._nsapp.nsstatusitem
             except Exception:
                 self.switcher._logger.debug("popover attach failed", exc_info=True)
                 return
+            try:
+                apply_status_symbol(nsitem)
+            except Exception:
+                self.switcher._logger.debug("status symbol failed", exc_info=True)
             self._panel = MenuBarPanel(
                 on_switch=self._switch_from_panel,
                 on_rotate=lambda *_a: self._switch(None)(None),

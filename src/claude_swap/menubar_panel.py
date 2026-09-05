@@ -18,6 +18,10 @@ from AppKit import (
     NSFontWeightMedium,
     NSFontWeightRegular,
     NSFontWeightSemibold,
+    NSImage,
+    NSImageLeft,
+    NSImageSymbolConfiguration,
+    NSImageSymbolScaleMedium,
     NSLineBreakByTruncatingTail,
     NSPopover,
     NSPopoverBehaviorTransient,
@@ -54,6 +58,36 @@ from claude_swap.tui.theme import (
     TRACK_LIGHT,
     WARN_PCT,
 )
+
+STATUS_SYMBOL_NAME = "arrow.triangle.2.circlepath"
+
+
+def apply_status_symbol(nsstatusitem) -> None:
+    """Put the circular-swap SF Symbol on the status item as a template image.
+
+    Template mode tints with the menu bar (light/dark). Title text is separate
+    and sits to the right of the symbol.
+    """
+    img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(
+        STATUS_SYMBOL_NAME, "Switch Claude account"
+    )
+    if img is None:
+        return
+    config = NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(
+        13.0, NSFontWeightRegular, NSImageSymbolScaleMedium
+    )
+    if config is not None:
+        configured = img.imageWithSymbolConfiguration_(config)
+        if configured is not None:
+            img = configured
+    img.setTemplate_(True)
+    button = nsstatusitem.button()
+    if button is not None:
+        button.setImage_(img)
+        button.setImagePosition_(NSImageLeft)
+    else:
+        nsstatusitem.setImage_(img)
+
 
 PANEL_WIDTH = 312.0
 PAD = 12.0
