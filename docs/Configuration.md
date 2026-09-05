@@ -34,7 +34,7 @@ Flags on `cswap auto` override `settings.json` for that process.
 | `autoswitch.includeApiKeyAccounts` | false | Allow rotating onto `sk-ant-api…` slots |
 | `autoswitch.unhealthyTicks` | 3 | Consecutive failed polls before unhealthy |
 
-See [Auto-switch](Auto-Switch).
+See [Auto-switch](Auto-Switch.md).
 
 ## `ui.theme`
 

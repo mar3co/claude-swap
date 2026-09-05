@@ -9,7 +9,7 @@ Python cannot host WidgetKit, so cswap ships a small signed host app (`cswap Wid
 - This git checkout (the extra looks for `macos/CSwapWidget`)
 - Xcode (command-line tools are not enough to build the `.appex`)
 - An Apple Development signing identity (Xcode → Settings → Accounts)
-- The [menu bar extra](Menu-Bar) running, so numbers stay live
+- The [menu bar extra](Menu-Bar.md) running, so numbers stay live
 
 ## Install
 

@@ -54,7 +54,7 @@ cswap config set autoswitch.strategy consume-first
 
 Or More → Settings → Auto-switch strategy → Soonest weekly reset. Restart the extra (or the `cswap auto` process) so it reloads settings.
 
-See [Auto-switch](Auto-Switch).
+See [Auto-switch](Auto-Switch.md).
 
 ## Kickoff did not run
 

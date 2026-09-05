@@ -4,7 +4,7 @@ Switch between multiple Claude Code accounts without logging out. Track 5-hour a
 
 This is the [mar3co](https://github.com/mar3co/claude-swap) fork of [realiti4/claude-swap](https://github.com/realiti4/claude-swap). It keeps the CLI and TUI, and adds a native macOS menu bar extra, Desktop widget, and a scheduled 5-hour window kickoff.
 
-**User guide:** [Wiki](https://github.com/mar3co/claude-swap/wiki) · [docs in this repo](docs/README.md)
+**User guide:** [docs/](docs/README.md) · [Wiki](https://github.com/mar3co/claude-swap/wiki) · [site](https://mar3co.github.io/claude-swap/)
 
 ## Install
 
@@ -42,7 +42,7 @@ cswap auto             # switch for you before a window hits 90%
 
 Do not run `/logout` before `cswap add`: current Claude Code may revoke the refresh token you are about to save.
 
-Full walkthrough: [Getting started](https://github.com/mar3co/claude-swap/wiki/Getting-Started).
+Full walkthrough: [Getting started](docs/Getting-Started.md).
 
 ## macOS extras
 
@@ -62,7 +62,7 @@ cswap widget --install
 
 Then Edit Widgets and add **cswap**. The extra must be running so the widget has live numbers.
 
-Guides: [Menu bar](https://github.com/mar3co/claude-swap/wiki/Menu-Bar) · [Desktop widget](https://github.com/mar3co/claude-swap/wiki/Desktop-Widget) · [5-hour kickoff](https://github.com/mar3co/claude-swap/wiki/Five-Hour-Kickoff)
+Guides: [Menu bar](docs/Menu-Bar.md) · [Desktop widget](docs/Desktop-Widget.md) · [5-hour kickoff](docs/Five-Hour-Kickoff.md)
 
 ## Commands
 
@@ -78,24 +78,24 @@ Guides: [Menu bar](https://github.com/mar3co/claude-swap/wiki/Menu-Bar) · [Desk
 | `cswap menubar` | macOS extra |
 | `cswap widget --install` | macOS widget |
 
-`cswap help` lists everything. Details: [CLI reference](https://github.com/mar3co/claude-swap/wiki/CLI-Reference).
+`cswap help` lists everything. Details: [CLI reference](docs/CLI-Reference.md).
 
 <img src="assets/tui-watch.png" width="760" alt="cswap watch: live 5h and 7d usage bars for every account">
 
 ## Documentation
 
-The [wiki](https://github.com/mar3co/claude-swap/wiki) is the user guide:
+The [user guide](docs/README.md) (also on the [wiki](https://github.com/mar3co/claude-swap/wiki) and [GitHub Pages](https://mar3co.github.io/claude-swap/)):
 
-- [Getting started](https://github.com/mar3co/claude-swap/wiki/Getting-Started)
-- [Accounts](https://github.com/mar3co/claude-swap/wiki/Accounts)
-- [Auto-switch](https://github.com/mar3co/claude-swap/wiki/Auto-Switch)
-- [Sessions and directory maps](https://github.com/mar3co/claude-swap/wiki/Sessions)
-- [Menu bar](https://github.com/mar3co/claude-swap/wiki/Menu-Bar)
-- [Desktop widget](https://github.com/mar3co/claude-swap/wiki/Desktop-Widget)
-- [5-hour kickoff](https://github.com/mar3co/claude-swap/wiki/Five-Hour-Kickoff)
-- [Configuration](https://github.com/mar3co/claude-swap/wiki/Configuration)
-- [Backup](https://github.com/mar3co/claude-swap/wiki/Backup)
-- [Troubleshooting](https://github.com/mar3co/claude-swap/wiki/Troubleshooting)
+- [Getting started](docs/Getting-Started.md)
+- [Accounts](docs/Accounts.md)
+- [Auto-switch](docs/Auto-Switch.md)
+- [Sessions and directory maps](docs/Sessions.md)
+- [Menu bar](docs/Menu-Bar.md)
+- [Desktop widget](docs/Desktop-Widget.md)
+- [5-hour kickoff](docs/Five-Hour-Kickoff.md)
+- [Configuration](docs/Configuration.md)
+- [Backup](docs/Backup.md)
+- [Troubleshooting](docs/Troubleshooting.md)
 
 ## License
 

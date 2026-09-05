@@ -1,6 +1,6 @@
 # Menu bar (macOS)
 
-The extra is a small title in the macOS menu bar. Click it for a popover with usage bars. It can run the same auto-switch engine as `cswap auto`, show notifications, and fire the [5-hour kickoff](Five-Hour-Kickoff).
+The extra is a small title in the macOS menu bar. Click it for a popover with usage bars. It can run the same auto-switch engine as `cswap auto`, show notifications, and fire the [5-hour kickoff](Five-Hour-Kickoff.md).
 
 ## Install and keep it running
 
@@ -51,7 +51,7 @@ More → Settings:
 - **Auto-switch threshold**: 80 / 90 / 95 / 98%.
 - **Auto-switch strategy**: Most quota left (`best`) or Soonest weekly reset (`consume-first`).
 
-Policy lives in `settings.json` and is shared with the CLI. The on/off toggle lives in `menubar_settings.json`. See [Auto-switch](Auto-Switch).
+Policy lives in `settings.json` and is shared with the CLI. The on/off toggle lives in `menubar_settings.json`. See [Auto-switch](Auto-Switch.md).
 
 ## Notifications
 

@@ -87,7 +87,7 @@ cswap auto
 
 When the active account’s 5-hour or 7-day window reaches 90%, cswap moves you to the account with the most quota left. Turn this on from the extra instead if you prefer: More → Settings → Auto-switch accounts.
 
-See [Auto-switch](Auto-Switch).
+See [Auto-switch](Auto-Switch.md).
 
 ## macOS extra
 
@@ -95,11 +95,11 @@ See [Auto-switch](Auto-Switch).
 cswap menubar --install-service
 ```
 
-That starts the extra now and at every login. Click it for usage bars. See [Menu bar](Menu-Bar).
+That starts the extra now and at every login. Click it for usage bars. See [Menu bar](Menu-Bar.md).
 
 ## Next
 
-- [Accounts](Accounts)
-- [Sessions](Sessions) if you want two accounts working at once
-- [Desktop widget](Desktop-Widget)
-- [Troubleshooting](Troubleshooting) if `cswap add` or a switch fails
+- [Accounts](Accounts.md)
+- [Sessions](Sessions.md) if you want two accounts working at once
+- [Desktop widget](Desktop-Widget.md)
+- [Troubleshooting](Troubleshooting.md) if `cswap add` or a switch fails

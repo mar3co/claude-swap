@@ -84,4 +84,4 @@ Exit codes: `0` switched, `1` error, `2` nothing to do, `3` blocked (no viable t
 | `autoswitch_state.json` | cooldown, last switch, quarantines; delete to reset |
 | `menubar_settings.json` | extra-only: auto on/off, title, kickoff |
 
-See [Configuration](Configuration).
+See [Configuration](Configuration.md).

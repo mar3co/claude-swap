@@ -2,23 +2,23 @@
 
 Welcome. This is the user guide for **claude-swap** (`cswap`): a multi-account switcher for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). The same pages are published on the [GitHub wiki](https://github.com/mar3co/claude-swap/wiki).
 
-This wiki covers the [mar3co fork](https://github.com/mar3co/claude-swap), which includes the CLI and TUI from [upstream](https://github.com/realiti4/claude-swap) plus a native macOS menu bar extra, Desktop widget, and scheduled 5-hour window kickoff.
+This guide covers the [mar3co fork](https://github.com/mar3co/claude-swap), which includes the CLI and TUI from [upstream](https://github.com/realiti4/claude-swap) plus a native macOS menu bar extra, Desktop widget, and scheduled 5-hour window kickoff.
 
 ## Start here
 
 | I want to… | Go to |
 | --- | --- |
-| Install and save my first accounts | [Getting started](Getting-Started) |
-| Switch, alias, disable, or remove accounts | [Accounts](Accounts) |
-| Rotate before I hit a rate limit | [Auto-switch](Auto-Switch) |
-| Run two accounts at the same time | [Sessions](Sessions) |
-| Use the macOS extra | [Menu bar](Menu-Bar) |
-| Put usage on the Desktop | [Desktop widget](Desktop-Widget) |
-| Open idle 5-hour windows on a schedule | [5-hour kickoff](Five-Hour-Kickoff) |
-| Change threshold, strategy, theme | [Configuration](Configuration) |
-| Move accounts between machines | [Backup](Backup) |
-| Fix a stuck extra, token, or widget | [Troubleshooting](Troubleshooting) |
-| Look up a command | [CLI reference](CLI-Reference) |
+| Install and save my first accounts | [Getting started](Getting-Started.md) |
+| Switch, alias, disable, or remove accounts | [Accounts](Accounts.md) |
+| Rotate before I hit a rate limit | [Auto-switch](Auto-Switch.md) |
+| Run two accounts at the same time | [Sessions](Sessions.md) |
+| Use the macOS extra | [Menu bar](Menu-Bar.md) |
+| Put usage on the Desktop | [Desktop widget](Desktop-Widget.md) |
+| Open idle 5-hour windows on a schedule | [5-hour kickoff](Five-Hour-Kickoff.md) |
+| Change threshold, strategy, theme | [Configuration](Configuration.md) |
+| Move accounts between machines | [Backup](Backup.md) |
+| Fix a stuck extra, token, or widget | [Troubleshooting](Troubleshooting.md) |
+| Look up a command | [CLI reference](CLI-Reference.md) |
 
 ## How the pieces fit
 
@@ -42,4 +42,4 @@ uv tool install --editable '.[menubar]'
 cswap add
 ```
 
-Details, including Linux/Windows and upgrades, are in [Getting started](Getting-Started).
+Details, including Linux/Windows and upgrades, are in [Getting started](Getting-Started.md).
