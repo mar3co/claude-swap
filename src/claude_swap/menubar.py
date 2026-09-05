@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import plistlib
 import re
@@ -44,6 +45,10 @@ from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
+AUTO_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (
+    ("best", "Most quota left"),
+    ("consume-first", "Soonest weekly reset"),
+)
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
 SWITCH_HISTORY_LIMIT = 10
 NOTIFICATION_BUNDLE_ID = "com.claude-swap.menubar"
@@ -141,6 +146,11 @@ class MenuBarSettings:
 
 
 STATUS_ICON = "✻"
+# AppKit's default title extra is ~10pt per side. With no leading icon that
+# empty inset is just gap; compact width keeps ~3pt per side so the hover
+# pill still clears the first glyph.
+STATUS_ITEM_COMPACT_PAD = 6.0
+NS_VARIABLE_STATUS_ITEM_LENGTH = -1.0
 
 
 @dataclass(frozen=True)
@@ -468,8 +478,10 @@ def panel_windows(
 ) -> list[dict]:
     """Usage windows for the popover (drawn bars, not the status-item title).
 
-    Each item is ``{label, pct, countdown, ahead, maxed}``. Sentinel strings
-    and missing usage produce an empty list — the popover shows ``note`` instead.
+    Each item is ``{label, pct, countdown, resets_at_ts, ahead, maxed}``.
+    Sentinel strings and missing usage produce an empty list — the popover
+    shows ``note`` instead. ``resets_at_ts`` is a POSIX timestamp so the
+    macOS widget can recompute the countdown between extra refreshes.
     """
     if not isinstance(usage, dict):
         return []
@@ -484,15 +496,7 @@ def panel_windows(
             result = pace.compute_pace(window, fetched_at=fetched_at)
             ahead = bool(result and result.ahead)
         if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)):
-            rows.append(
-                {
-                    "label": label,
-                    "pct": float(window["pct"]),
-                    "countdown": _live_countdown(window, now),
-                    "ahead": ahead,
-                    "maxed": False,
-                }
-            )
+            rows.append(_window_row(label, window, ahead=ahead, maxed=False, now=now))
     for window in usage.get("scoped") or []:
         window = _rolled_weekly_window(window, now)
         if not (
@@ -504,15 +508,50 @@ def panel_windows(
         result = pace.compute_pace(window, fetched_at=fetched_at)
         pct = float(window["pct"])
         rows.append(
-            {
-                "label": str(window["name"]),
-                "pct": pct,
-                "countdown": _live_countdown(window, now),
-                "ahead": bool(result and result.ahead) and pct < 100,
-                "maxed": pct >= 100,
-            }
+            _window_row(
+                str(window["name"]),
+                window,
+                ahead=bool(result and result.ahead) and pct < 100,
+                maxed=pct >= 100,
+                now=now,
+            )
         )
     return rows
+
+
+def _window_row(
+    label: str, window: dict, *, ahead: bool, maxed: bool, now: float
+) -> dict:
+    ts = _resets_at_ts(window)
+    return {
+        "label": label,
+        "pct": float(window["pct"]),
+        "countdown": _live_countdown(window, now),
+        "resets_at_ts": None if ts == float("inf") else ts,
+        "ahead": ahead,
+        "maxed": maxed,
+    }
+
+
+def resolve_popover_theme(
+    *,
+    app_appearance_name: str | None,
+    interface_style: str | None,
+) -> str:
+    """Dark vs light for the menu-bar popover.
+
+    Status items follow the menu bar, which tints with the wallpaper and can
+    stay Aqua while System Settings → Appearance is Dark. The popover should
+    follow Dark Mode instead. ``AppleInterfaceStyle`` is the live system
+    value (unset in Light, ``Dark`` in Dark, including while auto-switching).
+    The app appearance is the fallback when that default is missing.
+    """
+    if (interface_style or "").lower() == "dark":
+        return "dark"
+    name = str(app_appearance_name or "")
+    if "Dark" in name:
+        return "dark"
+    return "light"
 
 
 def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
@@ -583,6 +622,13 @@ def format_title(
     if settings.show_icon:
         return f"{STATUS_ICON} {text}" if text else STATUS_ICON
     return text
+
+
+def status_item_length(title_width: float, *, compact: bool) -> float:
+    """Width for the status extra. Compact (icon off) drops the ~10pt insets."""
+    if not compact or title_width <= 0:
+        return NS_VARIABLE_STATUS_ITEM_LENGTH
+    return float(math.ceil(title_width + STATUS_ITEM_COMPACT_PAD))
 
 
 def format_usage_log(email: str, usage: dict | str | None) -> str | None:
@@ -710,9 +756,11 @@ def run(switcher) -> int:
     # process launches as a regular app and parks a "Python" icon in the Dock
     # for as long as the menu bar runs. Accessory keeps the status item and
     # dialog windows but stays out of the Dock and the Cmd-Tab switcher.
-    AppKit.NSApplication.sharedApplication().setActivationPolicy_(
-        AppKit.NSApplicationActivationPolicyAccessory
-    )
+    nsapp = AppKit.NSApplication.sharedApplication()
+    nsapp.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+    # Inherit System Settings → Appearance. A pinned Aqua appearance would
+    # keep the popover light after Dark Mode turns on.
+    nsapp.setAppearance_(None)
 
     from claude_swap.autoswitch import AutoSwitchEngine
     from claude_swap.settings import load_settings, set_setting
@@ -762,6 +810,8 @@ def run(switcher) -> int:
             self._attach_timer = rumps.Timer(self._attach_panel_once, 0.15)
             self._attach_timer.start()
             self.refresh_async()  # first display fetch
+            from claude_swap.widget_snapshot import wake_widget_host
+            wake_widget_host()
             if self.settings.auto_switch_enabled:
                 self._start_engine()
 
@@ -791,6 +841,8 @@ def run(switcher) -> int:
                 self.snapshot = snap
                 self._snapshot_at = time.time()
                 self._dirty = True  # picked up by on_sync_tick on the main thread
+                from claude_swap.widget_snapshot import publish_widget_snapshot
+                publish_widget_snapshot(snap, now=self._snapshot_at)
             finally:
                 self._refreshing = False
 
@@ -904,11 +956,22 @@ def run(switcher) -> int:
             except Exception:
                 return 0
 
+        def _strategy(self) -> str:
+            """Current auto-switch strategy from core settings (for the menu)."""
+            try:
+                return load_settings(self.switcher.backup_dir).strategy
+            except Exception:
+                return "best"
+
         # ---- menu construction -----------------------------------------------
         def _attach_panel_once(self, timer):
             timer.stop()
             try:
-                from claude_swap.menubar_panel import MenuBarPanel, pin_status_item
+                from claude_swap.menubar_panel import (
+                    MenuBarPanel,
+                    fit_status_item,
+                    pin_status_item,
+                )
                 nsitem = self._nsapp.nsstatusitem
             except Exception:
                 self.switcher._logger.debug("popover attach failed", exc_info=True)
@@ -917,6 +980,10 @@ def run(switcher) -> int:
                 pin_status_item(nsitem)
             except Exception:
                 self.switcher._logger.debug("status item autosave failed", exc_info=True)
+            try:
+                fit_status_item(nsitem, compact=not self.settings.show_icon)
+            except Exception:
+                self.switcher._logger.debug("status item fit failed", exc_info=True)
             self._panel = MenuBarPanel(
                 on_switch=self._switch_from_panel,
                 on_rotate=lambda *_a: self._switch(None)(None),
@@ -941,6 +1008,18 @@ def run(switcher) -> int:
                 pass
             menu.popUpMenuPositioningItem_atLocation_inView_(None, loc, view)
 
+        def _fit_status_item(self):
+            nsapp = getattr(self, "_nsapp", None)
+            nsitem = getattr(nsapp, "nsstatusitem", None) if nsapp is not None else None
+            if nsitem is None:
+                return
+            try:
+                from claude_swap.menubar_panel import fit_status_item
+
+                fit_status_item(nsitem, compact=not self.settings.show_icon)
+            except Exception:
+                self.switcher._logger.debug("status item fit failed", exc_info=True)
+
         def rebuild_menu(self):
             self.title = format_title(
                 self.snapshot["active_email"],
@@ -948,6 +1027,7 @@ def run(switcher) -> int:
                 self.settings,
                 alias=self.snapshot.get("active_alias"),
             )
+            self._fit_status_item()
             # Stop a rumps memory leak: rumps registers each menu item's callback
             # in the process-global NSApp._ns_to_py_and_callback, but Menu.clear()
             # never removes them, so rebuilding the whole menu on every refresh
@@ -1082,6 +1162,14 @@ def run(switcher) -> int:
                 ch.state = 1 if current == pct else 0
                 threshold_menu.add(ch)
             menu.add(threshold_menu)
+
+            strategy_menu = rumps.MenuItem("Auto-switch strategy")
+            current_strategy = self._strategy()
+            for value, label in AUTO_STRATEGY_CHOICES:
+                ch = rumps.MenuItem(label, callback=self._make_strategy(value))
+                ch.state = 1 if current_strategy == value else 0
+                strategy_menu.add(ch)
+            menu.add(strategy_menu)
 
             kickoff = rumps.MenuItem("Start 5-hour window")
             kickoff_on = rumps.MenuItem("Enabled", callback=self.on_toggle_kickoff)
@@ -1446,6 +1534,19 @@ def run(switcher) -> int:
                     rumps.alert(title="claude-swap", message=f"Couldn't set threshold: {e}")
                     return
                 self._restart_engine()  # apply immediately if running
+                self.rebuild_menu()
+            return cb
+
+        def _make_strategy(self, strategy):
+            def cb(_sender):
+                try:
+                    set_setting(
+                        self.switcher.backup_dir, "autoswitch.strategy", strategy
+                    )
+                except Exception as e:
+                    rumps.alert(title="claude-swap", message=f"Couldn't set strategy: {e}")
+                    return
+                self._restart_engine()
                 self.rebuild_menu()
             return cb
 

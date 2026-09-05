@@ -1145,6 +1145,80 @@ class TestAutoCommand:
         )
         assert "auto" in result.stdout
 
+    def test_main_help_mentions_widget(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "claude_swap", "--help"],
+            capture_output=True,
+            text=True,
+            env=_subprocess_env(),
+        )
+        assert "widget --install" in result.stdout
+
+    def test_widget_help(self, capsys):
+        with patch.object(sys, "argv", ["cswap", "widget", "--help"]):
+            with pytest.raises(SystemExit) as excinfo:
+                cli.main()
+        assert excinfo.value.code == 0
+        out = capsys.readouterr().out
+        assert "--install" in out
+        assert "Edit Widgets" in out
+
+    def test_widget_requires_a_flag(self):
+        with patch.object(sys, "argv", ["cswap", "widget"]):
+            with pytest.raises(SystemExit) as excinfo:
+                cli.main()
+        assert excinfo.value.code == 2
+
+    def test_widget_install_dispatches(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "claude_swap.widget_install.install_widget",
+            lambda: {
+                "app": "/tmp/cswap Widget.app",
+                "team": "ABC",
+                "log": "/tmp/x.log",
+                "label": "com.cswap.widget",
+                "plist": "/tmp/p.plist",
+            },
+        )
+        with patch.object(sys, "argv", ["cswap", "widget", "--install"]):
+            with pytest.raises(SystemExit) as exc:
+                cli.main()
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "Widget installed" in out
+        assert "Edit Widgets" in out
+
+    def test_widget_uninstall_dispatches(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "claude_swap.widget_install.uninstall_widget",
+            lambda: {"removed_app": True, "removed_plist": True, "was_loaded": True},
+        )
+        with patch.object(sys, "argv", ["cswap", "widget", "--uninstall"]):
+            with pytest.raises(SystemExit) as exc:
+                cli.main()
+        assert exc.value.code == 0
+        assert "Widget removed" in capsys.readouterr().out
+
+    def test_widget_status_dispatches(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "claude_swap.widget_install.widget_status",
+            lambda: {
+                "app": "/tmp/cswap Widget.app",
+                "app_installed": True,
+                "installed": True,
+                "loaded": True,
+                "state": "running",
+                "pid": 99,
+            },
+        )
+        with patch.object(sys, "argv", ["cswap", "widget", "--status"]):
+            with pytest.raises(SystemExit) as exc:
+                cli.main()
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert "present" in out
+        assert "99" in out
+
     def test_switcher_error_exits_1(self, temp_home, capsys):
         from claude_swap.exceptions import ConfigError
 

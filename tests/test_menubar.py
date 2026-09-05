@@ -120,6 +120,14 @@ def test_settings_ignores_unknown_and_bad_types(tmp_path: Path):
     assert s.show_account_name is False
 
 
+def test_auto_strategy_choices_match_core_settings():
+    from claude_swap.settings import SETTING_SPECS
+
+    spec = SETTING_SPECS["autoswitch.strategy"]
+    values = tuple(value for value, _label in menubar.AUTO_STRATEGY_CHOICES)
+    assert values == spec.choices
+
+
 _USAGE = {
     "five_hour": {"pct": 42.0},
     "seven_day": {"pct": 18.0},
@@ -247,6 +255,32 @@ def test_format_account_label_with_alias():
 def test_format_account_label_disabled_marker():
     label = menubar.format_account_label(2, "loc@papaya.asia", _USAGE, disabled=True)
     assert label == "2  loc@papaya.asia  (disabled)  5h 42% · 7d 18% · $ 30%"
+
+
+def test_resolve_popover_theme_follows_system_dark_mode():
+    assert menubar.resolve_popover_theme(
+        app_appearance_name="NSAppearanceNameAqua",
+        interface_style="Dark",
+    ) == "dark"
+    assert menubar.resolve_popover_theme(
+        app_appearance_name="NSAppearanceNameDarkAqua",
+        interface_style=None,
+    ) == "dark"
+    assert menubar.resolve_popover_theme(
+        app_appearance_name="NSAppearanceNameAccessibilityHighContrastDarkAqua",
+        interface_style=None,
+    ) == "dark"
+
+
+def test_resolve_popover_theme_light_when_system_is_light():
+    assert menubar.resolve_popover_theme(
+        app_appearance_name="NSAppearanceNameAqua",
+        interface_style=None,
+    ) == "light"
+    assert menubar.resolve_popover_theme(
+        app_appearance_name=None,
+        interface_style=None,
+    ) == "light"
 
 
 def test_panel_windows_from_usage():
@@ -448,6 +482,22 @@ def test_show_icon_control_is_nested_under_advanced_not_settings_root():
     assert "Show asterisk in menu bar" in text
     assert "advanced.add(icon_item)" in text
     assert "menu.add(icon_item)" not in text
+
+
+def test_status_item_length_compacts_only_when_icon_is_off():
+    assert menubar.status_item_length(58.06, compact=False) == menubar.NS_VARIABLE_STATUS_ITEM_LENGTH
+    assert menubar.status_item_length(0, compact=True) == menubar.NS_VARIABLE_STATUS_ITEM_LENGTH
+    compact = menubar.status_item_length(58.06, compact=True)
+    assert compact == 65.0  # ceil(58.06 + 6pt total pad)
+    assert compact < 58.06 + 20  # AppKit's default is ~10pt per side
+
+
+def test_rebuild_menu_fits_status_item_from_show_icon():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    assert "self._fit_status_item()" in text
+    assert "compact=not self.settings.show_icon" in text
+    panel = Path(menubar.__file__).resolve().parent / "menubar_panel.py"
+    assert "def fit_status_item" in panel.read_text(encoding="utf-8")
 
 
 def test_kickoff_is_wired_from_menubar_sync_tick():

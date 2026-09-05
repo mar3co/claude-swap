@@ -915,6 +915,88 @@ def _use_native_tls() -> None:
         pass
 
 
+def _widget_command(argv: list[str]) -> int:
+    """Handle ``cswap widget --install|--uninstall|--status``.
+
+    Pre-dispatched like ``run`` / ``auto`` so it does not require a switcher
+    (building the widget must work on a fresh machine before any account is
+    added). macOS-only; the install module raises ClaudeSwitchError elsewhere.
+    """
+    parser = argparse.ArgumentParser(
+        prog="cswap widget",
+        description=(
+            "Install the macOS Desktop and Notification Center widget for "
+            "cswap usage. The menu bar extra writes a snapshot; this signed "
+            "WidgetKit app is what macOS actually shows."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+After install, add the widget:
+  Notification Center: click the date in the menu bar, Edit Widgets
+  Desktop: right-click the desktop, Edit Widgets
+  Look for "cswap"
+
+The menu bar extra must be running so the widget has live usage numbers.
+""",
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--install",
+        action="store_true",
+        help="Build the widget app, copy it to ~/Applications, and start it",
+    )
+    group.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Stop the widget host and remove ~/Applications/cswap Widget.app",
+    )
+    group.add_argument(
+        "--status",
+        action="store_true",
+        help="Report whether the widget app and its LaunchAgent are present",
+    )
+    args = parser.parse_args(argv)
+    from claude_swap.widget_install import (
+        install_widget,
+        uninstall_widget,
+        widget_status,
+    )
+
+    try:
+        if args.install:
+            result = install_widget()
+            print(f"Widget installed ({result['app']}).")
+            print(
+                dimmed(
+                    "Add it from Notification Center, or right-click the "
+                    "desktop and choose Edit Widgets. Look for cswap."
+                )
+            )
+            print(dimmed("The menu bar extra must be running for live numbers."))
+            return 0
+        if args.uninstall:
+            result = uninstall_widget()
+            if result.get("removed_app") or result.get("removed_plist") or result.get("was_loaded"):
+                print("Widget removed.")
+            else:
+                print("Widget was not installed.")
+            return 0
+        state = widget_status()
+        app_state = "present" if state["app_installed"] else "missing"
+        print(f"Widget app: {app_state} ({state['app']})")
+        if not state["installed"] and not state["loaded"]:
+            print("Widget host service is not installed.")
+            print(dimmed("Install it with: cswap widget --install"))
+            return 0
+        host = state["state"] or ("loaded" if state["loaded"] else "stopped")
+        pid = f" (pid {state['pid']})" if state["pid"] else ""
+        print(f"Widget host: {host}{pid}")
+        return 0
+    except ClaudeSwitchError as e:
+        error(f"Error: {e}")
+        return 1
+
+
 def _menubar_service(args) -> int:
     """Handle ``menubar --install-service|--uninstall-service|--service-status``.
 
@@ -983,6 +1065,8 @@ def main() -> None:
     if argv and argv[0] == "auto":
         _auto_command(argv[1:])
         return  # only reachable in tests where sys.exit is mocked
+    if argv and argv[0] == "widget":
+        sys.exit(_widget_command(argv[1:]))
     if len(sys.argv) > 1 and sys.argv[1] == "config":
         _config_command(sys.argv[2:])
         return
@@ -1051,6 +1135,7 @@ Commands:
   %(prog)s watch                      dashboard, opened on the live watch page
   %(prog)s menubar                    macOS menu bar app
   %(prog)s menubar --install-service  keep the menu bar running via launchd
+  %(prog)s widget --install           macOS Desktop / Notification Center widget
   %(prog)s upgrade                    self-upgrade to latest
   %(prog)s purge                      remove all claude-swap data
 

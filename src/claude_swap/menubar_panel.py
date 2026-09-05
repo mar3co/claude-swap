@@ -8,17 +8,24 @@ from __future__ import annotations
 
 import objc
 from AppKit import (
+    NSApp,
+    NSAppearance,
     NSAppearanceNameAqua,
     NSAppearanceNameDarkAqua,
+    NSApplication,
     NSBezierPath,
     NSButton,
     NSButtonTypeSwitch,
     NSColor,
     NSFont,
+    NSFontAttributeName,
     NSFontWeightMedium,
     NSFontWeightRegular,
     NSFontWeightSemibold,
+    NSForegroundColorAttributeName,
+    NSGraphicsContext,
     NSLineBreakByTruncatingTail,
+    NSNoImage,
     NSPopover,
     NSPopoverBehaviorTransient,
     NSRectEdgeMinY,
@@ -33,9 +40,16 @@ from AppKit import (
     NSVisualEffectStateActive,
     NSVisualEffectView,
 )
-from Foundation import NSMakeRect, NSObject, NSPointInRect
+from Foundation import (
+    NSAttributedString,
+    NSDistributedNotificationCenter,
+    NSMakeRect,
+    NSObject,
+    NSPointInRect,
+    NSUserDefaults,
+)
 
-from claude_swap.menubar import panel_accounts
+from claude_swap.menubar import panel_accounts, resolve_popover_theme, status_item_length
 from claude_swap.tui.theme import (
     ACCENT,
     ACCENT_LIGHT,
@@ -67,6 +81,34 @@ def pin_status_item(nsstatusitem) -> None:
     nsstatusitem.setAutosaveName_(STATUS_AUTOSAVE_NAME)
 
 
+def fit_status_item(nsstatusitem, *, compact: bool) -> None:
+    """Shrink the extra to the title when the leading icon is off.
+
+    AppKit's default title item is ~10pt inset on each side; with no icon
+    that left gap is empty. Measuring the title and setting length keeps
+    about 3pt per side.
+    """
+    button = nsstatusitem.button()
+    if button is None:
+        return
+    if compact:
+        try:
+            button.setImagePosition_(NSNoImage)
+        except Exception:
+            pass
+    title = str(button.title() or "")
+    width = 0.0
+    if title:
+        font = button.font() or NSFont.menuBarFontOfSize_(0)
+        width = (
+            NSAttributedString.alloc()
+            .initWithString_attributes_(title, {NSFontAttributeName: font})
+            .size()
+            .width
+        )
+    nsstatusitem.setLength_(status_item_length(width, compact=compact))
+
+
 PANEL_WIDTH = 312.0
 PAD = 12.0
 HEADER_H = 36.0
@@ -77,9 +119,11 @@ CARD_RADIUS = 10.0
 TITLE_H = 18.0
 ROW_H = 22.0
 BAR_H = 6.0
+BAR_MAX_W = 80.0
 LABEL_W = 44.0
-PCT_W = 36.0
-COUNT_W = 52.0
+PCT_W = 48.0
+COUNT_W = 60.0
+COL_GAP = 8.0
 
 
 def _hex(color: str, alpha: float = 1.0):
@@ -88,44 +132,66 @@ def _hex(color: str, alpha: float = 1.0):
     return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha)
 
 
-def _is_dark(view) -> bool:
-    try:
-        name = view.effectiveAppearance().bestMatchFromAppearancesWithNames_(
+# Dynamic NSColor providers are ObjC blocks over Python callables; keep them
+# rooted so the GC cannot collect a provider the catalog still calls.
+_DYNAMIC_PROVIDERS: list = []
+_PALETTE = None
+
+
+def _dynamic(light_hex, dark_hex, light_alpha=1.0, dark_alpha=1.0, *, name=None):
+    def provider(appearance):
+        match = appearance.bestMatchFromAppearancesWithNames_(
             [NSAppearanceNameDarkAqua, NSAppearanceNameAqua]
         )
-        return name == NSAppearanceNameDarkAqua
-    except Exception:
-        return True
+        if match == NSAppearanceNameDarkAqua:
+            return _hex(dark_hex, dark_alpha)
+        return _hex(light_hex, light_alpha)
+
+    _DYNAMIC_PROVIDERS.append(provider)
+    return NSColor.colorWithName_dynamicProvider_(name, provider)
 
 
-def _palette(view) -> dict:
-    if _is_dark(view):
-        return {
-            "fg": _hex(FOREGROUND),
-            "muted": _hex(MUTED),
-            "accent": _hex(ACCENT),
-            "card": _hex("#ffffff", 0.06),
-            "card_hover": _hex("#ffffff", 0.10),
-            "card_active": _hex("#ffffff", 0.09),
-            "ok": _hex(SEV_OK),
-            "warn": _hex(SEV_WARN),
-            "crit": _hex(SEV_CRIT),
-            "track": _hex(TRACK),
-            "hairline": _hex("#ffffff", 0.08),
+def _colors() -> dict:
+    """TUI light/dark tokens that resolve against the drawing appearance."""
+    global _PALETTE
+    if _PALETTE is None:
+        _PALETTE = {
+            "fg": _dynamic(FOREGROUND_LIGHT, FOREGROUND, name="cswap.fg"),
+            "muted": _dynamic(MUTED_LIGHT, MUTED, name="cswap.muted"),
+            "accent": _dynamic(ACCENT_LIGHT, ACCENT, name="cswap.accent"),
+            "card": _dynamic("#000000", "#ffffff", 0.04, 0.06, name="cswap.card"),
+            "card_hover": _dynamic(
+                "#000000", "#ffffff", 0.07, 0.10, name="cswap.cardHover"
+            ),
+            "card_active": _dynamic(
+                "#000000", "#ffffff", 0.06, 0.09, name="cswap.cardActive"
+            ),
+            "ok": _dynamic(SEV_OK_LIGHT, SEV_OK, name="cswap.ok"),
+            "warn": _dynamic(SEV_WARN_LIGHT, SEV_WARN, name="cswap.warn"),
+            "crit": _dynamic(SEV_CRIT_LIGHT, SEV_CRIT, name="cswap.crit"),
+            "track": _dynamic(TRACK_LIGHT, TRACK, name="cswap.track"),
+            "hairline": _dynamic(
+                "#000000", "#ffffff", 0.08, 0.08, name="cswap.hairline"
+            ),
         }
-    return {
-        "fg": _hex(FOREGROUND_LIGHT),
-        "muted": _hex(MUTED_LIGHT),
-        "accent": _hex(ACCENT_LIGHT),
-        "card": _hex("#000000", 0.04),
-        "card_hover": _hex("#000000", 0.07),
-        "card_active": _hex("#000000", 0.06),
-        "ok": _hex(SEV_OK_LIGHT),
-        "warn": _hex(SEV_WARN_LIGHT),
-        "crit": _hex(SEV_CRIT_LIGHT),
-        "track": _hex(TRACK_LIGHT),
-        "hairline": _hex("#000000", 0.08),
-    }
+    return _PALETTE
+
+
+def _system_popover_appearance():
+    """Named Aqua/DarkAqua for the popover, matching System Settings."""
+    try:
+        app_name = NSApplication.sharedApplication().effectiveAppearance().name()
+    except Exception:
+        app_name = None
+    try:
+        style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
+    except Exception:
+        style = None
+    theme = resolve_popover_theme(
+        app_appearance_name=app_name, interface_style=style
+    )
+    key = NSAppearanceNameDarkAqua if theme == "dark" else NSAppearanceNameAqua
+    return NSAppearance.appearanceNamed_(key)
 
 
 def _sev(pct: float, pal: dict):
@@ -170,26 +236,73 @@ class _Trampoline(NSObject):
             cb(sender)
 
 
+class _AppearanceObserver(NSObject):
+    """KVO + distributed-notification shim so the popover tracks Dark Mode."""
+
+    def initWithCallback_(self, callback):
+        self = objc.super(_AppearanceObserver, self).init()
+        if self is None:
+            return None
+        self._callback = callback
+        return self
+
+    def observeValueForKeyPath_ofObject_change_context_(self, keyPath, obj, change, context):
+        cb = getattr(self, "_callback", None)
+        if cb:
+            cb()
+
+    def themeChanged_(self, _note):
+        cb = getattr(self, "_callback", None)
+        if cb:
+            cb()
+
+
+class _FillView(NSView):
+    """1px hairline (or other strip) that re-resolves its fill on appearance changes."""
+
+    def initWithColor_(self, color):
+        self = objc.super(_FillView, self).initWithFrame_(NSMakeRect(0, 0, 1, 1))
+        if self is None:
+            return None
+        self._fill = color
+        return self
+
+    def isFlipped(self):
+        return True
+
+    def viewDidChangeEffectiveAppearance(self):
+        objc.super(_FillView, self).viewDidChangeEffectiveAppearance()
+        self.setNeedsDisplay_(True)
+
+    def drawRect_(self, _rect):
+        self._fill.setFill()
+        NSBezierPath.bezierPathWithRect_(self.bounds()).fill()
+
+
 class _BarView(NSView):
-    def initWithPct_palette_threshold_(self, pct, pal, threshold):
+    def initWithPct_threshold_(self, pct, threshold):
         self = objc.super(_BarView, self).initWithFrame_(NSMakeRect(0, 0, 100, BAR_H))
         if self is None:
             return None
         self.pct = max(0.0, min(float(pct), 100.0))
-        self.pal = pal
         self.threshold = threshold
         return self
 
     def isFlipped(self):
         return True
 
+    def viewDidChangeEffectiveAppearance(self):
+        objc.super(_BarView, self).viewDidChangeEffectiveAppearance()
+        self.setNeedsDisplay_(True)
+
     def drawRect_(self, _rect):
+        pal = _colors()
         bounds = self.bounds()
         radius = bounds.size.height / 2.0
         track = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             bounds, radius, radius
         )
-        self.pal["track"].setFill()
+        pal["track"].setFill()
         track.fill()
         NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
             bounds, radius, radius
@@ -200,43 +313,55 @@ class _BarView(NSView):
             fill = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
                 fill_rect, radius, radius
             )
-            _sev(self.pct, self.pal).setFill()
+            _sev(self.pct, pal).setFill()
             fill.fill()
         if self.threshold:
             x = bounds.size.width * max(0.0, min(float(self.threshold), 100.0)) / 100.0
-            self.pal["warn"].colorWithAlphaComponent_(0.7).setFill()
+            pal["warn"].colorWithAlphaComponent_(0.7).setFill()
             NSBezierPath.bezierPathWithRect_(
                 NSMakeRect(x - 0.5, 0, 1.0, bounds.size.height)
             ).fill()
 
 
 class _CardView(NSView):
-    def initWithCard_palette_onSwitch_(self, card, pal, on_switch):
+    def initWithCard_onSwitch_(self, card, on_switch):
         self = objc.super(_CardView, self).initWithFrame_(NSMakeRect(0, 0, 100, 40))
         if self is None:
             return None
         self.card = card
-        self.pal = pal
         self.on_switch = on_switch
         self._hover = False
-        self.setWantsLayer_(True)
-        layer = self.layer()
-        layer.setCornerRadius_(CARD_RADIUS)
-        layer.setMasksToBounds_(True)
-        self._apply_bg()
         return self
 
     def isFlipped(self):
         return True
 
-    def _apply_bg(self):
+    def viewDidChangeEffectiveAppearance(self):
+        objc.super(_CardView, self).viewDidChangeEffectiveAppearance()
+        self.setNeedsDisplay_(True)
+
+    def drawRect_(self, _rect):
+        pal = _colors()
         if self._hover:
-            color = self.pal["card_hover"]
+            color = pal["card_hover"]
         elif self.card.get("active"):
-            color = self.pal["card_active"]
+            color = pal["card_active"]
         else:
-            color = self.pal["card"]
-        self.layer().setBackgroundColor_(color.CGColor())
+            color = pal["card"]
+        bounds = self.bounds()
+        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            bounds, CARD_RADIUS, CARD_RADIUS
+        )
+        color.setFill()
+        path.fill()
+        if self.card.get("active"):
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            pal["accent"].setFill()
+            NSBezierPath.bezierPathWithRect_(
+                NSMakeRect(0, 0, 3, bounds.size.height)
+            ).fill()
+            NSGraphicsContext.restoreGraphicsState()
 
     def updateTrackingAreas(self):
         areas = list(self.trackingAreas() or [])
@@ -251,11 +376,11 @@ class _CardView(NSView):
 
     def mouseEntered_(self, _event):
         self._hover = True
-        self._apply_bg()
+        self.setNeedsDisplay_(True)
 
     def mouseExited_(self, _event):
         self._hover = False
-        self._apply_bg()
+        self.setNeedsDisplay_(True)
 
     def hitTest_(self, point):
         # Labels sit on top of the card; route every hit to the card so a
@@ -298,6 +423,7 @@ class MenuBarPanel:
         self._controller = None
         self._tramps: list = []
         self._toggle_tramp = None
+        self._appearance_obs = None
 
     def attach(self, nsstatusitem) -> None:
         self._item = nsstatusitem
@@ -311,6 +437,42 @@ class MenuBarPanel:
         self._popover = NSPopover.alloc().init()
         self._popover.setBehavior_(NSPopoverBehaviorTransient)
         self._popover.setAnimates_(True)
+        self._sync_popover_appearance()
+        self._watch_appearance()
+
+    def _watch_appearance(self) -> None:
+        if self._appearance_obs is not None:
+            return
+        obs = _AppearanceObserver.alloc().initWithCallback_(self._on_system_appearance)
+        self._appearance_obs = obs
+        try:
+            NSApp.addObserver_forKeyPath_options_context_(
+                obs, "effectiveAppearance", 1, None
+            )
+        except Exception:
+            pass
+        try:
+            NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                obs,
+                "themeChanged:",
+                "AppleInterfaceThemeChangedNotification",
+                None,
+            )
+        except Exception:
+            pass
+
+    def _sync_popover_appearance(self) -> None:
+        if self._popover is None:
+            return
+        try:
+            self._popover.setAppearance_(_system_popover_appearance())
+        except Exception:
+            pass
+
+    def _on_system_appearance(self) -> None:
+        self._sync_popover_appearance()
+        if self.is_shown():
+            self.reload()
 
     def is_shown(self) -> bool:
         return bool(self._popover is not None and self._popover.isShown())
@@ -325,6 +487,7 @@ class MenuBarPanel:
         if self._popover.isShown():
             self._popover.performClose_(None)
             return
+        self._sync_popover_appearance()
         self.reload()
         button = self._item.button()
         if button is None:
@@ -351,9 +514,7 @@ class MenuBarPanel:
     def _build(self):
         self._tramps = []
         cards = panel_accounts(self._snapshot())
-        # Probe palette from the status button so the first paint matches the bar.
-        probe = self._item.button() if self._item is not None else None
-        pal = _palette(probe) if probe is not None else _palette(_RootView.alloc().init())
+        pal = _colors()
 
         body_h = 0.0
         if not cards:
@@ -384,8 +545,15 @@ class MenuBarPanel:
             NSMakeRect(PANEL_WIDTH - PAD - 118, PAD + 1, 118, 22)
         )
         auto.setButtonType_(NSButtonTypeSwitch)
-        auto.setTitle_("Auto-switch")
-        auto.setFont_(font_small)
+        auto.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                "Auto-switch",
+                {
+                    NSFontAttributeName: font_small,
+                    NSForegroundColorAttributeName: pal["fg"],
+                },
+            )
+        )
         auto.setState_(1 if self._auto_enabled() else 0)
         auto.setTarget_(self._tramp(self._on_toggle_auto))
         auto.setAction_("act:")
@@ -407,20 +575,12 @@ class MenuBarPanel:
             for card in cards:
                 n = max(len(card["windows"]), 1 if card["note"] else 0, 1)
                 card_h = CARD_PAD * 2 + TITLE_H + 6 + n * ROW_H
-                card_view = _CardView.alloc().initWithCard_palette_onSwitch_(
-                    card, pal, self._on_switch
+                card_view = _CardView.alloc().initWithCard_onSwitch_(
+                    card, self._on_switch
                 )
                 card_view.setFrame_(NSMakeRect(PAD, y, inner_w, card_h))
                 if card.get("disabled"):
                     card_view.setAlphaValue_(0.45)
-
-                if card.get("active"):
-                    accent = NSView.alloc().initWithFrame_(
-                        NSMakeRect(0, 0, 3, card_h)
-                    )
-                    accent.setWantsLayer_(True)
-                    accent.layer().setBackgroundColor_(pal["accent"].CGColor())
-                    card_view.addSubview_(accent)
 
                 title = card["title"]
                 if card.get("disabled"):
@@ -454,19 +614,22 @@ class MenuBarPanel:
                         )
                     )
                 else:
-                    bar_x = CARD_PAD + 6 + LABEL_W
-                    bar_w = inner_w - CARD_PAD * 2 - 8 - LABEL_W - PCT_W - COUNT_W
+                    label_x = CARD_PAD + 6
+                    count_x = inner_w - CARD_PAD - COUNT_W
+                    pct_x = count_x - COL_GAP - PCT_W
+                    bar_x = label_x + LABEL_W
+                    bar_w = min(BAR_MAX_W, max(24.0, pct_x - COL_GAP - bar_x))
                     for win in card["windows"]:
                         card_view.addSubview_(
                             _label(
                                 win["label"],
                                 font_label,
                                 pal["muted"],
-                                NSMakeRect(CARD_PAD + 6, row_y - 2, LABEL_W - 4, ROW_H),
+                                NSMakeRect(label_x, row_y - 2, LABEL_W - 4, ROW_H),
                             )
                         )
-                        bar = _BarView.alloc().initWithPct_palette_threshold_(
-                            win["pct"], pal, self._threshold()
+                        bar = _BarView.alloc().initWithPct_threshold_(
+                            win["pct"], self._threshold()
                         )
                         bar.setFrame_(
                             NSMakeRect(bar_x, row_y + (ROW_H - BAR_H) / 2 - 2, bar_w, BAR_H)
@@ -478,7 +641,8 @@ class MenuBarPanel:
                                 f"{win['pct']:.0f}%",
                                 font_digits,
                                 pct_color,
-                                NSMakeRect(bar_x + bar_w + 6, row_y - 2, PCT_W, ROW_H),
+                                NSMakeRect(pct_x, row_y - 2, PCT_W, ROW_H),
+                                align="right",
                             )
                         )
                         suffix = win.get("countdown") or ""
@@ -491,9 +655,7 @@ class MenuBarPanel:
                                 suffix,
                                 font_small,
                                 pal["muted"],
-                                NSMakeRect(
-                                    bar_x + bar_w + 6 + PCT_W, row_y - 2, COUNT_W - 8, ROW_H
-                                ),
+                                NSMakeRect(count_x, row_y - 2, COUNT_W, ROW_H),
                                 align="right",
                             )
                         )
@@ -504,11 +666,8 @@ class MenuBarPanel:
 
         # Footer
         fy = height - FOOTER_H
-        hairline = NSView.alloc().initWithFrame_(
-            NSMakeRect(PAD, fy, inner_w, 1)
-        )
-        hairline.setWantsLayer_(True)
-        hairline.layer().setBackgroundColor_(pal["hairline"].CGColor())
+        hairline = _FillView.alloc().initWithColor_(pal["hairline"])
+        hairline.setFrame_(NSMakeRect(PAD, fy, inner_w, 1))
         root.addSubview_(hairline)
 
         def _footer_btn(title, x, w, cb):
