@@ -38,44 +38,6 @@ TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
 SWITCH_HISTORY_LIMIT = 10
 NOTIFICATION_BUNDLE_ID = "com.claude-swap.menubar"
 
-# Same glyphs as the TUI usage bars (tui/widgets.py). Plain strings — NSMenu
-# has no Rich styles, and the menubar module stays import-safe without textual.
-_BAR_FILLED = "━"
-_BAR_HALF = "╸"
-_BAR_EMPTY = "─"
-ROW_BAR_WIDTH = 8
-TITLE_BAR_WIDTH = 6
-
-
-def usage_bar_plain(pct: float | None, width: int = ROW_BAR_WIDTH) -> str:
-    """A fixed-width usage bar as a plain string (no color).
-
-    ``None`` is an empty track. Values are clamped to 0–100. A half-fill glyph
-    is used when the fractional cell is ≥ 0.5, matching the TUI renderer.
-    """
-    if width <= 0:
-        return ""
-    if pct is None:
-        return _BAR_EMPTY * width
-    frac = min(max(float(pct), 0.0), 100.0) / 100.0
-    cells = frac * width
-    full = int(cells)
-    half = (cells - full) >= 0.5 and full < width
-    chars: list[str] = []
-    for i in range(width):
-        if i < full:
-            chars.append(_BAR_FILLED)
-        elif i == full and half:
-            chars.append(_BAR_HALF)
-        else:
-            chars.append(_BAR_EMPTY)
-    return "".join(chars)
-
-
-def _pct_with_bar(pct: float, width: int = ROW_BAR_WIDTH) -> str:
-    """``━━━───── 42%`` — bar plus integer percent, for titles and row labels."""
-    return f"{usage_bar_plain(pct, width)} {pct:.0f}%"
-
 
 def ensure_notification_identity(
     executable: Path | None = None,
@@ -284,7 +246,7 @@ def usage_summary(
             # pct with this cycle's freshly-reset 0% display.
             pace_result = pace.compute_pace(window, fetched_at=fetched_at)
         if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)):
-            seg = f"{label} {_pct_with_bar(window['pct'])}"
+            seg = f"{label} {window['pct']:.0f}%"
             if key == "seven_day" and pace_result and pace_result.ahead:
                 seg += " (ahead)"
             countdown = _live_countdown(window, now)
@@ -296,7 +258,7 @@ def usage_summary(
         window = _rolled_weekly_window(window, now)  # weekly cadence, same roll-forward
         pace_result = pace.compute_pace(window, fetched_at=fetched_at)  # against the rolled window, see above
         if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
-            seg = f"{window['name']} {_pct_with_bar(window['pct'])}"
+            seg = f"{window['name']} {window['pct']:.0f}%"
             if window["pct"] >= 100:
                 seg += " (!)"  # maxed model — the usual reason to switch
             elif pace_result and pace_result.ahead:
@@ -326,6 +288,84 @@ def format_account_label(
     return f"{num}  {label}{marker}  {usage_summary(usage, now, fetched_at)}"
 
 
+def panel_windows(
+    usage: dict | str | None,
+    now: float | None = None,
+    fetched_at: float | None = None,
+) -> list[dict]:
+    """Usage windows for the popover (drawn bars, not the status-item title).
+
+    Each item is ``{label, pct, countdown, ahead, maxed}``. Sentinel strings
+    and missing usage produce an empty list — the popover shows ``note`` instead.
+    """
+    if not isinstance(usage, dict):
+        return []
+    if now is None:
+        now = time.time()
+    rows: list[dict] = []
+    for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
+        window = usage.get(key)
+        ahead = False
+        if key == "seven_day":
+            window = _rolled_weekly_window(window, now)
+            result = pace.compute_pace(window, fetched_at=fetched_at)
+            ahead = bool(result and result.ahead)
+        if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)):
+            rows.append(
+                {
+                    "label": label,
+                    "pct": float(window["pct"]),
+                    "countdown": _live_countdown(window, now),
+                    "ahead": ahead,
+                    "maxed": False,
+                }
+            )
+    for window in usage.get("scoped") or []:
+        window = _rolled_weekly_window(window, now)
+        if not (
+            isinstance(window, dict)
+            and isinstance(window.get("pct"), (int, float))
+            and window.get("name")
+        ):
+            continue
+        result = pace.compute_pace(window, fetched_at=fetched_at)
+        pct = float(window["pct"])
+        rows.append(
+            {
+                "label": str(window["name"]),
+                "pct": pct,
+                "countdown": _live_countdown(window, now),
+                "ahead": bool(result and result.ahead) and pct < 100,
+                "maxed": pct >= 100,
+            }
+        )
+    return rows
+
+
+def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
+    """Account cards for the popover, from the menubar snapshot dict."""
+    if now is None:
+        now = time.time()
+    cards = []
+    for row in snapshot.get("accounts") or []:
+        num, email, is_active, display, _last_good, alias, disabled, fetched_at = row
+        note = display if isinstance(display, str) else None
+        cards.append(
+            {
+                "num": num,
+                "title": alias or email,
+                "subtitle": email if alias else "",
+                "active": bool(is_active),
+                "disabled": bool(disabled),
+                "note": note,
+                "windows": panel_windows(
+                    display if isinstance(display, dict) else None, now, fetched_at
+                ),
+            }
+        )
+    return cards
+
+
 def _local_part(email: str, limit: int = 12) -> str:
     """Email text before '@', truncated with a trailing '*' marker."""
     local = email.split("@", 1)[0]
@@ -352,22 +392,20 @@ def format_title(
     if settings.title_pct in ("5h", "both"):
         p = _window_pct(active_usage, "five_hour")
         if p is not None:
-            segments.append(_pct_with_bar(p, TITLE_BAR_WIDTH))
+            segments.append(f"{p:.0f}%")
     if settings.title_pct in ("7d", "both"):
         seven = active_usage.get("seven_day") if isinstance(active_usage, dict) else None
         seven = _rolled_weekly_window(seven, now)  # reflect a passed weekly reset
         p = seven["pct"] if isinstance(seven, dict) and isinstance(seven.get("pct"), (int, float)) else None
         if p is not None:
-            segments.append(_pct_with_bar(p, TITLE_BAR_WIDTH))
+            segments.append(f"{p:.0f}%")
     if settings.title_scoped and isinstance(active_usage, dict):
         # Per-model weekly limits (e.g. Fable), same shape/roll-forward as the
         # dropdown rows; named so multiple scoped models stay distinguishable.
         for window in active_usage.get("scoped") or []:
             window = _rolled_weekly_window(window, now)
             if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
-                segments.append(
-                    f"{window['name']} {_pct_with_bar(window['pct'], TITLE_BAR_WIDTH)}"
-                )
+                segments.append(f"{window['name']} {window['pct']:.0f}%")
     if not segments:
         return ICON
     return f"{ICON} " + " · ".join(segments)
@@ -532,6 +570,7 @@ def run(switcher) -> int:
             self._engine = None
             self._engine_events: list = []
             self._event_lock = threading.Lock()
+            self._panel = None
             self.rebuild_menu()
             # Background display refresh on the user's interval, plus a fast
             # UI-sync tick that applies snapshots + engine events on the main thread.
@@ -539,6 +578,10 @@ def run(switcher) -> int:
             self.refresh_timer.start()
             self.sync_timer = rumps.Timer(self.on_sync_tick, 1)
             self.sync_timer.start()
+            # rumps attaches an NSMenu in initializeStatusBar (after __init__).
+            # Steal the click for the popover once the status item exists.
+            self._attach_timer = rumps.Timer(self._attach_panel_once, 0.15)
+            self._attach_timer.start()
             self.refresh_async()  # first display fetch
             if self.settings.auto_switch_enabled:
                 self._start_engine()
@@ -687,6 +730,38 @@ def run(switcher) -> int:
                 return 0
 
         # ---- menu construction -----------------------------------------------
+        def _attach_panel_once(self, timer):
+            timer.stop()
+            try:
+                from claude_swap.menubar_panel import MenuBarPanel
+                nsitem = self._nsapp.nsstatusitem
+            except Exception:
+                self.switcher._logger.debug("popover attach failed", exc_info=True)
+                return
+            self._panel = MenuBarPanel(
+                on_switch=self._switch_from_panel,
+                on_rotate=lambda *_a: self._switch(None)(None),
+                on_best=lambda *_a: self._switch("best")(None),
+                on_toggle_auto=lambda *_a: self.on_toggle_autoswitch(None),
+                on_more=self._popup_overflow,
+                auto_enabled=lambda: self.settings.auto_switch_enabled,
+                snapshot=lambda: self.snapshot,
+                threshold=self._threshold,
+            )
+            self._panel.attach(nsitem)
+
+        def _popup_overflow(self, sender=None):
+            menu = self.menu._menu
+            view = sender if sender is not None else self._nsapp.nsstatusitem.button()
+            if view is None:
+                return
+            loc = (0, 0)
+            try:
+                loc = (0, view.bounds().size.height)
+            except Exception:
+                pass
+            menu.popUpMenuPositioningItem_atLocation_inView_(None, loc, view)
+
         def rebuild_menu(self):
             self.title = format_title(
                 self.snapshot["active_email"],
@@ -714,22 +789,9 @@ def run(switcher) -> int:
                             _purge(_sub)
                 _purge(self.menu._menu)
             self.menu.clear()
-            account_items = []
-            for num, email, is_active, display, _last_good, alias, disabled, fetched_at in self.snapshot["accounts"]:
-                item = rumps.MenuItem(
-                    format_account_label(
-                        num, email, display, alias=alias, disabled=disabled, fetched_at=fetched_at
-                    ),
-                    callback=self._make_switch_to(num),
-                )
-                item.state = 1 if is_active else 0
-                account_items.append(item)
-            if not account_items:
-                account_items.append(rumps.MenuItem("No managed accounts", callback=None))
-
+            # Overflow menu (popover More…): account switching lives in the
+            # popover, so this list is management + settings only.
             self.menu = [
-                *account_items,
-                None,
                 rumps.MenuItem("Rotate to next", callback=self._switch(None)),
                 rumps.MenuItem("Switch to best", callback=self._switch("best")),
                 rumps.MenuItem("Next available", callback=self._switch("next-available")),
@@ -744,6 +806,13 @@ def run(switcher) -> int:
                 rumps.MenuItem("Refresh now", callback=self.on_refresh_now),
                 rumps.MenuItem("Quit", callback=self.on_quit),
             ]
+            if self._panel is not None:
+                try:
+                    self._nsapp.nsstatusitem.setMenu_(None)
+                except AttributeError:
+                    pass
+                if self._panel.is_shown():
+                    self._panel.reload()
 
         def _add_menu(self, rumps):
             menu = rumps.MenuItem("Add account")
@@ -857,6 +926,11 @@ def run(switcher) -> int:
                 "Account switched",
                 "Switch takes effect within ~30s — restart Claude Code to apply immediately.",
             )
+
+        def _switch_from_panel(self, num):
+            self._make_switch_to(num)(None)
+            if self._panel is not None:
+                self._panel.close()
 
         def _make_switch_to(self, num):
             def cb(_sender):
