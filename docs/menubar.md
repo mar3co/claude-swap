@@ -34,7 +34,7 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 `MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `cswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
-`consume-first` ranks by **weekly** `resets_at`, not the 5h session. See `autoswitch._seven_day_reset_ts`. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
+More → Settings strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
 ## Kickoff
 

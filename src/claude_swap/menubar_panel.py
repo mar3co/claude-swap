@@ -125,6 +125,7 @@ def fit_status_item(nsstatusitem, *, compact: bool) -> None:
 PANEL_WIDTH = 312.0
 PAD = 12.0
 HEADER_H = 36.0
+HOLD_LINE_H = 16.0
 FOOTER_H = 38.0
 CARD_GAP = 8.0
 CARD_PAD = 11.0
@@ -706,7 +707,9 @@ class MenuBarPanel:
 
     def _build(self):
         self._tramps = []
-        cards = panel_accounts(self._snapshot())
+        snap = self._snapshot()
+        cards = panel_accounts(snap)
+        hold_line = snap.get("hold_line") or ""
         pal = _colors()
 
         body_h = 0.0
@@ -717,7 +720,8 @@ class MenuBarPanel:
                 body_h += _card_height(card)
             body_h += CARD_GAP * (len(cards) - 1)
 
-        height = PAD + HEADER_H + 4 + body_h + PAD + FOOTER_H
+        hold_h = HOLD_LINE_H if hold_line else 0.0
+        height = PAD + HEADER_H + hold_h + 4 + body_h + PAD + FOOTER_H
         root = _RootView.alloc().initWithHover_(self._on_hover)
         root.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH, height))
         root.setMaterial_(NSVisualEffectMaterialMenu)
@@ -765,8 +769,19 @@ class MenuBarPanel:
         root.addSubview_(auto_label)
         root.addSubview_(auto)
 
-        y = PAD + HEADER_H + 4
         inner_w = PANEL_WIDTH - PAD * 2
+        y = PAD + HEADER_H
+        if hold_line:
+            root.addSubview_(
+                _label(
+                    hold_line,
+                    font_small,
+                    pal["muted"],
+                    NSMakeRect(PAD, y, inner_w, HOLD_LINE_H),
+                )
+            )
+            y += HOLD_LINE_H
+        y += 4
 
         if not cards:
             root.addSubview_(

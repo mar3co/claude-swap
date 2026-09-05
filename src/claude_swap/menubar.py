@@ -49,6 +49,7 @@ AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
 AUTO_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (
     ("best", "Most quota left"),
     ("consume-first", "Soonest weekly reset"),
+    ("soonest-5h", "Soonest 5-hour reset"),
 )
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
 SWITCH_HISTORY_LIMIT = 10
@@ -597,6 +598,52 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
     return cards
 
 
+def auto_hold_line(strategy: str, accounts: list[dict], *, now: float) -> str | None:
+    """One glanceable sentence, or None for strategy 'best' or empty cards.
+
+    accounts items: {"num", "title", "active", "windows": [{"label","resets_at_ts",...}]}
+    For consume-first use 7d window; for soonest-5h use 5h.
+    If active already soonest: "Holding on {title}: {5h|weekly} reset is soonest."
+    If another title would win: "Would pick {title} ({5h|weekly} resets sooner)."
+    Disabled / missing reset ts: skip that card.
+    """
+    if strategy == "soonest-5h":
+        want_label, kind = "5h", "5h"
+    elif strategy == "consume-first":
+        want_label, kind = "7d", "weekly"
+    else:
+        return None
+    if not accounts:
+        return None
+
+    def reset_ts(card: dict) -> float | None:
+        if card.get("disabled"):
+            return None
+        for window in card.get("windows") or []:
+            if window.get("label") != want_label:
+                continue
+            ts = window.get("resets_at_ts")
+            if isinstance(ts, (int, float)) and ts > now:
+                return float(ts)
+            return None
+        return None
+
+    scored: list[tuple[float, dict]] = []
+    for card in accounts:
+        ts = reset_ts(card)
+        if ts is not None:
+            scored.append((ts, card))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: item[0])
+    soonest_ts, soonest = scored[0]
+    active = next((card for card in accounts if card.get("active")), None)
+    active_ts = reset_ts(active) if active is not None else None
+    if active is not None and active_ts is not None and active_ts <= soonest_ts:
+        return f"Holding on {active['title']}: {kind} reset is soonest."
+    return f"Would pick {soonest['title']} ({kind} resets sooner)."
+
+
 def _local_part(email: str, limit: int = 12) -> str:
     """Email text before '@', truncated with a trailing '*' marker."""
     local = email.split("@", 1)[0]
@@ -912,8 +959,12 @@ def run(switcher) -> int:
                     return
                 snap = _adapt_snapshot(raw)
                 self._log_usage(snap)
+                now = time.time()
+                snap["hold_line"] = auto_hold_line(
+                    self._strategy(), panel_accounts(snap, now=now), now=now
+                )
                 self.snapshot = snap
-                self._snapshot_at = time.time()
+                self._snapshot_at = now
                 self._dirty = True  # picked up by on_sync_tick on the main thread
                 from claude_swap.widget_snapshot import publish_widget_snapshot
                 publish_widget_snapshot(snap, now=self._snapshot_at)

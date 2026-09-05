@@ -327,6 +327,107 @@ def test_panel_accounts_prefers_alias_and_keeps_note():
     assert cards[2]["subtitle"] == "c@x.com"
 
 
+# --- auto-switch hold line (popover, consume strategies only) ------------------
+
+_HOLD_NOW = 1_000_000.0
+
+
+def _hold_cards(*, active_5h, active_7d, peer_5h, peer_7d, peer_disabled=False):
+    """Two cards titled personal / Ads Online with synthetic reset timestamps."""
+    return [
+        {
+            "num": 1,
+            "title": "personal",
+            "active": True,
+            "disabled": False,
+            "windows": [
+                {"label": "5h", "resets_at_ts": active_5h},
+                {"label": "7d", "resets_at_ts": active_7d},
+            ],
+        },
+        {
+            "num": 2,
+            "title": "Ads Online",
+            "active": False,
+            "disabled": peer_disabled,
+            "windows": [
+                {"label": "5h", "resets_at_ts": peer_5h},
+                {"label": "7d", "resets_at_ts": peer_7d},
+            ],
+        },
+    ]
+
+
+def test_auto_hold_line_none_for_best_or_empty():
+    cards = _hold_cards(
+        active_5h=_HOLD_NOW + 100,
+        active_7d=_HOLD_NOW + 1000,
+        peer_5h=_HOLD_NOW + 50,
+        peer_7d=_HOLD_NOW + 500,
+    )
+    assert menubar.auto_hold_line("best", cards, now=_HOLD_NOW) is None
+    assert menubar.auto_hold_line("consume-first", [], now=_HOLD_NOW) is None
+    assert menubar.auto_hold_line("soonest-5h", [], now=_HOLD_NOW) is None
+
+
+def test_auto_hold_line_holding_when_active_is_soonest():
+    cards = _hold_cards(
+        active_5h=_HOLD_NOW + 400,
+        active_7d=_HOLD_NOW + 400,
+        peer_5h=_HOLD_NOW + 50,
+        peer_7d=_HOLD_NOW + 800,
+    )
+    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
+        "Holding on personal: weekly reset is soonest."
+    )
+    soonest_5h = _hold_cards(
+        active_5h=_HOLD_NOW + 50,
+        active_7d=_HOLD_NOW + 800,
+        peer_5h=_HOLD_NOW + 400,
+        peer_7d=_HOLD_NOW + 400,
+    )
+    assert menubar.auto_hold_line("soonest-5h", soonest_5h, now=_HOLD_NOW) == (
+        "Holding on personal: 5h reset is soonest."
+    )
+
+
+def test_auto_hold_line_would_pick_sooner_peer():
+    cards = _hold_cards(
+        active_5h=_HOLD_NOW + 400,
+        active_7d=_HOLD_NOW + 2000,
+        peer_5h=_HOLD_NOW + 50,
+        peer_7d=_HOLD_NOW + 500,
+    )
+    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
+        "Would pick Ads Online (weekly resets sooner)."
+    )
+    assert menubar.auto_hold_line("soonest-5h", cards, now=_HOLD_NOW) == (
+        "Would pick Ads Online (5h resets sooner)."
+    )
+
+
+def test_auto_hold_line_skips_disabled_and_missing_reset_ts():
+    cards = _hold_cards(
+        active_5h=_HOLD_NOW + 400,
+        active_7d=_HOLD_NOW + 2000,
+        peer_5h=_HOLD_NOW + 10,
+        peer_7d=_HOLD_NOW + 10,
+        peer_disabled=True,
+    )
+    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
+        "Holding on personal: weekly reset is soonest."
+    )
+    missing = _hold_cards(
+        active_5h=_HOLD_NOW + 400,
+        active_7d=_HOLD_NOW + 2000,
+        peer_5h=None,
+        peer_7d=None,
+    )
+    assert menubar.auto_hold_line("soonest-5h", missing, now=_HOLD_NOW) == (
+        "Holding on personal: 5h reset is soonest."
+    )
+
+
 # --- usage logging -------------------------------------------------------------
 
 def test_format_usage_log_full():
