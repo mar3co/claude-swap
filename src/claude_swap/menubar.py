@@ -38,6 +38,44 @@ TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
 SWITCH_HISTORY_LIMIT = 10
 NOTIFICATION_BUNDLE_ID = "com.claude-swap.menubar"
 
+# Same glyphs as the TUI usage bars (tui/widgets.py). Plain strings — NSMenu
+# has no Rich styles, and the menubar module stays import-safe without textual.
+_BAR_FILLED = "━"
+_BAR_HALF = "╸"
+_BAR_EMPTY = "─"
+ROW_BAR_WIDTH = 8
+TITLE_BAR_WIDTH = 6
+
+
+def usage_bar_plain(pct: float | None, width: int = ROW_BAR_WIDTH) -> str:
+    """A fixed-width usage bar as a plain string (no color).
+
+    ``None`` is an empty track. Values are clamped to 0–100. A half-fill glyph
+    is used when the fractional cell is ≥ 0.5, matching the TUI renderer.
+    """
+    if width <= 0:
+        return ""
+    if pct is None:
+        return _BAR_EMPTY * width
+    frac = min(max(float(pct), 0.0), 100.0) / 100.0
+    cells = frac * width
+    full = int(cells)
+    half = (cells - full) >= 0.5 and full < width
+    chars: list[str] = []
+    for i in range(width):
+        if i < full:
+            chars.append(_BAR_FILLED)
+        elif i == full and half:
+            chars.append(_BAR_HALF)
+        else:
+            chars.append(_BAR_EMPTY)
+    return "".join(chars)
+
+
+def _pct_with_bar(pct: float, width: int = ROW_BAR_WIDTH) -> str:
+    """``━━━───── 42%`` — bar plus integer percent, for titles and row labels."""
+    return f"{usage_bar_plain(pct, width)} {pct:.0f}%"
+
 
 def ensure_notification_identity(
     executable: Path | None = None,
@@ -246,7 +284,7 @@ def usage_summary(
             # pct with this cycle's freshly-reset 0% display.
             pace_result = pace.compute_pace(window, fetched_at=fetched_at)
         if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)):
-            seg = f"{label} {window['pct']:.0f}%"
+            seg = f"{label} {_pct_with_bar(window['pct'])}"
             if key == "seven_day" and pace_result and pace_result.ahead:
                 seg += " (ahead)"
             countdown = _live_countdown(window, now)
@@ -258,7 +296,7 @@ def usage_summary(
         window = _rolled_weekly_window(window, now)  # weekly cadence, same roll-forward
         pace_result = pace.compute_pace(window, fetched_at=fetched_at)  # against the rolled window, see above
         if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
-            seg = f"{window['name']} {window['pct']:.0f}%"
+            seg = f"{window['name']} {_pct_with_bar(window['pct'])}"
             if window["pct"] >= 100:
                 seg += " (!)"  # maxed model — the usual reason to switch
             elif pace_result and pace_result.ahead:
@@ -314,20 +352,22 @@ def format_title(
     if settings.title_pct in ("5h", "both"):
         p = _window_pct(active_usage, "five_hour")
         if p is not None:
-            segments.append(f"{p:.0f}%")
+            segments.append(_pct_with_bar(p, TITLE_BAR_WIDTH))
     if settings.title_pct in ("7d", "both"):
         seven = active_usage.get("seven_day") if isinstance(active_usage, dict) else None
         seven = _rolled_weekly_window(seven, now)  # reflect a passed weekly reset
         p = seven["pct"] if isinstance(seven, dict) and isinstance(seven.get("pct"), (int, float)) else None
         if p is not None:
-            segments.append(f"{p:.0f}%")
+            segments.append(_pct_with_bar(p, TITLE_BAR_WIDTH))
     if settings.title_scoped and isinstance(active_usage, dict):
         # Per-model weekly limits (e.g. Fable), same shape/roll-forward as the
         # dropdown rows; named so multiple scoped models stay distinguishable.
         for window in active_usage.get("scoped") or []:
             window = _rolled_weekly_window(window, now)
             if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
-                segments.append(f"{window['name']} {window['pct']:.0f}%")
+                segments.append(
+                    f"{window['name']} {_pct_with_bar(window['pct'], TITLE_BAR_WIDTH)}"
+                )
     if not segments:
         return ICON
     return f"{ICON} " + " · ".join(segments)

@@ -116,7 +116,35 @@ _USAGE = {
 }
 
 
+def _bar(pct: float, width: int = menubar.ROW_BAR_WIDTH) -> str:
+    return menubar.usage_bar_plain(pct, width)
+
+
+def _tbar(pct: float) -> str:
+    return menubar.usage_bar_plain(pct, menubar.TITLE_BAR_WIDTH)
+
+
 # --- usage display helpers -----------------------------------------------------
+
+
+def test_usage_bar_plain_empty_and_full():
+    assert menubar.usage_bar_plain(None, 8) == "────────"
+    assert menubar.usage_bar_plain(0, 8) == "────────"
+    assert menubar.usage_bar_plain(100, 8) == "━━━━━━━━"
+    assert menubar.usage_bar_plain(150, 8) == "━━━━━━━━"
+    assert menubar.usage_bar_plain(-10, 8) == "────────"
+
+
+def test_usage_bar_plain_half_fill():
+    # width 8: 42% → 3.36 cells → 3 full, no half; 50% → 4.0 exactly
+    assert menubar.usage_bar_plain(42, 8) == "━━━─────"
+    assert menubar.usage_bar_plain(50, 8) == "━━━━────"
+    # 6.25% of 8 cells is exactly 0.5 → half glyph in the first cell
+    assert menubar.usage_bar_plain(6.25, 8) == "╸───────"
+
+
+def test_usage_bar_plain_zero_width():
+    assert menubar.usage_bar_plain(50, 0) == ""
 
 def test_tightest_pct_uses_max_window():
     assert menubar.tightest_pct(_USAGE) == 42.0
@@ -129,11 +157,13 @@ def test_tightest_pct_none_for_non_dict_or_empty():
 
 
 def test_usage_summary_dict():
-    assert menubar.usage_summary(_USAGE) == "5h 42% · 7d 18% · $ 30%"
+    assert menubar.usage_summary(_USAGE) == (
+        f"5h {_bar(42)} 42% · 7d {_bar(18)} 18% · $ 30%"
+    )
 
 
 def test_usage_summary_partial_windows():
-    assert menubar.usage_summary({"five_hour": {"pct": 5.0}}) == "5h 5%"
+    assert menubar.usage_summary({"five_hour": {"pct": 5.0}}) == f"5h {_bar(5)} 5%"
 
 
 def test_usage_summary_includes_scoped_model_limits():
@@ -145,12 +175,14 @@ def test_usage_summary_includes_scoped_model_limits():
         "scoped": [{"name": "Fable", "pct": 4.0}],
         "spend": {"pct": 30.0},
     }
-    assert menubar.usage_summary(usage) == "5h 82% · 7d 12% · Fable 4% · $ 30%"
+    assert menubar.usage_summary(usage) == (
+        f"5h {_bar(82)} 82% · 7d {_bar(12)} 12% · Fable {_bar(4)} 4% · $ 30%"
+    )
 
 
 def test_usage_summary_scoped_over_limit_marker():
     usage = {"scoped": [{"name": "Fable", "pct": 100.0}]}
-    assert menubar.usage_summary(usage) == "Fable 100% (!)"
+    assert menubar.usage_summary(usage) == f"Fable {_bar(100)} 100% (!)"
 
 
 def test_usage_summary_scoped_multiple_and_countdown():
@@ -160,7 +192,9 @@ def test_usage_summary_scoped_multiple_and_countdown():
             {"name": "Opus", "pct": 55.0},
         ],
     }
-    assert menubar.usage_summary(usage, _NOW) == "Fable 4% (2h 0m) · Opus 55%"
+    assert menubar.usage_summary(usage, _NOW) == (
+        f"Fable {_bar(4)} 4% (2h 0m) · Opus {_bar(55)} 55%"
+    )
 
 
 def test_usage_summary_string_sentinel_passthrough():
@@ -175,7 +209,7 @@ def test_usage_summary_seven_day_ahead_of_pace_marker():
     # 1 day elapsed of the week, 50% used -> far ahead of the ~14% expected.
     usage = {"seven_day": {"pct": 50.0, "resets_at": _iso(6 * 86400)}}
     out = menubar.usage_summary(usage, _NOW, fetched_at=_NOW)
-    assert out == "7d 50% (ahead) (6d 0h)"
+    assert out == f"7d {_bar(50)} 50% (ahead) (6d 0h)"
 
 
 def test_usage_summary_five_hour_never_shows_pace_marker():
@@ -187,7 +221,7 @@ def test_usage_summary_five_hour_never_shows_pace_marker():
 def test_usage_summary_scoped_ahead_of_pace_marker():
     usage = {"scoped": [{"name": "Fable", "pct": 50.0, "resets_at": _iso(6 * 86400)}]}
     out = menubar.usage_summary(usage, _NOW, fetched_at=_NOW)
-    assert out == "Fable 50% (ahead) (6d 0h)"
+    assert out == f"Fable {_bar(50)} 50% (ahead) (6d 0h)"
 
 
 def test_usage_summary_maxed_scoped_marker_wins_over_pace():
@@ -213,29 +247,33 @@ def test_usage_summary_no_pace_marker_on_window_rolled_to_zero():
     usage = {"seven_day": {"pct": 95.0, "resets_at": _iso(-3 * 86400)}}
     out = menubar.usage_summary(usage, _NOW, fetched_at=_NOW - 4 * 86400)
     assert "ahead" not in out
-    assert "7d 0%" in out
+    assert f"7d {_bar(0)} 0%" in out
 
 
 def test_usage_summary_scoped_no_pace_marker_on_window_rolled_to_zero():
     usage = {"scoped": [{"name": "Fable", "pct": 95.0, "resets_at": _iso(-3 * 86400)}]}
     out = menubar.usage_summary(usage, _NOW, fetched_at=_NOW - 4 * 86400)
     assert "ahead" not in out
-    assert "Fable 0%" in out
+    assert f"Fable {_bar(0)} 0%" in out
 
 
 def test_format_account_label():
     label = menubar.format_account_label(2, "loc@papaya.asia", _USAGE)
-    assert label == "2  loc@papaya.asia  5h 42% · 7d 18% · $ 30%"
+    assert label == f"2  loc@papaya.asia  5h {_bar(42)} 42% · 7d {_bar(18)} 18% · $ 30%"
 
 
 def test_format_account_label_with_alias():
     label = menubar.format_account_label(2, "loc@papaya.asia", _USAGE, alias="dev")
-    assert label == "2  dev  (loc@papaya.asia)  5h 42% · 7d 18% · $ 30%"
+    assert label == (
+        f"2  dev  (loc@papaya.asia)  5h {_bar(42)} 42% · 7d {_bar(18)} 18% · $ 30%"
+    )
 
 
 def test_format_account_label_disabled_marker():
     label = menubar.format_account_label(2, "loc@papaya.asia", _USAGE, disabled=True)
-    assert label == "2  loc@papaya.asia  (disabled)  5h 42% · 7d 18% · $ 30%"
+    assert label == (
+        f"2  loc@papaya.asia  (disabled)  5h {_bar(42)} 42% · 7d {_bar(18)} 18% · $ 30%"
+    )
 
 
 # --- usage logging -------------------------------------------------------------
@@ -279,7 +317,7 @@ def test_usage_log_key_ignores_clock_tracks_pct():
 
 def test_format_title_name_and_5h():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="5h")
-    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "⇄ loc · 42%"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == f"⇄ loc · {_tbar(42)} 42%"
 
 
 def test_format_title_prefers_alias_over_local_part():
@@ -294,22 +332,26 @@ def test_format_title_name_only_when_pct_off():
 
 def test_format_title_5h_only():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="5h")
-    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "⇄ 42%"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == f"⇄ {_tbar(42)} 42%"
 
 
 def test_format_title_7d_only():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="7d")
-    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "⇄ 18%"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == f"⇄ {_tbar(18)} 18%"
 
 
 def test_format_title_both_windows():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="both")
-    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "⇄ 42% · 18%"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == (
+        f"⇄ {_tbar(42)} 42% · {_tbar(18)} 18%"
+    )
 
 
 def test_format_title_both_windows_with_name():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="both")
-    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "⇄ loc · 42% · 18%"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == (
+        f"⇄ loc · {_tbar(42)} 42% · {_tbar(18)} 18%"
+    )
 
 
 def test_format_title_icon_only_when_off():
@@ -321,7 +363,9 @@ def test_format_title_scoped_appends_model_limits():
     # title_pct="off" + title_scoped gives a title tracking only the scoped model
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="off", title_scoped=True)
     usage = {**_USAGE, "scoped": [{"name": "Fable", "pct": 55.0}]}
-    assert menubar.format_title("loc@papaya.asia", usage, s) == "⇄ loc · Fable 55%"
+    assert menubar.format_title("loc@papaya.asia", usage, s) == (
+        f"⇄ loc · Fable {_tbar(55)} 55%"
+    )
 
 
 def test_format_title_scoped_after_windows_multiple_models():
@@ -330,7 +374,9 @@ def test_format_title_scoped_after_windows_multiple_models():
         **_USAGE,
         "scoped": [{"name": "Fable", "pct": 55.0}, {"name": "Opus", "pct": 7.0}],
     }
-    assert menubar.format_title("loc@papaya.asia", usage, s) == "⇄ 42% · 18% · Fable 55% · Opus 7%"
+    assert menubar.format_title("loc@papaya.asia", usage, s) == (
+        f"⇄ {_tbar(42)} 42% · {_tbar(18)} 18% · Fable {_tbar(55)} 55% · Opus {_tbar(7)} 7%"
+    )
 
 
 def test_format_title_scoped_off_by_default():
@@ -360,7 +406,9 @@ def test_format_title_both_drops_unavailable_windows():
 def test_format_title_both_keeps_available_window():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="both")
     # only 5h present -> 7d dropped, no trailing separator
-    assert menubar.format_title("loc@x.com", {"five_hour": {"pct": 9.0}}, s) == "⇄ 9%"
+    assert menubar.format_title("loc@x.com", {"five_hour": {"pct": 9.0}}, s) == (
+        f"⇄ {_tbar(9)} 9%"
+    )
 
 
 # --- reset-time helpers --------------------------------------------------------
@@ -399,13 +447,17 @@ def test_usage_summary_live_countdown_from_resets_at():
         "seven_day": {"pct": 18.0, "resets_at": _iso(86400 + 19 * 3600)},
         "spend": {"pct": 30.0},
     }
-    assert menubar.usage_summary(usage, _NOW) == "5h 42% (2h 33m) · 7d 18% (1d 19h) · $ 30%"
+    assert menubar.usage_summary(usage, _NOW) == (
+        f"5h {_bar(42)} 42% (2h 33m) · 7d {_bar(18)} 18% (1d 19h) · $ 30%"
+    )
 
 
 def test_usage_summary_omits_countdown_when_passed_or_missing():
     # 5h reset already passed (stale data) -> omit; 7d has no resets_at -> omit
     usage = {"five_hour": {"pct": 53.0, "resets_at": _iso(-60)}, "seven_day": {"pct": 8.0}}
-    assert menubar.usage_summary(usage, _NOW) == "5h 53% · 7d 8%"
+    assert menubar.usage_summary(usage, _NOW) == (
+        f"5h {_bar(53)} 53% · 7d {_bar(8)} 8%"
+    )
 
 
 # --- switch-history log parsing ------------------------------------------------
@@ -527,19 +579,21 @@ def test_usage_summary_reflects_passed_weekly_reset():
         "five_hour": {"pct": 10.0},
         "seven_day": {"pct": 95.0, "resets_at": _iso(-86400)},
     }
-    assert menubar.usage_summary(usage, _NOW) == "5h 10% · 7d 0% (6d 0h)"
+    assert menubar.usage_summary(usage, _NOW) == (
+        f"5h {_bar(10)} 10% · 7d {_bar(0)} 0% (6d 0h)"
+    )
 
 
 def test_usage_summary_scoped_reflects_passed_weekly_reset():
     usage = {"scoped": [{"name": "Fable", "pct": 100.0, "resets_at": _iso(-86400)}]}
     # rolled to 0% → the over-limit "(!)" marker is gone too
-    assert menubar.usage_summary(usage, _NOW) == "Fable 0% (6d 0h)"
+    assert menubar.usage_summary(usage, _NOW) == f"Fable {_bar(0)} 0% (6d 0h)"
 
 
 def test_format_title_reflects_passed_weekly_reset():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="7d")
     usage = {"seven_day": {"pct": 95.0, "resets_at": _iso(-86400)}}
-    assert menubar.format_title("a@x.com", usage, s, _NOW) == "⇄ 0%"
+    assert menubar.format_title("a@x.com", usage, s, _NOW) == f"⇄ {_tbar(0)} 0%"
 
 
 # --- run() app glue ------------------------------------------------------------
