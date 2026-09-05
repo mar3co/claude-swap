@@ -2816,6 +2816,19 @@ def _usage7(pct5: float, pct7: float, reset7: str | None = None) -> dict:
     return {"five_hour": {"pct": pct5}, "seven_day": seven}
 
 
+def _usage5(
+    pct5: float, reset5: str | None, pct7: float = 10, reset7: str | None = _R_LATEST
+) -> dict:
+    """Usage with an explicit 5-hour window (utilization + optional reset)."""
+    five: dict = {"pct": pct5}
+    if reset5:
+        five["resets_at"] = reset5
+    seven: dict = {"pct": pct7}
+    if reset7:
+        seven["resets_at"] = reset7
+    return {"five_hour": five, "seven_day": seven}
+
+
 class TestConsumeFirstStrategy:
     def _harness(self, temp_home: Path) -> EngineHarness:
         h = EngineHarness(temp_home, strategy="consume-first")
@@ -3215,6 +3228,80 @@ class TestConsumeFirstStrategy:
         assert h.active_number() == 2
         sw = next(e for e in h.events if isinstance(e, SwitchEvent))
         assert sw.trigger == "at-limit"
+
+
+def test_window_reset_ts_five_hour_and_seven_day():
+    from claude_swap.autoswitch import _window_reset_ts
+
+    now = 1_000_000.0
+    usage = {
+        "five_hour": {"pct": 10, "resets_at": _R_SOON},
+        "seven_day": {"pct": 10, "resets_at": _R_LATER},
+    }
+    five = _window_reset_ts(usage, "five_hour", now)
+    seven = _window_reset_ts(usage, "seven_day", now)
+    assert five is not None and seven is not None
+    assert five < seven  # keys are independent
+    past = {
+        "five_hour": {"pct": 10, "resets_at": _R_PAST},
+        "seven_day": {"pct": 10, "resets_at": _R_SOON},
+    }
+    assert _window_reset_ts(past, "five_hour", now) is None
+    assert _window_reset_ts(past, "seven_day", now) is not None
+
+
+class TestSoonest5hStrategy:
+    def _harness(self, temp_home: Path) -> EngineHarness:
+        h = EngineHarness(temp_home, strategy="soonest-5h")
+        h.seed(1, "a@example.com")
+        h.seed(2, "b@example.com")
+        h.seed(3, "c@example.com")
+        h.make_live("a@example.com", 1)
+        return h
+
+    def test_below_threshold_switches_to_soonest_5h_even_if_weekly_is_later(
+        self, temp_home
+    ):
+        h = self._harness(temp_home)
+        outcome = h.tick_with_usage({
+            # active: later 5h, soonest weekly — consume-first would stay
+            "1": _usage5(20, _R_LATER, pct7=20, reset7=_R_SOON),
+            # soonest 5h, latest weekly
+            "2": _usage5(10, _R_SOON, pct7=10, reset7=_R_LATEST),
+            "3": _usage5(10, _R_LATEST, pct7=10, reset7=_R_LATER),
+        })
+        assert outcome is TickOutcome.SWITCHED
+        assert h.active_number() == 2
+        sw = next(e for e in h.events if isinstance(e, SwitchEvent))
+        assert sw.trigger == "consume-first"
+        assert sw.to_ref == {"number": 2, "email": "b@example.com"}
+
+    def test_stays_when_active_already_has_soonest_5h(self, temp_home):
+        h = self._harness(temp_home)
+        outcome = h.tick_with_usage({
+            "1": _usage5(20, _R_SOON, pct7=20, reset7=_R_LATEST),
+            # weekly soonest, 5h later — must not pull us off
+            "2": _usage5(10, _R_LATER, pct7=10, reset7=_R_SOON),
+            "3": _usage5(10, _R_LATEST, pct7=10, reset7=_R_LATER),
+        })
+        assert outcome is TickOutcome.NO_ACTION
+        assert h.active_number() == 1
+        reasons = [e.reason for e in h.events if isinstance(e, NoSwitchEvent)]
+        assert reasons == ["already-consuming-soonest"]
+
+    def test_weekly_soonest_but_5h_later_is_not_chosen(self, temp_home):
+        h = self._harness(temp_home)
+        outcome = h.tick_with_usage({
+            "1": _usage5(20, _R_LATER, pct7=20, reset7=_R_LATEST),
+            # weekly soonest, 5h latest — consume-first would pick this
+            "2": _usage5(10, _R_LATEST, pct7=10, reset7=_R_SOON),
+            # soonest 5h, weekly later
+            "3": _usage5(10, _R_SOON, pct7=10, reset7=_R_LATER),
+        })
+        assert outcome is TickOutcome.SWITCHED
+        assert h.active_number() == 3
+        sw = next(e for e in h.events if isinstance(e, SwitchEvent))
+        assert sw.trigger == "consume-first"
 
 
 class TestConsumeFirstDepartureRecordsItsOwnTrigger:
