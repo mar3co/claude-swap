@@ -46,7 +46,7 @@ The extra is a thin shell. It must not re-implement quota math, ranking, or cred
 | --- | --- |
 | `~/.claude-swap-backup/settings.json` | CLI + extra (policy) |
 | `~/.claude-swap-backup/menubar_settings.json` | Extra (title, auto on/off, kickoff) |
-| `~/.claude-swap-backup/autoswitch_state.json` | Engine (cooldown, last switch, quarantine) |
+| `~/.claude-swap-backup/autoswitch_state.json` | Engine (cooldown, last switch, quarantine). Extra stamps `lastSwitchAt` after a hand switch |
 | `~/Library/Application Support/cswap/widget-snapshot.json` | Extra → widget |
 | `~/Library/LaunchAgents/com.cswap.menubar.plist` | Extra service |
 | `~/Library/LaunchAgents/com.cswap.widget.plist` | Widget host |

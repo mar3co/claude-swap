@@ -41,6 +41,7 @@ from claude_swap.kickoff import (
     kickoff_uses_default_login,
     parse_kickoff_time,
 )
+from claude_swap.autoswitch import record_manual_switch
 from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
@@ -151,6 +152,11 @@ STATUS_ICON = "✻"
 # pill still clears the first glyph.
 STATUS_ITEM_COMPACT_PAD = 6.0
 NS_VARIABLE_STATUS_ITEM_LENGTH = -1.0
+# After the pointer leaves the popover (not on open). Click-outside still
+# dismisses immediately.
+POPOVER_AUTO_CLOSE_S = 12.0
+HEADER_TITLE_H = 20.0
+HEADER_CONTROL_GAP = 6.0
 
 
 @dataclass(frozen=True)
@@ -631,6 +637,31 @@ def status_item_length(title_width: float, *, compact: bool) -> float:
     return float(math.ceil(title_width + STATUS_ITEM_COMPACT_PAD))
 
 
+def trailing_header_frames(
+    panel_width: float,
+    pad: float,
+    label_wh: tuple[float, float],
+    control_wh: tuple[float, float],
+    *,
+    title_h: float = HEADER_TITLE_H,
+    gap: float = HEADER_CONTROL_GAP,
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
+    """Pin a label+control pair to the top-right of the popover header.
+
+    Sizes are ``(width, height)``. Returns ``(label_frame, control_frame)``
+    as ``(x, y, w, h)`` in a flipped view (origin at the top-left). The
+    control's trailing edge sits ``pad`` from the panel's right edge; both
+    are vertically centered on the title row.
+    """
+    lw, lh = label_wh
+    cw, ch = control_wh
+    x = panel_width - pad - (lw + gap + cw)
+    mid_y = pad + title_h / 2.0
+    ly = max(pad, mid_y - lh / 2.0)
+    cy = max(pad, mid_y - ch / 2.0)
+    return (x, ly, lw, lh), (x + lw + gap, cy, cw, ch)
+
+
 def format_usage_log(email: str, usage: dict | str | None) -> str | None:
     """A log line of an account's session (5h) and weekly (7d) limits.
 
@@ -699,6 +730,7 @@ def _account_display_usage(entry) -> dict | str | None:
 EMPTY_SNAPSHOT: dict = {
     "accounts": [],
     "active_email": None,
+    "active_num": None,
     "active_usage": None,
     "active_alias": None,
 }
@@ -708,14 +740,15 @@ def _adapt_snapshot(snap) -> dict:
     """Adapt an ``AccountsSnapshot`` to the menu bar's render dict.
 
     Shape: ``{"accounts": [(num, email, is_active, display_usage, last_good, alias, disabled, fetched_at), ...],
-    "active_email": str | None, "active_usage": dict | str | None,
-    "active_alias": str | None}``. The snapshot itself is produced by
+    "active_email": str | None, "active_num": str | None,
+    "active_usage": dict | str | None, "active_alias": str | None}``. The snapshot itself is produced by
     ``SnapshotSource`` (the paced read path), so this is a pure transform — no
     fetching, no I/O. Per-account ``fetched_at`` is the underlying
     measurement's fetch time, used only for the pace marker (issue #125).
     """
     accounts = []
     active_email = None
+    active_num = None
     active_usage = None
     active_alias = None
     for acc in snap.accounts:
@@ -728,12 +761,32 @@ def _adapt_snapshot(snap) -> dict:
         )
         if acc.is_active:
             active_email, active_usage, active_alias = acc.email, display, acc.alias
+            active_num = str(acc.number)
     return {
         "accounts": accounts,
         "active_email": active_email,
+        "active_num": active_num,
         "active_usage": active_usage,
         "active_alias": active_alias,
     }
+
+
+def should_notify_manual_switch(result: dict | None) -> bool:
+    """Toast only when credentials actually moved, not on already-active."""
+    return bool(result and result.get("switched"))
+
+
+def should_dismiss_panel_after_switch(result: dict | None) -> bool:
+    """Close the popover after a handled click; keep it open on error."""
+    return result is not None
+
+
+def live_slot_changed(snapshot: dict, live_num: str | int | None) -> bool:
+    """True when the live slot differs from the snapshot, even if emails match."""
+    snap = snapshot.get("active_num")
+    snap_s = str(snap) if snap is not None else None
+    live_s = str(live_num) if live_num is not None else None
+    return snap_s != live_s
 
 
 def run(switcher) -> int:
@@ -880,8 +933,9 @@ def run(switcher) -> int:
             # read of ~/.claude.json -- no Keychain or usage API -- so we can do
             # it on every tick. We gate the read on the file's mtime (a cheap
             # stat) so a large config isn't parsed each second, and only kick a
-            # refresh when the active email actually changed (Claude Code rewrites
-            # this file often for unrelated reasons).
+            # refresh when the active *slot* changed (Claude Code rewrites this
+            # file often for unrelated reasons). Slot, not email: two orgs can
+            # share an address.
             if self._refreshing:
                 return  # a worker is already in-flight; it refreshes the marker
             try:
@@ -891,9 +945,9 @@ def run(switcher) -> int:
             if mtime == self._config_mtime:
                 return
             self._config_mtime = mtime
-            current = self.switcher._get_current_account()
-            email = current[0] if current else None
-            if email and email != self.snapshot.get("active_email"):
+            if live_slot_changed(
+                self.snapshot, self.switcher.current_account_number()
+            ):
                 self.refresh_async()
 
         # ---- auto-switch engine ----------------------------------------------
@@ -1070,8 +1124,8 @@ def run(switcher) -> int:
                     self._nsapp.nsstatusitem.setMenu_(None)
                 except AttributeError:
                     pass
-                if self._panel.is_shown():
-                    self._panel.reload()
+                # Do not reload an open popover: replacing the view tree
+                # between mouseDown and mouseUp swallows the account-row click.
 
         def _add_menu(self, rumps):
             menu = rumps.MenuItem("Add account")
@@ -1208,14 +1262,40 @@ def run(switcher) -> int:
             self.settings.save(settings_path)
             self.rebuild_menu()
 
+        def _show_error(self, message: str):
+            import AppKit
+            AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            rumps.alert(title="claude-swap", message=message)
+
         def _guard(self, fn):
             """Run a switcher action, surfacing ClaudeSwitchError via an alert."""
             try:
                 fn()
                 return True
             except ClaudeSwitchError as e:
-                rumps.alert(title="claude-swap", message=str(e))
+                self._show_error(str(e))
                 return False
+
+        def _run_switch(self, fn):
+            try:
+                return fn()
+            except ClaudeSwitchError as e:
+                self._show_error(str(e))
+                return None
+
+        def _finish_manual_switch(self, result, dest_name, *, close_panel):
+            if result is None:
+                return
+            if should_notify_manual_switch(result):
+                record_manual_switch(self.switcher.backup_dir)
+                self._notify_switched(dest_name)
+                self.refresh_async()
+            if (
+                close_panel
+                and should_dismiss_panel_after_switch(result)
+                and self._panel is not None
+            ):
+                self._panel.close()
 
         def _notify(self, copy: NotificationCopy | None):
             if copy is None:
@@ -1251,22 +1331,21 @@ def run(switcher) -> int:
             self._notify(notification_copy_for_manual_switch(dest_name))
 
         def _switch_from_panel(self, num):
-            self._make_switch_to(num)(None)
-            if self._panel is not None:
-                self._panel.close()
-
-        def _make_switch_to(self, num):
-            def cb(_sender):
-                if self._guard(lambda: self.switcher.switch_to(str(num))):
-                    self._notify_switched(self._name_for_num(num))
-                    self.refresh_async()
-            return cb
+            result = self._run_switch(
+                lambda: self.switcher.switch_to(str(num), json_output=True)
+            )
+            self._finish_manual_switch(
+                result, self._name_for_num(num), close_panel=True
+            )
 
         def _switch(self, strategy):
             def cb(_sender):
-                if self._guard(lambda: self.switcher.switch(strategy=strategy)):
-                    self._notify_switched(self._current_dest_name())
-                    self.refresh_async()
+                result = self._run_switch(
+                    lambda: self.switcher.switch(strategy=strategy, json_output=True)
+                )
+                self._finish_manual_switch(
+                    result, self._current_dest_name(), close_panel=False
+                )
             return cb
 
         def _make_remove(self, num):

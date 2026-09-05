@@ -618,6 +618,29 @@ def _ref(number: str, email: str) -> dict:
     return {"number": int(number), "email": email}
 
 
+def record_manual_switch(backup_dir: Path, *, now: float | None = None) -> None:
+    """Stamp ``lastSwitchAt`` so the engine's cooldown covers a hand switch.
+
+    A hand switch from the extra does not go through
+    ``AutoSwitchEngine._perform``, so without this the next tick can undo
+    it (especially consume-first).
+    Only ``lastSwitchAt`` is written; ``lastSwitchFrom`` / ``lastSwitchTo``
+    stay as the engine left them so the no-return bar still treats a hand
+    switch as "already undid the move".
+    """
+    path = backup_dir / STATE_FILENAME
+    lock = FileLock(path.parent / ".autoswitch_state.lock")
+    with lock:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            raw = {}
+        state = raw if isinstance(raw, dict) else {}
+        state["schemaVersion"] = STATE_SCHEMA_VERSION
+        state["lastSwitchAt"] = time.time() if now is None else float(now)
+        atomic_write_json(path, state)
+
+
 def _headroom_by_account(
     usage: dict[str, dict | str | None], models: tuple[str, ...]
 ) -> dict[str, float | None]:

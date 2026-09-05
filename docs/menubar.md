@@ -14,6 +14,10 @@ After `rumps` attaches the status item, a short timer steals the click for the p
 
 `menubar_panel.py` is AppKit-only: popover, bars, Dark Mode colors, `fit_status_item`.
 
+The header pins **cswap** on the left and an **Auto-switch** label plus `NSSwitch` on the trailing edge (`trailing_header_frames`). Behavior is `NSPopoverBehaviorApplicationDefined` so More’s overflow menu does not dismiss the popover (Transient would). Click-outside is a global left-click monitor (skip the popover, the status extra, and while More is open). Leave-delay `POPOVER_AUTO_CLOSE_S` (12s) starts only after the pointer exits the popover, not on open; the status extra counts as still inside. Rotate / Best / More do not close the popover.
+
+Account-row clicks call `switch_to(..., json_output=True)`. A real switch toasts, stamps `autoswitch_state.json` `lastSwitchAt` (engine cooldown, default 5 minutes), and closes. Already-active closes with no toast. A `ClaudeSwitchError` leaves the popover open and brings the extra forward before `rumps.alert`. Cards implement `acceptsFirstMouse_` so the first click on a non-key popover switches. `rebuild_menu` does not reload an open popover (that replaced the view tree mid-click). `_detect_active_change` compares slot number, not email, so two orgs that share an address still refresh.
+
 ## Title width
 
 AppKit’s default text extra is ~10pt inset per side. With the asterisk off that left inset is empty. `fit_status_item(..., compact=not show_icon)` sets `NSStatusItem.length` to measured title plus `STATUS_ITEM_COMPACT_PAD` (6pt total). Call it after every `self.title = ...` and on popover attach.
@@ -30,7 +34,7 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 `MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `cswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
-`consume-first` ranks by **weekly** `resets_at`, not the 5h session. See `autoswitch._seven_day_reset_ts`.
+`consume-first` ranks by **weekly** `resets_at`, not the 5h session. See `autoswitch._seven_day_reset_ts`. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
 ## Kickoff
 

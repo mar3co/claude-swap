@@ -29,6 +29,7 @@ from claude_swap.autoswitch import (
     UnquarantineEvent,
     _recovery_is_useful,
     pct_label,
+    record_manual_switch,
 )
 from claude_swap.json_output import USAGE_FOREIGN_CREDENTIAL, USAGE_TOKEN_EXPIRED
 from claude_swap.usage_store import FetchRecord, UsageEntry
@@ -487,6 +488,39 @@ class TestDecisionTable:
             "1": _usage(95), "2": _usage(10), "3": _usage(50),
         })
         assert outcome is TickOutcome.SWITCHED
+
+    def test_record_manual_switch_stamps_cooldown_without_clobbering_state(self, harness):
+        harness.engine._mutate_state(
+            lambda s: s.update(
+                lastSwitchFrom=1,
+                lastSwitchTo=2,
+                leftHeadroom=80.0,
+                quarantine={"3": {"email": "c@example.com", "reason": "invalid_grant"}},
+            )
+        )
+        record_manual_switch(harness.switcher.backup_dir, now=harness.clock())
+        state = harness.state()
+        assert state["lastSwitchAt"] == harness.clock()
+        assert state["lastSwitchFrom"] == 1
+        assert state["lastSwitchTo"] == 2
+        assert state["leftHeadroom"] == 80.0
+        assert "3" in state["quarantine"]
+
+    def test_record_manual_switch_holds_consume_first(self, temp_home):
+        h = EngineHarness(temp_home, strategy="consume-first")
+        h.seed(1, "a@example.com")
+        h.seed(2, "b@example.com")
+        h.make_live("a@example.com", 1)
+        record_manual_switch(h.switcher.backup_dir, now=h.clock())
+        outcome = h.tick_with_usage({
+            "1": _usage7(20, 20, _R_LATER),
+            "2": _usage7(10, 10, _R_SOON),
+        })
+        assert outcome is TickOutcome.NO_ACTION
+        assert h.active_number() == 1
+        assert "cooldown" in [
+            e.reason for e in h.events if isinstance(e, NoSwitchEvent)
+        ]
 
     def test_unknown_active_usage_waits_then_fails_over(self, harness):
         usage = {"1": None, "2": _usage(10), "3": _usage(50)}

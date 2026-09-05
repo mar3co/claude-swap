@@ -17,17 +17,19 @@ from AppKit import (
     NSButton,
     NSButtonTypeSwitch,
     NSColor,
+    NSControlSizeSmall,
+    NSEvent,
+    NSEventMaskLeftMouseDown,
     NSFont,
     NSFontAttributeName,
     NSFontWeightMedium,
     NSFontWeightRegular,
     NSFontWeightSemibold,
-    NSForegroundColorAttributeName,
     NSGraphicsContext,
     NSLineBreakByTruncatingTail,
     NSNoImage,
     NSPopover,
-    NSPopoverBehaviorTransient,
+    NSPopoverBehaviorApplicationDefined,
     NSRectEdgeMinY,
     NSTextField,
     NSTrackingArea,
@@ -40,16 +42,27 @@ from AppKit import (
     NSVisualEffectStateActive,
     NSVisualEffectView,
 )
+try:
+    from AppKit import NSSwitch
+except ImportError:  # macOS 14 and older
+    NSSwitch = None
 from Foundation import (
     NSAttributedString,
     NSDistributedNotificationCenter,
     NSMakeRect,
     NSObject,
     NSPointInRect,
+    NSTimer,
     NSUserDefaults,
 )
 
-from claude_swap.menubar import panel_accounts, resolve_popover_theme, status_item_length
+from claude_swap.menubar import (
+    POPOVER_AUTO_CLOSE_S,
+    panel_accounts,
+    resolve_popover_theme,
+    status_item_length,
+    trailing_header_frames,
+)
 from claude_swap.tui.theme import (
     ACCENT,
     ACCENT_LIGHT,
@@ -336,6 +349,11 @@ class _CardView(NSView):
     def isFlipped(self):
         return True
 
+    def acceptsFirstMouse_(self, _event):
+        # Accessory popover is often not key; without this the first click
+        # focuses the window and the second click actually switches.
+        return True
+
     def viewDidChangeEffectiveAppearance(self):
         objc.super(_CardView, self).viewDidChangeEffectiveAppearance()
         self.setNeedsDisplay_(True)
@@ -398,8 +416,37 @@ class _CardView(NSView):
 
 
 class _RootView(NSVisualEffectView):
+    """Flipped popover chrome; reports pointer enter/leave for auto-close."""
+
+    def initWithHover_(self, hover):
+        self = objc.super(_RootView, self).initWithFrame_(NSMakeRect(0, 0, 1, 1))
+        if self is None:
+            return None
+        self._hover = hover
+        return self
+
     def isFlipped(self):
         return True
+
+    def updateTrackingAreas(self):
+        for area in list(self.trackingAreas() or []):
+            self.removeTrackingArea_(area)
+        options = NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways
+        area = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+            self.bounds(), options, self, None
+        )
+        self.addTrackingArea_(area)
+        objc.super(_RootView, self).updateTrackingAreas()
+
+    def mouseEntered_(self, _event):
+        cb = getattr(self, "_hover", None)
+        if cb:
+            cb(True)
+
+    def mouseExited_(self, _event):
+        cb = getattr(self, "_hover", None)
+        if cb:
+            cb(False)
 
 
 class _PanelController(NSViewController):
@@ -424,6 +471,11 @@ class MenuBarPanel:
         self._tramps: list = []
         self._toggle_tramp = None
         self._appearance_obs = None
+        self._close_timer = None
+        self._close_tramp = None
+        self._click_monitor = None
+        self._click_handler = None
+        self._menu_open = False
 
     def attach(self, nsstatusitem) -> None:
         self._item = nsstatusitem
@@ -435,7 +487,9 @@ class MenuBarPanel:
         button.setTarget_(self._toggle_tramp)
         button.setAction_("act:")
         self._popover = NSPopover.alloc().init()
-        self._popover.setBehavior_(NSPopoverBehaviorTransient)
+        # ApplicationDefined: Transient closes the popover when More opens an
+        # NSMenu (the extra is an accessory app and never becomes key).
+        self._popover.setBehavior_(NSPopoverBehaviorApplicationDefined)
         self._popover.setAnimates_(True)
         self._sync_popover_appearance()
         self._watch_appearance()
@@ -478,6 +532,7 @@ class MenuBarPanel:
         return bool(self._popover is not None and self._popover.isShown())
 
     def close(self) -> None:
+        self._clear_dismiss_watchers()
         if self._popover is not None and self._popover.isShown():
             self._popover.performClose_(None)
 
@@ -485,7 +540,7 @@ class MenuBarPanel:
         if self._popover is None or self._item is None:
             return
         if self._popover.isShown():
-            self._popover.performClose_(None)
+            self.close()
             return
         self._sync_popover_appearance()
         self.reload()
@@ -495,6 +550,7 @@ class MenuBarPanel:
         self._popover.showRelativeToRect_ofView_preferredEdge_(
             button.bounds(), button, NSRectEdgeMinY
         )
+        self._arm_auto_close()
 
     def reload(self) -> None:
         if self._popover is None:
@@ -505,6 +561,136 @@ class MenuBarPanel:
         self._controller = controller
         self._popover.setContentSize_(view.frame().size)
         self._popover.setContentViewController_(controller)
+        if self._popover.isShown():
+            self._arm_auto_close()
+
+    def _cancel_close_timer(self) -> None:
+        timer = self._close_timer
+        self._close_timer = None
+        if timer is not None:
+            try:
+                timer.invalidate()
+            except Exception:
+                pass
+
+    def _reset_close_timer(self) -> None:
+        self._cancel_close_timer()
+        if not self.is_shown():
+            return
+        if self._close_tramp is None:
+            self._close_tramp = _Trampoline.alloc().initWithCallback_(
+                lambda *_a: self.close()
+            )
+        self._close_timer = (
+            NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                POPOVER_AUTO_CLOSE_S, self._close_tramp, "act:", None, False
+            )
+        )
+
+    def _mouse_in_popover(self) -> bool:
+        try:
+            vc = self._popover.contentViewController() if self._popover else None
+            view = vc.view() if vc is not None else None
+            win = view.window() if view is not None else None
+            if win is None:
+                return False
+            return bool(NSPointInRect(NSEvent.mouseLocation(), win.frame()))
+        except Exception:
+            return False
+
+    def _status_item_screen_rect(self):
+        try:
+            button = self._item.button() if self._item is not None else None
+            if button is None:
+                return None
+            bwin = button.window()
+            if bwin is None:
+                return None
+            return bwin.convertRectToScreen_(
+                button.convertRect_toView_(button.bounds(), None)
+            )
+        except Exception:
+            return None
+
+    def _pointer_over_status_item(self) -> bool:
+        rect = self._status_item_screen_rect()
+        if rect is None:
+            return False
+        try:
+            return bool(NSPointInRect(NSEvent.mouseLocation(), rect))
+        except Exception:
+            return False
+
+    def _pointer_over_ui(self) -> bool:
+        return self._mouse_in_popover() or self._pointer_over_status_item()
+
+    def _on_hover(self, inside: bool) -> None:
+        if self._menu_open:
+            return
+        if inside or self._pointer_over_status_item():
+            self._cancel_close_timer()
+        else:
+            self._reset_close_timer()
+
+    def _on_global_click(self, event) -> None:
+        if not self.is_shown() or self._menu_open:
+            return
+        try:
+            pt = event.locationInWindow()
+            vc = self._popover.contentViewController()
+            view = vc.view() if vc is not None else None
+            win = view.window() if view is not None else None
+            if win is not None and NSPointInRect(pt, win.frame()):
+                return
+            rect = self._status_item_screen_rect()
+            if rect is not None and NSPointInRect(pt, rect):
+                return
+        except Exception:
+            pass
+        self.close()
+
+    def _ensure_dismiss_watchers(self) -> None:
+        if self._click_monitor is not None:
+            return
+        self._click_handler = self._on_global_click
+        try:
+            self._click_monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+                NSEventMaskLeftMouseDown, self._click_handler
+            )
+        except Exception:
+            self._click_monitor = None
+            self._click_handler = None
+
+    def _clear_dismiss_watchers(self) -> None:
+        self._cancel_close_timer()
+        monitor = self._click_monitor
+        self._click_monitor = None
+        self._click_handler = None
+        if monitor is not None:
+            try:
+                NSEvent.removeMonitor_(monitor)
+            except Exception:
+                pass
+
+    def _arm_auto_close(self) -> None:
+        self._ensure_dismiss_watchers()
+        # Open from the extra leaves the pointer on the status item, not in the
+        # popover. Do not start a leave timer until mouseExited actually fires.
+        if self._menu_open or self._pointer_over_ui():
+            self._cancel_close_timer()
+
+    def _more(self, sender):
+        self._menu_open = True
+        self._cancel_close_timer()
+        try:
+            self._on_more(sender)
+        finally:
+            self._menu_open = False
+            if self.is_shown():
+                if self._pointer_over_ui():
+                    self._cancel_close_timer()
+                else:
+                    self._reset_close_timer()
 
     def _tramp(self, fn) -> _Trampoline:
         t = _Trampoline.alloc().initWithCallback_(fn)
@@ -526,7 +712,8 @@ class MenuBarPanel:
             body_h += CARD_GAP * (len(cards) - 1)
 
         height = PAD + HEADER_H + 4 + body_h + PAD + FOOTER_H
-        root = _RootView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, height))
+        root = _RootView.alloc().initWithHover_(self._on_hover)
+        root.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH, height))
         root.setMaterial_(NSVisualEffectMaterialMenu)
         root.setBlendingMode_(NSVisualEffectBlendingModeBehindWindow)
         root.setState_(NSVisualEffectStateActive)
@@ -537,26 +724,39 @@ class MenuBarPanel:
         font_digits = NSFont.monospacedDigitSystemFontOfSize_weight_(11, NSFontWeightMedium)
         font_label = NSFont.monospacedDigitSystemFontOfSize_weight_(11, NSFontWeightRegular)
 
-        # Header
+        # Header: title on the left, auto-switch hugging the top-right.
         root.addSubview_(
-            _label("cswap", font_title, pal["fg"], NSMakeRect(PAD, PAD, 120, 20))
+            _label("cswap", font_title, pal["fg"], NSMakeRect(PAD, PAD, 80, 20))
         )
-        auto = NSButton.alloc().initWithFrame_(
-            NSMakeRect(PANEL_WIDTH - PAD - 118, PAD + 1, 118, 22)
+        auto_label = _label(
+            "Auto-switch",
+            font_small,
+            pal["muted"],
+            NSMakeRect(0, 0, 80, 18),
         )
-        auto.setButtonType_(NSButtonTypeSwitch)
-        auto.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                "Auto-switch",
-                {
-                    NSFontAttributeName: font_small,
-                    NSForegroundColorAttributeName: pal["fg"],
-                },
-            )
-        )
+        auto_label.sizeToFit()
+        ls = auto_label.frame().size
+        if NSSwitch is not None:
+            auto = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 54, 24))
+            try:
+                auto.setControlSize_(NSControlSizeSmall)
+            except Exception:
+                pass
+        else:
+            auto = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 16))
+            auto.setButtonType_(NSButtonTypeSwitch)
+            auto.setTitle_("")
+        auto.sizeToFit()
         auto.setState_(1 if self._auto_enabled() else 0)
         auto.setTarget_(self._tramp(self._on_toggle_auto))
         auto.setAction_("act:")
+        cs = auto.frame().size
+        lab_f, ctl_f = trailing_header_frames(
+            PANEL_WIDTH, PAD, (ls.width, ls.height), (cs.width, cs.height)
+        )
+        auto_label.setFrame_(NSMakeRect(*lab_f))
+        auto.setFrame_(NSMakeRect(*ctl_f))
+        root.addSubview_(auto_label)
         root.addSubview_(auto)
 
         y = PAD + HEADER_H + 4
@@ -682,6 +882,6 @@ class MenuBarPanel:
 
         _footer_btn("Rotate", PAD, 72, self._on_rotate)
         _footer_btn("Best", PAD + 80, 64, self._on_best)
-        _footer_btn("More", PANEL_WIDTH - PAD - 72, 72, self._on_more)
+        _footer_btn("More", PANEL_WIDTH - PAD - 72, 72, self._more)
 
         return root

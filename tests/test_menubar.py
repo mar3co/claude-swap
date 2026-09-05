@@ -484,6 +484,84 @@ def test_show_icon_control_is_nested_under_advanced_not_settings_root():
     assert "menu.add(icon_item)" not in text
 
 
+def test_trailing_header_frames_hug_the_right_edge():
+    label, control = menubar.trailing_header_frames(
+        312.0, 12.0, (67.5, 14.0), (54.0, 24.0)
+    )
+    assert control[0] + control[2] == 300.0  # panel width minus pad
+    assert label[0] + label[2] + menubar.HEADER_CONTROL_GAP == control[0]
+    assert label[0] > 12.0
+    assert control[1] == 12.0  # taller than the title row, clamped to pad
+
+
+def test_popover_auto_close_delay_is_a_few_seconds():
+    assert 8.0 <= menubar.POPOVER_AUTO_CLOSE_S <= 30.0
+
+
+def test_panel_wires_trailing_autoswitch_and_auto_close():
+    text = (Path(menubar.__file__).resolve().parent / "menubar_panel.py").read_text(
+        encoding="utf-8"
+    )
+    assert "trailing_header_frames" in text
+    assert "POPOVER_AUTO_CLOSE_S" in text
+    assert "addGlobalMonitorForEventsMatchingMask" in text
+    assert "NSSwitch" in text
+    assert "NSPopoverBehaviorApplicationDefined" in text
+    more = text[text.index("def _more") : text.index("def _tramp")]
+    assert "self.close()" not in more
+    assert "self._on_more(sender)" in more
+
+
+def test_card_view_accepts_the_first_click():
+    text = (Path(menubar.__file__).resolve().parent / "menubar_panel.py").read_text(
+        encoding="utf-8"
+    )
+    card = text[text.index("class _CardView") : text.index("class _RootView")]
+    assert "def acceptsFirstMouse_" in card
+
+
+def test_rebuild_menu_does_not_reload_an_open_popover():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    rebuild = text[text.index("def rebuild_menu") : text.index("def _add_menu")]
+    assert "self._panel.reload()" not in rebuild
+
+
+def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    assert "record_manual_switch" in text
+    assert "json_output=True" in text
+    assert "should_notify_manual_switch" in text
+    assert "should_dismiss_panel_after_switch" in text
+    assert "activateIgnoringOtherApps_" in text
+    assert "live_slot_changed" in text
+    from_panel = text[
+        text.index("def _switch_from_panel") : text.index("def _switch(self")
+    ]
+    assert "json_output=True" in from_panel
+    assert "close_panel=True" in from_panel
+
+
+def test_should_notify_manual_switch_only_when_switched():
+    assert menubar.should_notify_manual_switch({"switched": True}) is True
+    assert menubar.should_notify_manual_switch({"switched": False, "reason": "already-active"}) is False
+    assert menubar.should_notify_manual_switch(None) is False
+    assert menubar.should_notify_manual_switch({}) is False
+
+
+def test_should_dismiss_panel_after_switch_stays_open_on_error():
+    assert menubar.should_dismiss_panel_after_switch({"switched": True}) is True
+    assert menubar.should_dismiss_panel_after_switch({"switched": False}) is True
+    assert menubar.should_dismiss_panel_after_switch(None) is False
+
+
+def test_live_slot_changed_sees_org_switch_with_the_same_email():
+    snap = {"active_num": "1", "active_email": "gomryo@gmail.com"}
+    assert menubar.live_slot_changed(snap, "2") is True
+    assert menubar.live_slot_changed(snap, "1") is False
+    assert menubar.live_slot_changed(snap, None) is True
+    assert menubar.live_slot_changed({"active_num": None}, None) is False
+
+
 def test_status_item_length_compacts_only_when_icon_is_off():
     assert menubar.status_item_length(58.06, compact=False) == menubar.NS_VARIABLE_STATUS_ITEM_LENGTH
     assert menubar.status_item_length(0, compact=True) == menubar.NS_VARIABLE_STATUS_ITEM_LENGTH
@@ -673,6 +751,7 @@ def test_adapt_snapshot_shape_and_active_selection():
     ]
     snap = menubar._adapt_snapshot(_FakeSnap(accts))
     assert snap["active_email"] == "a@x.com"
+    assert snap["active_num"] == "1"
     assert snap["active_usage"] == lg
     assert snap["active_alias"] == ""
     # (num, email, is_active, display_usage, last_good, alias, disabled, fetched_at)

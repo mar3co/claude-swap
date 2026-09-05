@@ -26,4 +26,4 @@ Live AppKit probes (status item padding, appearance) are one-off scripts, not CI
 
 ## After UI changes
 
-Restart the extra and exercise the popover (click, Dark/Light, icon on/off, strategy). Widget: `cswap widget --install`, then Edit Widgets. Browser tools do not apply.
+Restart the extra and exercise the popover (first click on a card, More without dismissing, leave-delay close, Dark/Light, icon on/off, strategy). Widget: `cswap widget --install`, then Edit Widgets. Browser tools do not apply.
