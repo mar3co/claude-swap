@@ -20,6 +20,28 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("."))
 
 
+def _package_is_git_checkout(package_file: Path | None = None) -> bool:
+    """True when claude_swap is loaded from a directory that has a .git ancestor.
+
+    Walk parents of package_file (default: claude_swap.__file__). Stop at
+    filesystem root. A `.git` file (gitdir for worktrees) or directory both
+    count. Never follow the path into uv/tools or pipx as a positive: those
+    copies have no `.git`.
+    """
+    if package_file is None:
+        import claude_swap
+
+        raw = getattr(claude_swap, "__file__", None)
+        if not raw:
+            return False
+        package_file = Path(raw)
+    path = Path(package_file)
+    for candidate in (path, *path.parents):
+        if (candidate / ".git").exists():
+            return True
+    return False
+
+
 def _detect_install_method() -> str | None:
     """Return 'uv', 'pipx', or None if we can't tell."""
     prefix = Path(sys.prefix)
@@ -45,6 +67,8 @@ def _detect_install_method() -> str | None:
 
 def check_for_update(current_version: str) -> str | None:
     """Return a notification string if a newer version exists, else None."""
+    if _package_is_git_checkout():
+        return None
     try:
         latest_version = None
 
@@ -96,6 +120,13 @@ def run_self_upgrade() -> int:
     manager is missing from PATH.
     """
     from claude_swap.printer import accent, error
+
+    if _package_is_git_checkout():
+        error(
+            "This is a git checkout; upgrading from PyPI would drop fork features.\n"
+            "Upgrade with `git pull` then `uv tool install --editable '.[menubar]'`."
+        )
+        return 1
 
     method = _detect_install_method()
     commands = {

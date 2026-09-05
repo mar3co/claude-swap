@@ -11,9 +11,19 @@ import pytest
 from claude_swap.update_check import (
     CACHE_TTL,
     _detect_install_method,
+    _package_is_git_checkout,
     check_for_update,
     run_self_upgrade,
 )
+
+
+@pytest.fixture(autouse=True)
+def _pypi_install_by_default(monkeypatch):
+    """PyPI tests assume a wheel/tool install, not this git tree."""
+    monkeypatch.setattr(
+        "claude_swap.update_check._package_is_git_checkout",
+        lambda package_file=None: False,
+    )
 
 
 def _make_pypi_response(version: str) -> MagicMock:
@@ -102,6 +112,61 @@ class TestCheckForUpdate:
         mock_urlopen.assert_called_once()
         assert result is not None
         assert "0.4.0" in result
+
+
+class TestGitCheckoutGuard:
+    def test_package_from_git_checkout_is_detected(self, tmp_path):
+        (tmp_path / ".git").mkdir()
+        package_file = tmp_path / "src" / "claude_swap" / "__init__.py"
+        package_file.parent.mkdir(parents=True)
+        package_file.write_text("")
+
+        assert _package_is_git_checkout(package_file) is True
+
+    def test_package_inside_uv_tools_without_git_is_not_a_checkout(self, tmp_path):
+        package_file = (
+            tmp_path
+            / "uv"
+            / "tools"
+            / "claude-swap"
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "claude_swap"
+            / "__init__.py"
+        )
+        package_file.parent.mkdir(parents=True)
+        package_file.write_text("")
+
+        assert _package_is_git_checkout(package_file) is False
+
+    def test_check_for_update_skips_pypi_for_git_checkout(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "claude_swap.update_check._package_is_git_checkout",
+            lambda package_file=None: True,
+        )
+        monkeypatch.setattr("claude_swap.update_check.CACHE_PATH", tmp_path / "cache.json")
+
+        with patch("claude_swap.update_check.urllib.request.urlopen") as mock_urlopen:
+            result = check_for_update("0.3.2")
+            mock_urlopen.assert_not_called()
+
+        assert result is None
+
+    def test_run_self_upgrade_refuses_pypi_for_git_checkout(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "claude_swap.update_check._package_is_git_checkout",
+            lambda package_file=None: True,
+        )
+
+        with patch("claude_swap.update_check.subprocess.run") as mock_run:
+            assert run_self_upgrade() == 1
+            mock_run.assert_not_called()
+
+        captured = capsys.readouterr()
+        combined = f"{captured.out}{captured.err}"
+        assert "git pull" in combined
+        assert "uv tool install --editable" in combined
 
 
 class TestDetectInstallMethod:

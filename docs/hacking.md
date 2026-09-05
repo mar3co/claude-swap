@@ -11,7 +11,7 @@ uv tool install --editable '.[menubar]'
 uv sync   # dev extras: pytest, etc.
 ```
 
-`uv tool install claude-swap` from PyPI is the upstream wheel. It will not see this checkout’s widget sources.
+`uv tool install claude-swap` from PyPI is the upstream wheel. It will not see this checkout’s widget sources. `cswap upgrade` refuses PyPI when running from this tree; use `git pull` then `uv tool install --editable '.[menubar]'`.
 
 ## Run tests
 

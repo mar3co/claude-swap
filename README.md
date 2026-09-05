@@ -11,15 +11,7 @@ This is the [mar3co](https://github.com/mar3co/claude-swap) fork of [realiti4/cl
 
 Needs Python 3.12+ and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already logged in.
 
-```bash
-# macOS (menu bar extra)
-uv tool install 'claude-swap[menubar]'
-
-# Linux / Windows, or CLI only
-uv tool install claude-swap
-```
-
-From this fork (menu bar, widget, kickoff):
+This fork (menu bar extra, widget, kickoff):
 
 ```bash
 git clone https://github.com/mar3co/claude-swap.git
@@ -27,7 +19,19 @@ cd claude-swap
 uv tool install --editable '.[menubar]'
 ```
 
-`pipx install claude-swap` works too. Upgrade with `cswap upgrade`.
+`cswap upgrade` on this editable checkout refuses PyPI (that wheel would drop the extra, widget, and kickoff). Update with `git pull`, then `uv tool install --editable '.[menubar]'`.
+
+Upstream PyPI (no extra widget/kickoff from this fork):
+
+```bash
+# macOS (menu bar extra from upstream)
+uv tool install 'claude-swap[menubar]'
+
+# Linux / Windows, or CLI only
+uv tool install claude-swap
+```
+
+`pipx install claude-swap` works too for the upstream wheel.
 
 ## Quick start
 
