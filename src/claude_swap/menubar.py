@@ -31,7 +31,10 @@ from claude_swap import pace
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
 from claude_swap.switcher import SENTINEL_NOTES
 
-ICON = "⇄"
+# Claude Code's own CLI glyph (U+273B). Reads as Claude in the menu bar
+# without copying Anthropic's trademarked app icon, and is distinct from
+# the 8-point Grok sparkle that often sits next to it.
+ICON = "✻"
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
