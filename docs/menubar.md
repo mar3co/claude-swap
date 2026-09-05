@@ -34,7 +34,7 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 `MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `cswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
-More → Settings strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
+More → Settings strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
 ## Kickoff
 
@@ -43,3 +43,5 @@ More → Settings strategies: **Most quota left** (`best`), **Soonest weekly res
 ## Notifications
 
 `rumps.notification` needs a bundle id. `ensure_notification_identity` writes a tiny `Info.plist` next to the uv interpreter (`com.claude-swap.menubar`) if missing.
+
+A switch toast includes “Restart Claude Code to apply now, or wait about 30 seconds.” only when a Claude Code session or IDE lock is live (`claude_running`). Otherwise the restart sentence is omitted.

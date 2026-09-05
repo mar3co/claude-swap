@@ -126,6 +126,7 @@ PANEL_WIDTH = 312.0
 PAD = 12.0
 HEADER_H = 36.0
 HOLD_LINE_H = 16.0
+RUNNING_LINE_H = 16.0
 FOOTER_H = 38.0
 CARD_GAP = 8.0
 CARD_PAD = 11.0
@@ -710,6 +711,7 @@ class MenuBarPanel:
         snap = self._snapshot()
         cards = panel_accounts(snap)
         hold_line = snap.get("hold_line") or ""
+        running_line = snap.get("running_line") or ""
         pal = _colors()
 
         body_h = 0.0
@@ -721,7 +723,8 @@ class MenuBarPanel:
             body_h += CARD_GAP * (len(cards) - 1)
 
         hold_h = HOLD_LINE_H if hold_line else 0.0
-        height = PAD + HEADER_H + hold_h + 4 + body_h + PAD + FOOTER_H
+        running_h = RUNNING_LINE_H if running_line else 0.0
+        height = PAD + HEADER_H + hold_h + 4 + body_h + PAD + running_h + FOOTER_H
         root = _RootView.alloc().initWithHover_(self._on_hover)
         root.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH, height))
         root.setMaterial_(NSVisualEffectMaterialMenu)
@@ -900,6 +903,15 @@ class MenuBarPanel:
 
         # Footer
         fy = height - FOOTER_H
+        if running_line:
+            root.addSubview_(
+                _label(
+                    running_line,
+                    font_small,
+                    pal["muted"],
+                    NSMakeRect(PAD, fy - RUNNING_LINE_H, inner_w, RUNNING_LINE_H),
+                )
+            )
         hairline = _FillView.alloc().initWithColor_(pal["hairline"])
         hairline.setFrame_(NSMakeRect(PAD, fy, inner_w, 1))
         root.addSubview_(hairline)

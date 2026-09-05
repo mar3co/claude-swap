@@ -244,15 +244,55 @@ def format_local_reset(value: str | None, *, now: datetime | None = None) -> str
     return clock
 
 
+def _abbrev_cwd(cwd: str) -> str:
+    """Last two path parts, e.g. ``/Users/x/proj`` → ``x/proj``."""
+    p = Path(str(cwd).rstrip("/\\"))
+    if p.parent.name:
+        return f"{p.parent.name}/{p.name}"
+    return p.name or str(cwd)
+
+
+def format_running_line(sessions, ides) -> str | None:
+    """None when both lists empty.
+
+    One session: ``Claude Code is running in {cwd}.``
+    Multiple: ``Claude Code is running ({n} sessions).``
+    IDE only: ``Claude Code is running in {ide_name}.``
+    Prefer session cwd (abbreviate to last two path parts) over listing PIDs.
+    Never include pid numbers in the string.
+    """
+    n = len(sessions or ())
+    if n == 1:
+        cwd = str(getattr(sessions[0], "cwd", "") or "")
+        place = _abbrev_cwd(cwd)
+        if place:
+            return f"Claude Code is running in {place}."
+        return "Claude Code is running."
+    if n > 1:
+        return f"Claude Code is running ({n} sessions)."
+    if ides:
+        name = str(getattr(ides[0], "ide_name", "") or "").strip() or "an IDE"
+        return f"Claude Code is running in {name}."
+    return None
+
+
+def switch_restart_hint(running: bool) -> str:
+    """Restart sentence when Claude Code is live; otherwise empty."""
+    if running:
+        return "Restart Claude Code to apply now, or wait about 30 seconds."
+    return ""
+
+
 def notification_copy_for_event(
-    event, aliases: dict[str, str] | None = None
+    event, aliases: dict[str, str] | None = None, *, running: bool = True
 ) -> NotificationCopy | None:
     """Glanceable copy for menu-bar notifications, or None when the event is silent.
 
     Poll / no-switch / sleep / dry-run ticks do not notify. Account identity is
     alias-or-short-name, never ``Account-N (email)``. Trigger jargon is not the
     headline. Exhausted reset times are local-clock, not ISO-Z. Recovery is not
-    a CLI command.
+    a CLI command. Switch toasts include the restart sentence only when
+    ``running`` is true (a live Claude Code session or IDE lock).
     """
     kind = getattr(event, "kind", None)
     if kind == "switch":
@@ -264,7 +304,9 @@ def notification_copy_for_event(
         parts = []
         if src:
             parts.append(f"Was {src}.")
-        parts.append("Restart Claude Code to apply now, or wait about 30 seconds.")
+        hint = switch_restart_hint(running)
+        if hint:
+            parts.append(hint)
         return NotificationCopy(title=f"Switched to {dest}", body=" ".join(parts))
     if kind == "account-quarantined":
         name = account_short_name(
@@ -286,11 +328,13 @@ def notification_copy_for_event(
     return None
 
 
-def notification_copy_for_manual_switch(dest_name: str) -> NotificationCopy:
+def notification_copy_for_manual_switch(
+    dest_name: str, *, running: bool = True
+) -> NotificationCopy:
     """Copy after a user-initiated switch; the title names the destination."""
     return NotificationCopy(
         title=f"Switched to {dest_name}",
-        body="Restart Claude Code to apply now, or wait about 30 seconds.",
+        body=switch_restart_hint(running),
     )
 
 
@@ -963,6 +1007,16 @@ def run(switcher) -> int:
                 snap["hold_line"] = auto_hold_line(
                     self._strategy(), panel_accounts(snap, now=now), now=now
                 )
+                try:
+                    from claude_swap.process_detection import get_running_instances
+
+                    sessions, ides = get_running_instances()
+                except Exception:
+                    snap["running_line"] = None
+                    snap["claude_running"] = True
+                else:
+                    snap["running_line"] = format_running_line(sessions, ides)
+                    snap["claude_running"] = bool(sessions or ides)
                 self.snapshot = snap
                 self._snapshot_at = now
                 self._dirty = True  # picked up by on_sync_tick on the main thread
@@ -1068,8 +1122,9 @@ def run(switcher) -> int:
             with self._event_lock:
                 events, self._engine_events = self._engine_events, []
             aliases = self._alias_map()
+            running = bool(self.snapshot.get("claude_running", True))
             for ev in events:
-                copy = notification_copy_for_event(ev, aliases)
+                copy = notification_copy_for_event(ev, aliases, running=running)
                 if copy is not None:
                     self._notify(copy)
                 if ev.kind == "switch" and not getattr(ev, "dry_run", False):
@@ -1401,7 +1456,8 @@ def run(switcher) -> int:
             return account_short_name(email, alias)
 
         def _notify_switched(self, dest_name: str):
-            self._notify(notification_copy_for_manual_switch(dest_name))
+            running = bool(self.snapshot.get("claude_running", True))
+            self._notify(notification_copy_for_manual_switch(dest_name, running=running))
 
         def _switch_from_panel(self, num):
             result = self._run_switch(

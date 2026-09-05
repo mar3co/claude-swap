@@ -13,6 +13,7 @@ import json
 import plistlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -988,6 +989,81 @@ def test_manual_switch_notification_names_destination():
     assert copy.title == "Switched to adsonline"
     assert "Account-" not in _combined(copy)
     assert "cswap --add-account" not in copy.body
+
+
+def test_format_running_line_empty_is_none():
+    assert menubar.format_running_line([], []) is None
+    copy = menubar.notification_copy_for_manual_switch("Ads Online", running=False)
+    assert "Restart Claude Code" not in copy.body
+
+
+def test_format_running_line_one_session_uses_cwd_not_pid():
+    sess = SimpleNamespace(pid=424242, cwd="/Users/x/proj")
+    line = menubar.format_running_line([sess], [])
+    assert line is not None
+    assert "proj" in line
+    assert "424242" not in line
+    assert "pid" not in line.lower()
+
+
+def test_format_running_line_multiple_sessions_counts_without_pids():
+    sessions = [
+        SimpleNamespace(pid=11111, cwd="/a/one"),
+        SimpleNamespace(pid=22222, cwd="/b/two"),
+    ]
+    line = menubar.format_running_line(sessions, [])
+    assert line == "Claude Code is running (2 sessions)."
+    assert "11111" not in line
+    assert "22222" not in line
+
+
+def test_format_running_line_ide_only_uses_ide_name():
+    ide = SimpleNamespace(pid=33333, ide_name="Cursor")
+    line = menubar.format_running_line([], [ide])
+    assert line == "Claude Code is running in Cursor."
+    assert "33333" not in line
+
+
+def test_format_running_line_prefers_session_cwd_over_ide():
+    sess = SimpleNamespace(pid=9, cwd="/Users/x/proj")
+    ide = SimpleNamespace(pid=8, ide_name="Cursor")
+    line = menubar.format_running_line([sess], [ide])
+    assert "proj" in line
+    assert "Cursor" not in line
+
+
+def test_switch_restart_hint_empty_when_not_running():
+    assert menubar.switch_restart_hint(True) == (
+        "Restart Claude Code to apply now, or wait about 30 seconds."
+    )
+    assert menubar.switch_restart_hint(False) == ""
+
+
+def test_manual_switch_notification_restart_depends_on_running():
+    off = menubar.notification_copy_for_manual_switch("Ads Online", running=False)
+    assert "Restart Claude Code" not in off.body
+    on = menubar.notification_copy_for_manual_switch("Ads Online", running=True)
+    assert "Restart Claude Code" in on.body
+    assert "30 seconds" in on.body
+    default = menubar.notification_copy_for_manual_switch("Ads Online")
+    assert "Restart Claude Code" in default.body
+    assert "30 seconds" in default.body
+
+
+def test_switch_event_notification_passes_running_through():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "a@x.com"},
+        to_ref={"number": 2, "email": "b@x.com"},
+    )
+    off = menubar.notification_copy_for_event(ev, running=False)
+    assert off is not None
+    assert "Restart Claude Code" not in off.body
+    on = menubar.notification_copy_for_event(ev, running=True)
+    assert "Restart Claude Code" in on.body
+    assert "30 seconds" in on.body
+    default = menubar.notification_copy_for_event(ev)
+    assert "Restart Claude Code" in default.body
 
 
 def test_quarantine_notification_has_no_cli_recovery_command():
