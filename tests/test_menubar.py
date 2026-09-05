@@ -305,21 +305,26 @@ def test_panel_windows_sentinel_or_missing_is_empty():
 
 
 def test_panel_accounts_prefers_alias_and_keeps_note():
+    # (num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at)
     snap = {
         "accounts": [
-            (1, "a@x.com", True, _USAGE, _USAGE, "personal", False, None),
-            (2, "b@x.com", False, "no credentials", None, "", True, None),
+            (1, "a@x.com", True, _USAGE, _USAGE, "personal", "", False, None),
+            (2, "b@x.com", False, "no credentials", None, "", "", True, None),
+            (3, "c@x.com", False, _USAGE, _USAGE, "", "Ads Online", False, None),
         ]
     }
     cards = menubar.panel_accounts(snap)
     assert cards[0]["title"] == "personal"
-    assert cards[0]["subtitle"] == "a@x.com"
+    assert "a@x.com" in cards[0]["subtitle"]
     assert cards[0]["active"] is True
     assert [w["label"] for w in cards[0]["windows"]] == ["5h", "7d"]
-    assert cards[1]["title"] == "b@x.com"
+    assert cards[1]["title"] == "personal"
+    assert cards[1]["subtitle"] == "b@x.com"
     assert cards[1]["note"] == "no credentials"
     assert cards[1]["disabled"] is True
     assert cards[1]["windows"] == []
+    assert cards[2]["title"] == "Ads Online"
+    assert cards[2]["subtitle"] == "c@x.com"
 
 
 # --- usage logging -------------------------------------------------------------
@@ -369,6 +374,17 @@ def test_format_title_name_and_5h():
 def test_format_title_prefers_alias_over_local_part():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="off")
     assert menubar.format_title("loc@papaya.asia", _USAGE, s, alias="dev") == "dev"
+
+
+def test_format_title_prefers_alias_then_org_then_local_part():
+    s = menubar.MenuBarSettings(show_account_name=True, title_pct="off")
+    assert menubar.format_title(
+        "loc@papaya.asia", _USAGE, s, alias="dev", org_name="Ads Online"
+    ).startswith("dev")
+    assert menubar.format_title(
+        "loc@papaya.asia", _USAGE, s, org_name="Ads Online"
+    ) == "Ads Online"
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == "loc"
 
 
 def test_format_title_name_only_when_pct_off():
@@ -718,13 +734,14 @@ class _FakeEntry:
 
 
 class _FakeAcct:
-    def __init__(self, number, email, is_active, usage, alias="", disabled=False):
+    def __init__(self, number, email, is_active, usage, alias="", disabled=False, org_name=""):
         self.number = number
         self.email = email
         self.is_active = is_active
         self.usage = usage
         self.alias = alias
         self.disabled = disabled
+        self.org_name = org_name
 
 
 class _FakeSnap:
@@ -754,11 +771,13 @@ def test_adapt_snapshot_shape_and_active_selection():
     assert snap["active_num"] == "1"
     assert snap["active_usage"] == lg
     assert snap["active_alias"] == ""
-    # (num, email, is_active, display_usage, last_good, alias, disabled, fetched_at)
-    assert snap["accounts"][0] == ("1", "a@x.com", True, lg, lg, "", False, 123.0)
+    assert snap["active_org"] == ""
+    # (num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at)
+    assert len(snap["accounts"][0]) == 9
+    assert snap["accounts"][0] == ("1", "a@x.com", True, lg, lg, "", "", False, 123.0)
     # sentinel account: display is the human note, last_good/fetched_at are None; disabled carried through
     assert snap["accounts"][1] == (
-        "2", "b@x.com", False, menubar.SENTINEL_NOTES[USAGE_API_KEY], None, "", True, None,
+        "2", "b@x.com", False, menubar.SENTINEL_NOTES[USAGE_API_KEY], None, "", "", True, None,
     )
 
 

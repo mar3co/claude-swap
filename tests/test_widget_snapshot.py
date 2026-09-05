@@ -18,8 +18,8 @@ _USAGE = {
 def _snap():
     return {
         "accounts": [
-            (1, "a@x.com", True, _USAGE, _USAGE, "personal", False, None),
-            (2, "b@x.com", False, "no credentials", None, "", True, None),
+            (1, "a@x.com", True, _USAGE, _USAGE, "personal", "", False, None),
+            (2, "b@x.com", False, "no credentials", None, "", "", True, None),
         ]
     }
 
@@ -33,6 +33,8 @@ def test_build_payload_stringifies_num_and_keeps_windows():
     assert payload["accounts"][0]["active"] is True
     labels = [w["label"] for w in payload["accounts"][0]["windows"]]
     assert labels == ["5h", "7d"]
+    assert payload["accounts"][1]["title"] == "personal"
+    assert payload["accounts"][1]["subtitle"] == "b@x.com"
     assert payload["accounts"][1]["note"] == "no credentials"
     assert payload["accounts"][1]["windows"] == []
 

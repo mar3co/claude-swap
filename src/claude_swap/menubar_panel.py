@@ -130,6 +130,7 @@ CARD_GAP = 8.0
 CARD_PAD = 11.0
 CARD_RADIUS = 10.0
 TITLE_H = 18.0
+SUBTITLE_H = 14.0
 ROW_H = 22.0
 BAR_H = 6.0
 BAR_MAX_W = 80.0
@@ -137,6 +138,12 @@ LABEL_W = 44.0
 PCT_W = 48.0
 COUNT_W = 60.0
 COL_GAP = 8.0
+
+
+def _card_height(card) -> float:
+    n = max(len(card["windows"]), 1 if card["note"] else 0, 1)
+    sub = SUBTITLE_H if card.get("subtitle") else 0.0
+    return CARD_PAD * 2 + TITLE_H + sub + 6 + n * ROW_H
 
 
 def _hex(color: str, alpha: float = 1.0):
@@ -707,8 +714,7 @@ class MenuBarPanel:
             body_h = 48.0
         else:
             for card in cards:
-                n = max(len(card["windows"]), 1 if card["note"] else 0, 1)
-                body_h += CARD_PAD * 2 + TITLE_H + 6 + n * ROW_H
+                body_h += _card_height(card)
             body_h += CARD_GAP * (len(cards) - 1)
 
         height = PAD + HEADER_H + 4 + body_h + PAD + FOOTER_H
@@ -773,8 +779,7 @@ class MenuBarPanel:
             )
         else:
             for card in cards:
-                n = max(len(card["windows"]), 1 if card["note"] else 0, 1)
-                card_h = CARD_PAD * 2 + TITLE_H + 6 + n * ROW_H
+                card_h = _card_height(card)
                 card_view = _CardView.alloc().initWithCard_onSwitch_(
                     card, self._on_switch
                 )
@@ -803,7 +808,21 @@ class MenuBarPanel:
                     )
                     card_view.addSubview_(badge)
 
-                row_y = CARD_PAD + TITLE_H + 6
+                subtitle = card.get("subtitle") or ""
+                row_y = CARD_PAD + TITLE_H
+                if subtitle:
+                    card_view.addSubview_(
+                        _label(
+                            subtitle,
+                            font_small,
+                            pal["muted"],
+                            NSMakeRect(
+                                CARD_PAD + 6, row_y, inner_w - CARD_PAD * 2 - 8, SUBTITLE_H
+                            ),
+                        )
+                    )
+                    row_y += SUBTITLE_H
+                row_y += 6
                 if card.get("note") and not card["windows"]:
                     card_view.addSubview_(
                         _label(

@@ -123,6 +123,12 @@ private struct AccountBlock: View {
                         .foregroundStyle(Palette.muted)
                 }
             }
+            if !account.subtitle.isEmpty {
+                Text(account.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+            }
             if let note = account.note, account.windows.isEmpty {
                 Text(note)
                     .font(.caption)
