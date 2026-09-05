@@ -29,7 +29,14 @@ from pathlib import Path
 
 from claude_swap import pace
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
-from claude_swap.switcher import SENTINEL_NOTES
+from claude_swap.kickoff import (
+    format_kickoff_time,
+    invoke_kickoff,
+    kickoff_account_eligible,
+    kickoff_is_due,
+    parse_kickoff_time,
+)
+from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
@@ -96,6 +103,11 @@ class MenuBarSettings:
     title_scoped: bool = False  # append per-model weekly limits (e.g. Fable) to the title
     refresh_interval: int = 60
     auto_switch_enabled: bool = False
+    show_icon: bool = False  # optional ✻ in the status-item title; off by default
+    kickoff_enabled: bool = False
+    kickoff_hour: int = 7
+    kickoff_minute: int = 0
+    kickoff_last_date: str = ""  # local YYYY-MM-DD of the last kickoff run
 
     @classmethod
     def load(cls, path: Path) -> "MenuBarSettings":
@@ -122,6 +134,164 @@ class MenuBarSettings:
         """Write settings as pretty JSON, creating parent directories."""
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+
+
+STATUS_ICON = "✻"
+
+
+@dataclass(frozen=True)
+class NotificationCopy:
+    """Title / subtitle / body for ``rumps.notification``, in that order."""
+
+    title: str
+    subtitle: str = ""
+    body: str = ""
+
+    def rumps_args(self) -> tuple[str, str, str]:
+        return (self.title, self.subtitle, self.body)
+
+
+def account_short_name(
+    email: str | None = None,
+    alias: str | None = None,
+    number=None,
+) -> str:
+    """Glanceable account identity: alias, else email local-part, never ``Account-N (email)``."""
+    if alias:
+        return str(alias)
+    if email:
+        return _local_part(str(email))
+    if number is not None and str(number) != "":
+        return f"account {number}"
+    return "unknown"
+
+
+def _alias_lookup(number, email: str | None, aliases: dict[str, str] | None) -> str | None:
+    if not aliases:
+        return None
+    if number is not None:
+        found = aliases.get(str(number))
+        if found:
+            return found
+    if email:
+        return aliases.get(email) or None
+    return None
+
+
+def _name_from_ref(ref: dict | None, aliases: dict[str, str] | None) -> str:
+    if not isinstance(ref, dict):
+        return "unknown"
+    email = ref.get("email")
+    number = ref.get("number")
+    alias = ref.get("alias") or _alias_lookup(number, email, aliases)
+    return account_short_name(email, alias, number)
+
+
+def format_local_reset(value: str | None, *, now: datetime | None = None) -> str | None:
+    """Turn an ISO-Z / ISO-offset timestamp into a local clock like ``3:42 PM``.
+
+    Adds a weekday when the reset is not today. Returns None when unparseable.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone()
+    clock = f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+    now_local = (now or datetime.now().astimezone()).astimezone()
+    if local.date() != now_local.date():
+        return f"{local.strftime('%a')} {clock}"
+    return clock
+
+
+def notification_copy_for_event(
+    event, aliases: dict[str, str] | None = None
+) -> NotificationCopy | None:
+    """Glanceable copy for menu-bar notifications, or None when the event is silent.
+
+    Poll / no-switch / sleep / dry-run ticks do not notify. Account identity is
+    alias-or-short-name, never ``Account-N (email)``. Trigger jargon is not the
+    headline. Exhausted reset times are local-clock, not ISO-Z. Recovery is not
+    a CLI command.
+    """
+    kind = getattr(event, "kind", None)
+    if kind == "switch":
+        if getattr(event, "dry_run", False):
+            return None
+        dest = _name_from_ref(getattr(event, "to_ref", None), aliases)
+        src_ref = getattr(event, "from_ref", None)
+        src = _name_from_ref(src_ref, aliases) if src_ref else None
+        parts = []
+        if src:
+            parts.append(f"Was {src}.")
+        parts.append("Restart Claude Code to apply now, or wait about 30 seconds.")
+        return NotificationCopy(title=f"Switched to {dest}", body=" ".join(parts))
+    if kind == "account-quarantined":
+        name = account_short_name(
+            getattr(event, "email", None),
+            _alias_lookup(getattr(event, "number", None), getattr(event, "email", None), aliases),
+            getattr(event, "number", None),
+        )
+        return NotificationCopy(
+            title=f"{name} was paused",
+            body="Sign in with this account in Claude Code, then add it back in claude-swap.",
+        )
+    if kind == "all-exhausted":
+        reset = format_local_reset(getattr(event, "earliest_reset_at", None))
+        body = f"Earliest reset at {reset}." if reset else "No reset time is known yet."
+        return NotificationCopy(title="All accounts are out of usage", body=body)
+    if kind == "config-warning":
+        message = str(getattr(event, "message", "") or "A setting is not doing anything.")
+        return NotificationCopy(title="Settings need a look", body=message)
+    return None
+
+
+def notification_copy_for_manual_switch(dest_name: str) -> NotificationCopy:
+    """Copy after a user-initiated switch; the title names the destination."""
+    return NotificationCopy(
+        title=f"Switched to {dest_name}",
+        body="Restart Claude Code to apply now, or wait about 30 seconds.",
+    )
+
+
+def notification_copy_for_engine_start_failure(message: str) -> NotificationCopy:
+    return NotificationCopy(
+        title="Auto-switch didn't start",
+        body=str(message) or "The auto-switch engine failed to start.",
+    )
+
+
+def notification_copy_for_kickoff(
+    results: list[tuple[str, bool, str]],
+) -> NotificationCopy | None:
+    """Copy after a scheduled 5h kickoff pass. None when nothing was attempted."""
+    if not results:
+        return None
+    ok = [name for name, success, _err in results if success]
+    bad = [(name, err) for name, success, err in results if not success]
+    if ok and not bad:
+        if len(ok) == 1:
+            title = f"Started {ok[0]}'s 5-hour window"
+        else:
+            title = "Started 5-hour windows"
+        body = "Pinged " + ", ".join(ok) + "."
+    elif ok and bad:
+        title = "Started some 5-hour windows"
+        failed = ", ".join(name for name, _err in bad)
+        body = f"Started {', '.join(ok)}. Couldn't reach {failed}."
+    else:
+        title = "Couldn't start 5-hour windows"
+        body = "; ".join(
+            f"{name}: {err}" if err else name for name, err in bad
+        )[:240]
+    return NotificationCopy(title=title, body=body)
 
 
 # ---- pure display helpers (operate on the usage-window dict shape produced by
@@ -405,7 +575,10 @@ def format_title(
             window = _rolled_weekly_window(window, now)
             if isinstance(window, dict) and isinstance(window.get("pct"), (int, float)) and window.get("name"):
                 segments.append(f"{window['name']} {window['pct']:.0f}%")
-    return " · ".join(segments)
+    text = " · ".join(segments)
+    if settings.show_icon:
+        return f"{STATUS_ICON} {text}" if text else STATUS_ICON
+    return text
 
 
 def format_usage_log(email: str, usage: dict | str | None) -> str | None:
@@ -568,6 +741,8 @@ def run(switcher) -> int:
             self._engine_events: list = []
             self._event_lock = threading.Lock()
             self._panel = None
+            self._kickoff_running = False
+            self._kickoff_results = None
             self.rebuild_menu()
             # Background display refresh on the user's interval, plus a fast
             # UI-sync tick that applies snapshots + engine events on the main thread.
@@ -637,6 +812,8 @@ def run(switcher) -> int:
                 self.rebuild_menu()
             self._detect_active_change()
             self._drain_engine_events()
+            self._maybe_kickoff()
+            self._drain_kickoff_results()
 
         def _detect_active_change(self):
             # Reflect account switches from any source (menu, CLI, auto engine)
@@ -674,7 +851,7 @@ def run(switcher) -> int:
                 )
             except Exception as e:  # never let a bad start crash the menu bar
                 self.switcher._logger.warning("auto-switch engine failed to start: %s", e)
-                rumps.notification("claude-swap", "Auto-switch failed to start", str(e))
+                self._notify(notification_copy_for_engine_start_failure(str(e)))
                 return
             self._engine = engine
             threading.Thread(target=self._run_engine, args=(engine,), daemon=True).start()
@@ -705,19 +882,13 @@ def run(switcher) -> int:
         def _drain_engine_events(self):
             with self._event_lock:
                 events, self._engine_events = self._engine_events, []
+            aliases = self._alias_map()
             for ev in events:
+                copy = notification_copy_for_event(ev, aliases)
+                if copy is not None:
+                    self._notify(copy)
                 if ev.kind == "switch" and not getattr(ev, "dry_run", False):
-                    rumps.notification("claude-swap", "Auto-switched account", ev.human())
                     self.refresh_async()  # reflect the switch promptly
-                elif ev.kind == "account-quarantined":
-                    rumps.notification("claude-swap", "Account quarantined", ev.human())
-                elif ev.kind == "all-exhausted":
-                    rumps.notification("claude-swap", "All accounts exhausted", ev.human())
-                elif ev.kind == "config-warning":
-                    # e.g. an autoswitch.model name no account reports — the
-                    # engine emits it once per run; dropping it would leave a
-                    # menu-bar user with a silently inert filter.
-                    rumps.notification("claude-swap", "Configuration warning", ev.human())
 
         def _threshold(self) -> int:
             """Current auto-switch threshold from core settings (for the menu)."""
@@ -905,6 +1076,36 @@ def run(switcher) -> int:
                 threshold_menu.add(ch)
             menu.add(threshold_menu)
 
+            kickoff = rumps.MenuItem("Start 5-hour window")
+            kickoff_on = rumps.MenuItem("Enabled", callback=self.on_toggle_kickoff)
+            kickoff_on.state = 1 if self.settings.kickoff_enabled else 0
+            kickoff.add(kickoff_on)
+            kickoff_time = rumps.MenuItem("Time")
+            for hour in range(24):
+                ch = rumps.MenuItem(
+                    format_kickoff_time(hour, 0),
+                    callback=self._make_kickoff_hour(hour),
+                )
+                ch.state = (
+                    1
+                    if self.settings.kickoff_hour == hour
+                    and self.settings.kickoff_minute == 0
+                    else 0
+                )
+                kickoff_time.add(ch)
+            kickoff_time.add(None)
+            kickoff_time.add(rumps.MenuItem("Custom…", callback=self.on_kickoff_custom))
+            kickoff.add(kickoff_time)
+            menu.add(kickoff)
+
+            advanced = rumps.MenuItem("Advanced")
+            icon_item = rumps.MenuItem(
+                "Show asterisk in menu bar", callback=self.on_toggle_icon
+            )
+            icon_item.state = 1 if self.settings.show_icon else 0
+            advanced.add(icon_item)
+            menu.add(advanced)
+
             return menu
 
         # ---- callbacks --------------------------------------------------------
@@ -921,12 +1122,38 @@ def run(switcher) -> int:
                 rumps.alert(title="claude-swap", message=str(e))
                 return False
 
-        def _notify_switched(self):
-            rumps.notification(
-                "claude-swap",
-                "Account switched",
-                "Switch takes effect within ~30s — restart Claude Code to apply immediately.",
-            )
+        def _notify(self, copy: NotificationCopy | None):
+            if copy is None:
+                return
+            rumps.notification(*copy.rumps_args())
+
+        def _alias_map(self) -> dict[str, str]:
+            aliases: dict[str, str] = {}
+            for num, email, _a, _d, _lg, alias, _dis, _fa in self.snapshot["accounts"]:
+                if alias:
+                    aliases[str(num)] = alias
+                    aliases[email] = alias
+            return aliases
+
+        def _name_for_num(self, num) -> str:
+            for row in self.snapshot["accounts"]:
+                if str(row[0]) == str(num):
+                    return account_short_name(row[1], row[5] or None, num)
+            return account_short_name(None, None, num)
+
+        def _current_dest_name(self) -> str:
+            current = self.switcher._get_current_account()
+            email = current[0] if current else None
+            alias = None
+            if email:
+                for row in self.snapshot["accounts"]:
+                    if row[1] == email:
+                        alias = row[5] or None
+                        break
+            return account_short_name(email, alias)
+
+        def _notify_switched(self, dest_name: str):
+            self._notify(notification_copy_for_manual_switch(dest_name))
 
         def _switch_from_panel(self, num):
             self._make_switch_to(num)(None)
@@ -936,14 +1163,14 @@ def run(switcher) -> int:
         def _make_switch_to(self, num):
             def cb(_sender):
                 if self._guard(lambda: self.switcher.switch_to(str(num))):
-                    self._notify_switched()
+                    self._notify_switched(self._name_for_num(num))
                     self.refresh_async()
             return cb
 
         def _switch(self, strategy):
             def cb(_sender):
                 if self._guard(lambda: self.switcher.switch(strategy=strategy)):
-                    self._notify_switched()
+                    self._notify_switched(self._current_dest_name())
                     self.refresh_async()
             return cb
 
@@ -1070,6 +1297,121 @@ def run(switcher) -> int:
             else:
                 self._stop_engine()
             self.rebuild_menu()
+
+        def on_toggle_icon(self, _sender):
+            self.settings.show_icon = not self.settings.show_icon
+            self._save_and_rebuild()
+
+        def on_toggle_kickoff(self, _sender):
+            self.settings.kickoff_enabled = not self.settings.kickoff_enabled
+            self._save_and_rebuild()
+
+        def _make_kickoff_hour(self, hour):
+            def cb(_sender):
+                self.settings.kickoff_hour = hour
+                self.settings.kickoff_minute = 0
+                self._save_and_rebuild()
+            return cb
+
+        def on_kickoff_custom(self, _sender):
+            import AppKit
+            AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            win = rumps.Window(
+                title="Start 5-hour window",
+                message="Local time (for example 7:00 or 7:30 AM):",
+                ok="Set",
+                cancel="Cancel",
+                dimensions=(320, 24),
+                default_text=format_kickoff_time(
+                    self.settings.kickoff_hour, self.settings.kickoff_minute
+                ),
+            )
+            resp = win.run()
+            if resp.clicked != 1:
+                return
+            parsed = parse_kickoff_time(resp.text)
+            if parsed is None:
+                rumps.alert(
+                    title="claude-swap",
+                    message="Use a time like 7:00 or 7:30 AM.",
+                )
+                return
+            self.settings.kickoff_hour, self.settings.kickoff_minute = parsed
+            self._save_and_rebuild()
+
+        def _maybe_kickoff(self):
+            if self._kickoff_running:
+                return
+            s = self.settings
+            now = datetime.now()
+            if not kickoff_is_due(
+                s.kickoff_enabled,
+                s.kickoff_hour,
+                s.kickoff_minute,
+                s.kickoff_last_date,
+                now,
+            ):
+                return
+            # Don't burn today's slot before the first snapshot has arrived.
+            if not self.snapshot.get("accounts") and self._snapshot_at == 0.0:
+                return
+            self.settings.kickoff_last_date = now.date().isoformat()
+            self.settings.save(settings_path)
+            self._kickoff_running = True
+            threading.Thread(target=self._run_kickoff, daemon=True).start()
+
+        def _run_kickoff(self):
+            results: list[tuple[str, bool, str]] = []
+            try:
+                from claude_swap.session import SessionManager
+
+                mgr = SessionManager(self.switcher)
+                for (
+                    num, email, _act, display, last_good, alias, _dis, _fa
+                ) in self.snapshot["accounts"]:
+                    try:
+                        is_api = self.switcher._account_kind(str(num)) == "api_key"
+                    except Exception:
+                        is_api = display in (
+                            SENTINEL_NOTES.get(USAGE_API_KEY),
+                            USAGE_API_KEY,
+                        )
+                    pct = _window_pct(
+                        last_good if isinstance(last_good, dict) else None,
+                        "five_hour",
+                    )
+                    if not kickoff_account_eligible(
+                        is_api_key=is_api, five_hour_pct=pct
+                    ):
+                        continue
+                    name = account_short_name(email, alias or None, num)
+                    try:
+                        session_dir, _, _ = mgr.setup_session(
+                            str(num), share=True, share_history=False
+                        )
+                        proc = invoke_kickoff(session_dir)
+                        if proc.returncode == 0:
+                            results.append((name, True, ""))
+                        else:
+                            err = (
+                                proc.stderr or proc.stdout or "claude exited with an error"
+                            ).strip()
+                            results.append((name, False, err[:200]))
+                    except Exception as e:
+                        results.append((name, False, str(e)))
+                with self._event_lock:
+                    self._kickoff_results = results
+            finally:
+                self._kickoff_running = False
+
+        def _drain_kickoff_results(self):
+            with self._event_lock:
+                results = self._kickoff_results
+                self._kickoff_results = None
+            if results is None:
+                return
+            self._notify(notification_copy_for_kickoff(results))
+            self.refresh_async()
 
         def _make_threshold(self, pct):
             def cb(_sender):

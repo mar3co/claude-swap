@@ -17,6 +17,15 @@ from pathlib import Path
 import pytest
 
 from claude_swap import menubar
+from claude_swap.autoswitch import (
+    AllExhaustedEvent,
+    ConfigWarningEvent,
+    NoSwitchEvent,
+    PollEvent,
+    QuarantineEvent,
+    SleepEvent,
+    SwitchEvent,
+)
 from claude_swap.exceptions import ClaudeSwitchError
 from claude_swap.switcher import USAGE_API_KEY
 
@@ -73,6 +82,8 @@ def test_settings_defaults_when_file_missing(tmp_path: Path):
     assert s.title_pct == "both"
     assert s.refresh_interval == 60
     assert s.auto_switch_enabled is False
+    assert s.show_icon is False
+    assert s.kickoff_enabled is False
 
 
 def test_settings_round_trip(tmp_path: Path):
@@ -387,6 +398,59 @@ def test_format_title_empty_when_no_active_account():
     assert menubar.format_title(None, None, s) == ""
 
 
+def test_kickoff_settings_round_trip(tmp_path: Path):
+    path = tmp_path / "menubar_settings.json"
+    original = menubar.MenuBarSettings(
+        kickoff_enabled=True,
+        kickoff_hour=4,
+        kickoff_minute=30,
+        kickoff_last_date="2026-09-05",
+    )
+    original.save(path)
+    loaded = menubar.MenuBarSettings.load(path)
+    assert loaded.kickoff_enabled is True
+    assert loaded.kickoff_hour == 4
+    assert loaded.kickoff_minute == 30
+    assert loaded.kickoff_last_date == "2026-09-05"
+
+
+def test_show_icon_round_trip_true(tmp_path: Path):
+    path = tmp_path / "menubar_settings.json"
+    original = menubar.MenuBarSettings(show_icon=True)
+    original.save(path)
+    loaded = menubar.MenuBarSettings.load(path)
+    assert loaded.show_icon is True
+    assert loaded.show_icon is not menubar.MenuBarSettings().show_icon
+
+
+def test_format_title_includes_asterisk_iff_icon_on():
+    on = menubar.MenuBarSettings(show_account_name=True, title_pct="off", show_icon=True)
+    off = menubar.MenuBarSettings(show_account_name=True, title_pct="off", show_icon=False)
+    assert menubar.format_title("loc@papaya.asia", _USAGE, on) == f"{menubar.STATUS_ICON} loc"
+    assert menubar.STATUS_ICON not in menubar.format_title("loc@papaya.asia", _USAGE, off)
+
+
+def test_format_title_icon_only_when_name_and_pct_off():
+    s = menubar.MenuBarSettings(show_account_name=False, title_pct="off", show_icon=True)
+    assert menubar.format_title("loc@papaya.asia", _USAGE, s) == menubar.STATUS_ICON
+
+
+def test_show_icon_control_is_nested_under_advanced_not_settings_root():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    assert 'rumps.MenuItem("Advanced")' in text
+    assert "Show asterisk in menu bar" in text
+    assert "advanced.add(icon_item)" in text
+    assert "menu.add(icon_item)" not in text
+
+
+def test_kickoff_is_wired_from_menubar_sync_tick():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    assert "self._maybe_kickoff()" in text
+    assert "self._drain_kickoff_results()" in text
+    assert 'rumps.MenuItem("Start 5-hour window")' in text
+    assert "kickoff_last_date" in text
+
+
 def test_format_title_truncates_long_local_part():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="off")
     title = menubar.format_title("averylonglocalpart@example.com", None, s)
@@ -583,7 +647,125 @@ def test_format_title_reflects_passed_weekly_reset():
     assert menubar.format_title("a@x.com", usage, s, _NOW) == "0%"
 
 
-# --- run() app glue ------------------------------------------------------------
+# --- notification copy --------------------------------------------------------
+
+def _combined(copy: menubar.NotificationCopy) -> str:
+    return f"{copy.title}\n{copy.subtitle}\n{copy.body}"
+
+
+def test_switch_notification_uses_alias_not_account_n_or_trigger_jargon():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "a@x.com"},
+        to_ref={"number": 2, "email": "b@x.com"},
+    )
+    copy = menubar.notification_copy_for_event(
+        ev, aliases={"1": "personal", "2": "adsonline", "a@x.com": "personal", "b@x.com": "adsonline"}
+    )
+    assert copy is not None
+    assert copy.title == "Switched to adsonline"
+    text = _combined(copy)
+    assert "personal" in copy.body
+    assert "Account-2 (" not in text
+    assert "Account-1 (" not in text
+    assert "proactive" not in text.lower()
+    assert "at-limit" not in text.lower()
+    assert "cswap" not in text.lower()
+
+
+def test_switch_notification_falls_back_to_email_local_part():
+    ev = SwitchEvent(
+        trigger="at-limit",
+        from_ref={"number": 1, "email": "loc@papaya.asia"},
+        to_ref={"number": 2, "email": "ads@example.com"},
+    )
+    copy = menubar.notification_copy_for_event(ev)
+    assert copy is not None
+    assert copy.title == "Switched to ads"
+    text = _combined(copy)
+    assert "Account-2 (" not in text
+    assert "at-limit" not in text.lower()
+    assert "proactive" not in text.lower()
+
+
+def test_dry_run_switch_does_not_notify():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "a@x.com"},
+        to_ref={"number": 2, "email": "b@x.com"},
+        dry_run=True,
+    )
+    assert menubar.notification_copy_for_event(ev) is None
+
+
+def test_manual_switch_notification_names_destination():
+    copy = menubar.notification_copy_for_manual_switch("adsonline")
+    assert copy.title == "Switched to adsonline"
+    assert "Account-" not in _combined(copy)
+    assert "cswap --add-account" not in copy.body
+
+
+def test_quarantine_notification_has_no_cli_recovery_command():
+    ev = QuarantineEvent(number="2", email="ads@example.com", reason="invalid_grant")
+    copy = menubar.notification_copy_for_event(ev, aliases={"2": "adsonline"})
+    assert copy is not None
+    text = _combined(copy)
+    assert "adsonline" in copy.title
+    assert "Account-2 (" not in text
+    assert "cswap --add-account" not in text
+    assert "cswap --add-account --slot" not in text
+
+
+def test_all_exhausted_notification_uses_local_clock_not_iso_z():
+    iso = "2026-09-05T15:42:00Z"
+    ev = AllExhaustedEvent(earliest_reset_at=iso)
+    copy = menubar.notification_copy_for_event(ev)
+    assert copy is not None
+    assert iso not in _combined(copy)
+    formatted = menubar.format_local_reset(iso)
+    assert formatted is not None
+    assert formatted in copy.body
+    assert "cswap --add-account" not in copy.body
+
+
+def test_config_warning_notification_is_glanceable():
+    ev = ConfigWarningEvent(message="autoswitch.model: Fabel matches no account")
+    copy = menubar.notification_copy_for_event(ev)
+    assert copy is not None
+    assert copy.title == "Settings need a look"
+    assert "Fabel" in copy.body
+    assert "Account-N (" not in _combined(copy)
+    assert "cswap --add-account" not in copy.body
+
+
+def test_poll_no_switch_sleep_do_not_notify():
+    assert menubar.notification_copy_for_event(
+        PollEvent(active=None, headroom={}, threshold=90.0)
+    ) is None
+    assert menubar.notification_copy_for_event(NoSwitchEvent(reason="cooldown")) is None
+    assert menubar.notification_copy_for_event(
+        SleepEvent(seconds=60, until="2026-09-05T12:00:00Z")
+    ) is None
+
+
+def test_engine_start_failure_notification_names_the_event():
+    copy = menubar.notification_copy_for_engine_start_failure("lock timeout")
+    assert "Auto-switch" in copy.title
+    assert "lock timeout" in copy.body
+    assert "Account-" not in _combined(copy)
+
+
+def test_kickoff_notification_names_accounts_not_slots():
+    copy = menubar.notification_copy_for_kickoff(
+        [("personal", True, ""), ("adsonline", False, "auth failed")]
+    )
+    assert copy is not None
+    text = _combined(copy)
+    assert "personal" in text
+    assert "adsonline" in text
+    assert "Account-" not in text
+    assert "cswap --add-account" not in text
+
 
 def test_run_without_rumps_raises_clean_error(monkeypatch):
     """A missing menubar extra surfaces as ClaudeSwitchError, not a traceback.
