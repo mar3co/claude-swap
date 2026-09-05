@@ -52,6 +52,15 @@ AUTO_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (
     ("soonest-5h", "Soonest 5-hour reset"),
 )
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
+TITLE_PCT_LABELS: dict[str, str] = {
+    "off": "None",
+    "5h": "Session (5h)",
+    "7d": "Weekly (7d)",
+    "both": "Both (5h · 7d)",
+}
+REFRESH_LABELS: dict[int, str] = {30: "30 seconds", 60: "60 seconds", 300: "5 minutes"}
+SETTINGS_PAGE = "settings"
+MAIN_PAGE = "main"
 SWITCH_HISTORY_LIMIT = 10
 NOTIFICATION_BUNDLE_ID = "com.claude-swap.menubar"
 
@@ -145,6 +154,89 @@ class MenuBarSettings:
         """Write settings as pretty JSON, creating parent directories."""
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+
+
+def settings_page_rows(
+    settings: MenuBarSettings, *, strategy: str, threshold: float
+) -> list[dict]:
+    """Rows for the in-popover settings page. No AppKit.
+
+    Each dict: ``{"kind": "toggle"|"choice"|"group"|"label", "id": str, "label": str, ...}``.
+    Choice rows include ``options`` ``(value, label)`` and the current ``value``.
+    Toggles include a bool ``value``. ``kickoff_time`` is label-only; the Change
+    control uses ``action_id`` ``kickoff_custom``.
+    """
+    return [
+        {
+            "kind": "toggle",
+            "id": "show_account_name",
+            "label": "Show account name in menu bar",
+            "value": bool(settings.show_account_name),
+        },
+        {
+            "kind": "choice",
+            "id": "title_pct",
+            "label": "Title percentage",
+            "options": [(mode, TITLE_PCT_LABELS[mode]) for mode in TITLE_PCT_CHOICES],
+            "value": settings.title_pct,
+        },
+        {
+            "kind": "toggle",
+            "id": "title_scoped",
+            "label": "Show model limits in title",
+            "value": bool(settings.title_scoped),
+        },
+        {
+            "kind": "choice",
+            "id": "refresh_interval",
+            "label": "Refresh interval",
+            "options": [(secs, REFRESH_LABELS[secs]) for secs in REFRESH_CHOICES],
+            "value": settings.refresh_interval,
+        },
+        {
+            "kind": "toggle",
+            "id": "auto_switch_enabled",
+            "label": "Auto-switch accounts",
+            "value": bool(settings.auto_switch_enabled),
+        },
+        {
+            "kind": "choice",
+            "id": "threshold",
+            "label": "Auto-switch threshold",
+            "options": [(pct, f"{pct}%") for pct in AUTO_THRESHOLD_CHOICES],
+            "value": int(threshold),
+        },
+        {
+            "kind": "choice",
+            "id": "strategy",
+            "label": "Auto-switch strategy",
+            "options": list(AUTO_STRATEGY_CHOICES),
+            "value": strategy,
+        },
+        {
+            "kind": "toggle",
+            "id": "kickoff_enabled",
+            "label": "Start 5-hour window",
+            "value": bool(settings.kickoff_enabled),
+        },
+        {
+            "kind": "label",
+            "id": "kickoff_time",
+            "label": format_kickoff_time(settings.kickoff_hour, settings.kickoff_minute),
+            "action_id": "kickoff_custom",
+        },
+        {
+            "kind": "group",
+            "id": "group_advanced",
+            "label": "Advanced",
+        },
+        {
+            "kind": "toggle",
+            "id": "show_icon",
+            "label": "Show asterisk in menu bar",
+            "value": bool(settings.show_icon),
+        },
+    ]
 
 
 STATUS_ICON = "✻"
@@ -1048,6 +1140,9 @@ def run(switcher) -> int:
             if self._dirty:
                 self._dirty = False
                 self.rebuild_menu()
+                # Never reload the popover from this 1s tick. An open Settings
+                # page would lose controls; a main-page reload mid-click
+                # swallows the account-row mouseUp.
             self._detect_active_change()
             self._drain_engine_events()
             self._drain_kickoff_results()
@@ -1174,8 +1269,42 @@ def run(switcher) -> int:
                 auto_enabled=lambda: self.settings.auto_switch_enabled,
                 snapshot=lambda: self.snapshot,
                 threshold=self._threshold,
+                on_setting=self._on_setting,
+                settings=lambda: self.settings,
+                strategy=self._strategy,
             )
             self._panel.attach(nsitem)
+
+        def _on_setting(self, row_id, value):
+            if row_id == "show_account_name":
+                self.on_toggle_name(None)
+            elif row_id == "title_pct":
+                self._make_title_pct(value)(None)
+            elif row_id == "title_scoped":
+                self.on_toggle_scoped(None)
+            elif row_id == "refresh_interval":
+                self._make_interval(int(value))(None)
+            elif row_id == "auto_switch_enabled":
+                self.on_toggle_autoswitch(None)
+            elif row_id == "threshold":
+                self._make_threshold(int(value))(None)
+            elif row_id == "strategy":
+                self._make_strategy(value)(None)
+            elif row_id == "kickoff_enabled":
+                self.on_toggle_kickoff(None)
+            elif row_id == "kickoff_custom":
+                self.on_kickoff_custom(None)
+            elif row_id == "show_icon":
+                self.on_toggle_icon(None)
+            else:
+                return
+            panel = self._panel
+            if (
+                panel is not None
+                and panel.is_shown()
+                and getattr(panel, "_page", None) == SETTINGS_PAGE
+            ):
+                panel.reload()
 
         def _popup_overflow(self, sender=None):
             menu = self.menu._menu
@@ -1230,8 +1359,8 @@ def run(switcher) -> int:
                             _purge(_sub)
                 _purge(self.menu._menu)
             self.menu.clear()
-            # Overflow menu (popover More…): account switching lives in the
-            # popover, so this list is management + settings only.
+            # Overflow menu (popover More…): account switching and settings live
+            # in the popover, so this list is management only.
             self.menu = [
                 rumps.MenuItem("Rotate to next", callback=self._switch(None)),
                 rumps.MenuItem("Switch to best", callback=self._switch("best")),
@@ -1243,7 +1372,6 @@ def run(switcher) -> int:
                 rumps.MenuItem("Refresh current credentials", callback=self.on_refresh_creds),
                 self._history_menu(rumps),
                 None,
-                self._settings_menu(rumps),
                 rumps.MenuItem("Refresh now", callback=self.on_refresh_now),
                 rumps.MenuItem("Quit", callback=self.on_quit),
             ]
@@ -1254,6 +1382,7 @@ def run(switcher) -> int:
                     pass
                 # Do not reload an open popover: replacing the view tree
                 # between mouseDown and mouseUp swallows the account-row click.
+                # Settings-page actions reload from _on_setting, not from here.
 
         def _add_menu(self, rumps):
             menu = rumps.MenuItem("Add account")
@@ -1302,87 +1431,6 @@ def run(switcher) -> int:
                 menu.add(rumps.MenuItem("No switches logged yet", callback=None))
             menu.add(None)
             menu.add(rumps.MenuItem("Open full log…", callback=self.on_open_log))
-            return menu
-
-        def _settings_menu(self, rumps):
-            menu = rumps.MenuItem("Settings")
-            name_item = rumps.MenuItem("Show account name in menu bar", callback=self.on_toggle_name)
-            name_item.state = 1 if self.settings.show_account_name else 0
-            menu.add(name_item)
-
-            title_pct = rumps.MenuItem("Title percentage")
-            tp_labels = {"off": "None", "5h": "Session (5h)",
-                         "7d": "Weekly (7d)", "both": "Both (5h · 7d)"}
-            for mode in TITLE_PCT_CHOICES:
-                ch = rumps.MenuItem(tp_labels[mode], callback=self._make_title_pct(mode))
-                ch.state = 1 if self.settings.title_pct == mode else 0
-                title_pct.add(ch)
-            menu.add(title_pct)
-
-            scoped_item = rumps.MenuItem(
-                "Show model limits in title", callback=self.on_toggle_scoped
-            )
-            scoped_item.state = 1 if self.settings.title_scoped else 0
-            menu.add(scoped_item)
-
-            interval = rumps.MenuItem("Refresh interval")
-            labels = {30: "30 seconds", 60: "60 seconds", 300: "5 minutes"}
-            for secs in REFRESH_CHOICES:
-                choice = rumps.MenuItem(labels[secs], callback=self._make_interval(secs))
-                choice.state = 1 if self.settings.refresh_interval == secs else 0
-                interval.add(choice)
-            menu.add(interval)
-
-            auto_item = rumps.MenuItem("Auto-switch accounts", callback=self.on_toggle_autoswitch)
-            auto_item.state = 1 if self.settings.auto_switch_enabled else 0
-            menu.add(auto_item)
-
-            threshold_menu = rumps.MenuItem("Auto-switch threshold")
-            current = self._threshold()
-            for pct in AUTO_THRESHOLD_CHOICES:
-                ch = rumps.MenuItem(f"{pct}%", callback=self._make_threshold(pct))
-                ch.state = 1 if current == pct else 0
-                threshold_menu.add(ch)
-            menu.add(threshold_menu)
-
-            strategy_menu = rumps.MenuItem("Auto-switch strategy")
-            current_strategy = self._strategy()
-            for value, label in AUTO_STRATEGY_CHOICES:
-                ch = rumps.MenuItem(label, callback=self._make_strategy(value))
-                ch.state = 1 if current_strategy == value else 0
-                strategy_menu.add(ch)
-            menu.add(strategy_menu)
-
-            kickoff = rumps.MenuItem("Start 5-hour window")
-            kickoff_on = rumps.MenuItem("Enabled", callback=self.on_toggle_kickoff)
-            kickoff_on.state = 1 if self.settings.kickoff_enabled else 0
-            kickoff.add(kickoff_on)
-            kickoff_time = rumps.MenuItem("Time")
-            for hour in range(24):
-                ch = rumps.MenuItem(
-                    format_kickoff_time(hour, 0),
-                    callback=self._make_kickoff_hour(hour),
-                )
-                ch.state = (
-                    1
-                    if self.settings.kickoff_hour == hour
-                    and self.settings.kickoff_minute == 0
-                    else 0
-                )
-                kickoff_time.add(ch)
-            kickoff_time.add(None)
-            kickoff_time.add(rumps.MenuItem("Custom…", callback=self.on_kickoff_custom))
-            kickoff.add(kickoff_time)
-            menu.add(kickoff)
-
-            advanced = rumps.MenuItem("Advanced")
-            icon_item = rumps.MenuItem(
-                "Show asterisk in menu bar", callback=self.on_toggle_icon
-            )
-            icon_item.state = 1 if self.settings.show_icon else 0
-            advanced.add(icon_item)
-            menu.add(advanced)
-
             return menu
 
         # ---- callbacks --------------------------------------------------------
@@ -1608,13 +1656,6 @@ def run(switcher) -> int:
         def on_toggle_kickoff(self, _sender):
             self.settings.kickoff_enabled = not self.settings.kickoff_enabled
             self._save_and_rebuild()
-
-        def _make_kickoff_hour(self, hour):
-            def cb(_sender):
-                self.settings.kickoff_hour = hour
-                self.settings.kickoff_minute = 0
-                self._save_and_rebuild()
-            return cb
 
         def on_kickoff_custom(self, _sender):
             import AppKit

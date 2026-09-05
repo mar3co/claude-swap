@@ -57,9 +57,13 @@ from Foundation import (
 )
 
 from claude_swap.menubar import (
+    MAIN_PAGE,
+    MenuBarSettings,
     POPOVER_AUTO_CLOSE_S,
+    SETTINGS_PAGE,
     panel_accounts,
     resolve_popover_theme,
+    settings_page_rows,
     status_item_length,
     trailing_header_frames,
 )
@@ -128,6 +132,14 @@ HEADER_H = 36.0
 HOLD_LINE_H = 16.0
 RUNNING_LINE_H = 16.0
 FOOTER_H = 38.0
+SETTINGS_TOGGLE_H = 30.0
+SETTINGS_GROUP_H = 22.0
+SETTINGS_LABEL_H = 30.0
+SETTINGS_CHOICE_LABEL_H = 16.0
+SETTINGS_BTN_H = 22.0
+SETTINGS_BTN_GAP_X = 6.0
+SETTINGS_BTN_GAP_Y = 4.0
+SETTINGS_ROW_GAP = 6.0
 CARD_GAP = 8.0
 CARD_PAD = 11.0
 CARD_RADIUS = 10.0
@@ -222,6 +234,15 @@ def _sev(pct: float, pal: dict):
     if pct >= WARN_PCT:
         return pal["warn"]
     return pal["ok"]
+
+
+def _measure_text(text, font) -> float:
+    return (
+        NSAttributedString.alloc()
+        .initWithString_attributes_(text or "", {NSFontAttributeName: font})
+        .size()
+        .width
+    )
 
 
 def _label(text, font, color, frame, align="left"):
@@ -465,15 +486,33 @@ class _PanelController(NSViewController):
 class MenuBarPanel:
     """Status-item click target: transient popover with account usage bars."""
 
-    def __init__(self, *, on_switch, on_rotate, on_best, on_toggle_auto, on_more, auto_enabled, snapshot, threshold):
+    def __init__(
+        self,
+        *,
+        on_switch,
+        on_rotate,
+        on_best,
+        on_toggle_auto,
+        on_more,
+        auto_enabled,
+        snapshot,
+        threshold,
+        on_setting=None,
+        settings=None,
+        strategy=None,
+    ):
         self._on_switch = on_switch
         self._on_rotate = on_rotate
         self._on_best = on_best
         self._on_toggle_auto = on_toggle_auto
         self._on_more = on_more
+        self._on_setting = on_setting
         self._auto_enabled = auto_enabled
         self._snapshot = snapshot
         self._threshold = threshold
+        self._settings = settings
+        self._strategy = strategy
+        self._page = MAIN_PAGE
         self._item = None
         self._popover = None
         self._controller = None
@@ -541,6 +580,7 @@ class MenuBarPanel:
         return bool(self._popover is not None and self._popover.isShown())
 
     def close(self) -> None:
+        self._page = MAIN_PAGE
         self._clear_dismiss_watchers()
         if self._popover is not None and self._popover.isShown():
             self._popover.performClose_(None)
@@ -706,8 +746,65 @@ class MenuBarPanel:
         self._tramps.append(t)
         return t
 
+    def _show_settings(self, _sender=None):
+        self._page = SETTINGS_PAGE
+        self.reload()
+
+    def _show_main(self, _sender=None):
+        self._page = MAIN_PAGE
+        self.reload()
+
+    def _emit_setting(self, row_id, value):
+        cb = self._on_setting
+        if cb is not None:
+            cb(row_id, value)
+
+    def _change_kickoff(self, _sender=None):
+        # rumps.Window is outside the popover; hold dismiss like More does.
+        self._menu_open = True
+        self._cancel_close_timer()
+        try:
+            self._emit_setting("kickoff_custom", None)
+        finally:
+            self._menu_open = False
+            if self.is_shown():
+                if self._pointer_over_ui():
+                    self._cancel_close_timer()
+                else:
+                    self._reset_close_timer()
+
+    def _add_button(self, root, title, frame, cb, font):
+        btn = NSButton.alloc().initWithFrame_(frame)
+        btn.setTitle_(title)
+        btn.setBezelStyle_(1)  # rounded
+        btn.setControlSize_(1)  # small
+        btn.setFont_(font)
+        btn.setTarget_(self._tramp(cb))
+        btn.setAction_("act:")
+        root.addSubview_(btn)
+        return btn
+
+    def _alloc_switch(self, on: bool, callback):
+        if NSSwitch is not None:
+            ctl = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 54, 24))
+            try:
+                ctl.setControlSize_(NSControlSizeSmall)
+            except Exception:
+                pass
+        else:
+            ctl = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 16))
+            ctl.setButtonType_(NSButtonTypeSwitch)
+            ctl.setTitle_("")
+        ctl.sizeToFit()
+        ctl.setState_(1 if on else 0)
+        ctl.setTarget_(self._tramp(callback))
+        ctl.setAction_("act:")
+        return ctl
+
     def _build(self):
         self._tramps = []
+        if self._page == SETTINGS_PAGE:
+            return self._build_settings()
         snap = self._snapshot()
         cards = panel_accounts(snap)
         hold_line = snap.get("hold_line") or ""
@@ -749,20 +846,7 @@ class MenuBarPanel:
         )
         auto_label.sizeToFit()
         ls = auto_label.frame().size
-        if NSSwitch is not None:
-            auto = NSSwitch.alloc().initWithFrame_(NSMakeRect(0, 0, 54, 24))
-            try:
-                auto.setControlSize_(NSControlSizeSmall)
-            except Exception:
-                pass
-        else:
-            auto = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 40, 16))
-            auto.setButtonType_(NSButtonTypeSwitch)
-            auto.setTitle_("")
-        auto.sizeToFit()
-        auto.setState_(1 if self._auto_enabled() else 0)
-        auto.setTarget_(self._tramp(self._on_toggle_auto))
-        auto.setAction_("act:")
+        auto = self._alloc_switch(bool(self._auto_enabled()), self._on_toggle_auto)
         cs = auto.frame().size
         lab_f, ctl_f = trailing_header_frames(
             PANEL_WIDTH, PAD, (ls.width, ls.height), (cs.width, cs.height)
@@ -916,18 +1000,174 @@ class MenuBarPanel:
         hairline.setFrame_(NSMakeRect(PAD, fy, inner_w, 1))
         root.addSubview_(hairline)
 
-        def _footer_btn(title, x, w, cb):
-            btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, fy + 8, w, 22))
-            btn.setTitle_(title)
-            btn.setBezelStyle_(1)  # rounded
-            btn.setControlSize_(1)  # small
-            btn.setFont_(font_small)
-            btn.setTarget_(self._tramp(cb))
-            btn.setAction_("act:")
-            root.addSubview_(btn)
+        self._add_button(
+            root, "Rotate", NSMakeRect(PAD, fy + 8, 62, 22), self._on_rotate, font_small
+        )
+        self._add_button(
+            root, "Best", NSMakeRect(PAD + 70, fy + 8, 54, 22), self._on_best, font_small
+        )
+        self._add_button(
+            root,
+            "Settings",
+            NSMakeRect(PAD + 134, fy + 8, 72, 22),
+            self._show_settings,
+            font_small,
+        )
+        self._add_button(
+            root,
+            "More",
+            NSMakeRect(PANEL_WIDTH - PAD - 62, fy + 8, 62, 22),
+            self._more,
+            font_small,
+        )
 
-        _footer_btn("Rotate", PAD, 72, self._on_rotate)
-        _footer_btn("Best", PAD + 80, 64, self._on_best)
-        _footer_btn("More", PANEL_WIDTH - PAD - 72, 72, self._more)
+        return root
+
+    def _build_settings(self):
+        pal = _colors()
+        font_title = NSFont.systemFontOfSize_weight_(13, NSFontWeightSemibold)
+        font_body = NSFont.systemFontOfSize_weight_(12, NSFontWeightRegular)
+        font_small = NSFont.systemFontOfSize_weight_(11, NSFontWeightRegular)
+        inner_w = PANEL_WIDTH - PAD * 2
+        settings = self._settings() if callable(self._settings) else MenuBarSettings()
+        strategy = self._strategy() if callable(self._strategy) else "best"
+        try:
+            threshold = float(self._threshold())
+        except Exception:
+            threshold = 0.0
+        rows = settings_page_rows(settings, strategy=strategy, threshold=threshold)
+
+        def _choice_lines(row):
+            lines = []
+            line = []
+            x = 0.0
+            current = row.get("value")
+            for value, lab in row.get("options") or []:
+                title = f"✓ {lab}" if value == current else lab
+                w = min(inner_w, max(52.0, _measure_text(title, font_small) + 16.0))
+                if line and x + w > inner_w:
+                    lines.append(line)
+                    line = []
+                    x = 0.0
+                line.append((title, value, w))
+                x += w + SETTINGS_BTN_GAP_X
+            if line:
+                lines.append(line)
+            return lines
+
+        def _row_height(row) -> float:
+            kind = row.get("kind")
+            if kind == "group":
+                return SETTINGS_GROUP_H
+            if kind == "toggle":
+                return SETTINGS_TOGGLE_H
+            if kind == "label":
+                return SETTINGS_LABEL_H
+            if kind == "choice":
+                n = max(len(_choice_lines(row)), 1)
+                return SETTINGS_CHOICE_LABEL_H + n * (SETTINGS_BTN_H + SETTINGS_BTN_GAP_Y)
+            return SETTINGS_TOGGLE_H
+
+        body_h = 0.0
+        for row in rows:
+            body_h += _row_height(row) + SETTINGS_ROW_GAP
+        height = PAD + HEADER_H + body_h + PAD
+        root = _RootView.alloc().initWithHover_(self._on_hover)
+        root.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH, height))
+        root.setMaterial_(NSVisualEffectMaterialMenu)
+        root.setBlendingMode_(NSVisualEffectBlendingModeBehindWindow)
+        root.setState_(NSVisualEffectStateActive)
+
+        self._add_button(
+            root, "Back", NSMakeRect(PAD, PAD, 64, 22), self._show_main, font_small
+        )
+        root.addSubview_(
+            _label(
+                "Settings",
+                font_title,
+                pal["fg"],
+                NSMakeRect(PAD + 72, PAD, inner_w - 72, 20),
+            )
+        )
+        hairline = _FillView.alloc().initWithColor_(pal["hairline"])
+        hairline.setFrame_(NSMakeRect(PAD, PAD + HEADER_H - 4, inner_w, 1))
+        root.addSubview_(hairline)
+
+        y = PAD + HEADER_H
+        for row in rows:
+            kind = row.get("kind")
+            h = _row_height(row)
+            if kind == "group":
+                root.addSubview_(
+                    _label(
+                        row.get("label") or "",
+                        font_small,
+                        pal["muted"],
+                        NSMakeRect(PAD, y + 4, inner_w, SETTINGS_GROUP_H - 4),
+                    )
+                )
+            elif kind == "toggle":
+                root.addSubview_(
+                    _label(
+                        row.get("label") or "",
+                        font_body,
+                        pal["fg"],
+                        NSMakeRect(PAD, y + 5, inner_w - 70, 20),
+                    )
+                )
+                sw = self._alloc_switch(
+                    bool(row.get("value")),
+                    lambda _s, rid=row["id"]: self._emit_setting(rid, None),
+                )
+                cs = sw.frame().size
+                sw.setFrame_(
+                    NSMakeRect(
+                        PANEL_WIDTH - PAD - cs.width,
+                        y + (h - cs.height) / 2,
+                        cs.width,
+                        cs.height,
+                    )
+                )
+                root.addSubview_(sw)
+            elif kind == "label":
+                root.addSubview_(
+                    _label(
+                        row.get("label") or "",
+                        font_body,
+                        pal["fg"],
+                        NSMakeRect(PAD, y + 5, inner_w - 88, 20),
+                    )
+                )
+                self._add_button(
+                    root,
+                    "Change…",
+                    NSMakeRect(PANEL_WIDTH - PAD - 80, y + (h - 22) / 2, 80, 22),
+                    self._change_kickoff,
+                    font_small,
+                )
+            elif kind == "choice":
+                root.addSubview_(
+                    _label(
+                        row.get("label") or "",
+                        font_small,
+                        pal["muted"],
+                        NSMakeRect(PAD, y, inner_w, SETTINGS_CHOICE_LABEL_H),
+                    )
+                )
+                by = y + SETTINGS_CHOICE_LABEL_H
+                rid = row["id"]
+                for line in _choice_lines(row):
+                    x = PAD
+                    for title, value, w in line:
+                        self._add_button(
+                            root,
+                            title,
+                            NSMakeRect(x, by, w, SETTINGS_BTN_H),
+                            lambda _s, i=rid, v=value: self._emit_setting(i, v),
+                            font_small,
+                        )
+                        x += w + SETTINGS_BTN_GAP_X
+                    by += SETTINGS_BTN_H + SETTINGS_BTN_GAP_Y
+            y += h + SETTINGS_ROW_GAP
 
         return root

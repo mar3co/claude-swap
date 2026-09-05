@@ -14,7 +14,7 @@ After `rumps` attaches the status item, a short timer steals the click for the p
 
 `menubar_panel.py` is AppKit-only: popover, bars, Dark Mode colors, `fit_status_item`.
 
-The header pins **cswap** on the left and an **Auto-switch** label plus `NSSwitch` on the trailing edge (`trailing_header_frames`). Behavior is `NSPopoverBehaviorApplicationDefined` so More’s overflow menu does not dismiss the popover (Transient would). Click-outside is a global left-click monitor (skip the popover, the status extra, and while More is open). Leave-delay `POPOVER_AUTO_CLOSE_S` (12s) starts only after the pointer exits the popover, not on open; the status extra counts as still inside. Rotate / Best / More do not close the popover.
+The header pins **cswap** on the left and an **Auto-switch** label plus `NSSwitch` on the trailing edge (`trailing_header_frames`). Behavior is `NSPopoverBehaviorApplicationDefined` so More’s overflow menu does not dismiss the popover (Transient would). Click-outside is a global left-click monitor (skip the popover, the status extra, and while More is open). Leave-delay `POPOVER_AUTO_CLOSE_S` (12s) starts only after the pointer exits the popover, not on open; the status extra counts as still inside. Rotate / Best / Settings / More do not close the popover. Settings is an in-popover page (Back returns to the cards); More is overflow only (Add / Disable / Remove / Refresh creds / History / Refresh now / Quit). The 1s usage tick does not reload the popover while Settings is open.
 
 Card title is the alias or org tag (`personal` when the org name is empty); email is the subtitle. Account-row clicks call `switch_to(..., json_output=True)`. A real switch toasts, stamps `autoswitch_state.json` `lastSwitchAt` (engine cooldown, default 5 minutes), and closes. Already-active closes with no toast. A `ClaudeSwitchError` leaves the popover open and brings the extra forward before `rumps.alert`. Cards implement `acceptsFirstMouse_` so the first click on a non-key popover switches. `rebuild_menu` does not reload an open popover (that replaced the view tree mid-click). `_detect_active_change` compares slot number, not email, so two orgs that share an address still refresh.
 
@@ -34,11 +34,11 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 `MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `cswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
-More → Settings strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
+Settings-page strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
 ## Kickoff
 
-`kickoff.py` is due/eligibility + `claude -p ok`. The extra owns the clock (`kickoff_hour` / `minute`, `kickoff_last_date`). Persist `kickoff_last_date` only after a successful pass. Skip API-key accounts and windows whose `resets_at` is still in the future.
+`kickoff.py` is due/eligibility + `claude -p ok`. The extra owns the clock (`kickoff_hour` / `minute`, `kickoff_last_date`). Toggle and time live on the Settings page; **Change…** still uses `rumps.Window`. Persist `kickoff_last_date` only after a successful pass. Skip API-key accounts and windows whose `resets_at` is still in the future.
 
 ## Notifications
 

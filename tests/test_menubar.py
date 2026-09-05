@@ -129,6 +129,73 @@ def test_auto_strategy_choices_match_core_settings():
     assert values == spec.choices
 
 
+def test_settings_page_constants():
+    assert menubar.SETTINGS_PAGE == "settings"
+    assert menubar.MAIN_PAGE == "main"
+
+
+def test_settings_page_rows_include_required_ids_and_values():
+    from claude_swap.kickoff import format_kickoff_time
+
+    s = menubar.MenuBarSettings(
+        show_account_name=False,
+        title_pct="5h",
+        title_scoped=True,
+        refresh_interval=30,
+        auto_switch_enabled=True,
+        show_icon=True,
+        kickoff_enabled=True,
+        kickoff_hour=19,
+        kickoff_minute=30,
+    )
+    rows = menubar.settings_page_rows(s, strategy="soonest-5h", threshold=95)
+    by_id = {row["id"]: row for row in rows}
+    required = (
+        "show_account_name",
+        "title_pct",
+        "title_scoped",
+        "refresh_interval",
+        "auto_switch_enabled",
+        "threshold",
+        "strategy",
+        "kickoff_enabled",
+        "kickoff_time",
+        "show_icon",
+    )
+    for rid in required:
+        assert rid in by_id
+
+    assert by_id["show_account_name"]["kind"] == "toggle"
+    assert by_id["show_account_name"]["value"] is False
+    assert by_id["title_scoped"]["kind"] == "toggle"
+    assert by_id["title_scoped"]["value"] is True
+    assert by_id["auto_switch_enabled"]["value"] is True
+    assert by_id["kickoff_enabled"]["value"] is True
+    assert by_id["show_icon"]["value"] is True
+
+    assert by_id["title_pct"]["kind"] == "choice"
+    assert by_id["title_pct"]["value"] == "5h"
+    assert by_id["title_pct"]["options"] == [
+        (mode, menubar.TITLE_PCT_LABELS[mode]) for mode in menubar.TITLE_PCT_CHOICES
+    ]
+    assert by_id["refresh_interval"]["kind"] == "choice"
+    assert by_id["refresh_interval"]["value"] == 30
+    assert by_id["refresh_interval"]["options"] == [
+        (secs, menubar.REFRESH_LABELS[secs]) for secs in menubar.REFRESH_CHOICES
+    ]
+    assert by_id["threshold"]["kind"] == "choice"
+    assert by_id["threshold"]["value"] == 95
+    assert by_id["threshold"]["options"] == [
+        (pct, f"{pct}%") for pct in menubar.AUTO_THRESHOLD_CHOICES
+    ]
+    assert by_id["strategy"]["kind"] == "choice"
+    assert by_id["strategy"]["value"] == "soonest-5h"
+    assert by_id["strategy"]["options"] == list(menubar.AUTO_STRATEGY_CHOICES)
+    assert by_id["kickoff_time"]["label"] == format_kickoff_time(19, 30)
+    assert by_id["kickoff_time"]["id"] == "kickoff_time"
+    assert by_id["kickoff_time"].get("action_id") == "kickoff_custom"
+
+
 _USAGE = {
     "five_hour": {"pct": 42.0},
     "seven_day": {"pct": 18.0},
@@ -595,11 +662,13 @@ def test_format_title_icon_only_when_name_and_pct_off():
 
 
 def test_show_icon_control_is_nested_under_advanced_not_settings_root():
-    text = Path(menubar.__file__).read_text(encoding="utf-8")
-    assert 'rumps.MenuItem("Advanced")' in text
-    assert "Show asterisk in menu bar" in text
-    assert "advanced.add(icon_item)" in text
-    assert "menu.add(icon_item)" not in text
+    rows = menubar.settings_page_rows(
+        menubar.MenuBarSettings(), strategy="best", threshold=90
+    )
+    ids = [row["id"] for row in rows]
+    assert ids.index("group_advanced") < ids.index("show_icon")
+    assert ids[0] != "show_icon"
+    assert any(row["id"] == "show_icon" and "asterisk" in row["label"] for row in rows)
 
 
 def test_trailing_header_frames_hug_the_right_edge():
@@ -642,6 +711,59 @@ def test_rebuild_menu_does_not_reload_an_open_popover():
     text = Path(menubar.__file__).read_text(encoding="utf-8")
     rebuild = text[text.index("def rebuild_menu") : text.index("def _add_menu")]
     assert "self._panel.reload()" not in rebuild
+    sync = text[text.index("def on_sync_tick") : text.index("def _detect_active_change")]
+    assert "self._panel.reload()" not in sync
+    assert "_settings_menu" not in rebuild
+    assert "self._add_menu(rumps)" in rebuild
+    assert "self._history_menu(rumps)" in rebuild
+    assert 'rumps.MenuItem("Quit"' in rebuild
+
+
+def test_on_setting_reloads_settings_page_not_rebuild_menu():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    body = text[text.index("def _on_setting") : text.index("def _popup_overflow")]
+    for name in (
+        "on_toggle_name",
+        "_make_title_pct",
+        "on_toggle_scoped",
+        "_make_interval",
+        "on_toggle_autoswitch",
+        "_make_threshold",
+        "_make_strategy",
+        "on_toggle_kickoff",
+        "on_kickoff_custom",
+        "on_toggle_icon",
+    ):
+        assert name in body
+    assert "SETTINGS_PAGE" in body
+    assert "reload()" in body
+    rebuild = text[text.index("def rebuild_menu") : text.index("def _add_menu")]
+    assert "self._panel.reload()" not in rebuild
+
+
+def test_panel_settings_page_does_not_set_menu_open():
+    text = (Path(menubar.__file__).resolve().parent / "menubar_panel.py").read_text(
+        encoding="utf-8"
+    )
+    assert "settings_page_rows" in text
+    assert "SETTINGS_PAGE" in text
+    assert "MAIN_PAGE" in text
+    assert '"Settings"' in text
+    assert "Change…" in text
+    show = text[text.index("def _show_settings") : text.index("def _show_main")]
+    assert "SETTINGS_PAGE" in show
+    assert "self.reload()" in show
+    assert "_menu_open" not in show
+    back = text[text.index("def _show_main") : text.index("def _emit_setting")]
+    assert "MAIN_PAGE" in back
+    assert "self.reload()" in back
+    assert "_menu_open" not in back
+    assert '"Back"' in text
+    attach = Path(menubar.__file__).read_text(encoding="utf-8")
+    ctor = attach[attach.index("self._panel = MenuBarPanel") : attach.index("self._panel.attach")]
+    assert "on_setting=" in ctor
+    assert "settings=" in ctor
+    assert "strategy=" in ctor
 
 
 def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
@@ -700,7 +822,12 @@ def test_kickoff_is_wired_from_menubar_sync_tick():
     text = Path(menubar.__file__).read_text(encoding="utf-8")
     assert "self._maybe_kickoff()" in text
     assert "self._drain_kickoff_results()" in text
-    assert 'rumps.MenuItem("Start 5-hour window")' in text
+    assert any(
+        row["id"] == "kickoff_enabled" and "Start 5-hour window" in row["label"]
+        for row in menubar.settings_page_rows(
+            menubar.MenuBarSettings(), strategy="best", threshold=90
+        )
+    )
     assert "kickoff_last_date" in text
     assert "five_hour_pct" not in text
     assert "usage=last_good if isinstance(last_good, dict) else None" in text
