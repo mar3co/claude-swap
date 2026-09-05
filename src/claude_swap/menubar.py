@@ -32,12 +32,13 @@ from claude_swap import pace
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
 from claude_swap.kickoff import (
     KICKOFF_RETRY_BACKOFF_S,
-    format_kickoff_time,
     invoke_kickoff,
     kickoff_account_eligible,
     kickoff_backoff_active,
     kickoff_is_due,
     kickoff_pass_complete,
+    kickoff_time_options,
+    kickoff_time_value,
     kickoff_uses_default_login,
     parse_kickoff_time,
 )
@@ -161,10 +162,9 @@ def settings_page_rows(
 ) -> list[dict]:
     """Rows for the in-popover settings page. No AppKit.
 
-    Each dict: ``{"kind": "toggle"|"choice"|"group"|"label", "id": str, "label": str, ...}``.
-    Choice rows include ``options`` ``(value, label)`` and the current ``value``.
-    Toggles include a bool ``value``. ``kickoff_time`` is label-only; the Change
-    control uses ``action_id`` ``kickoff_custom``.
+    Each dict: ``{"kind": "toggle"|"choice"|"group"|"popup", "id": str, "label": str, ...}``.
+    Choice and popup rows include ``options`` ``(value, label)`` and the current
+    ``value``. Toggles include a bool ``value``.
     """
     return [
         {
@@ -220,10 +220,15 @@ def settings_page_rows(
             "value": bool(settings.kickoff_enabled),
         },
         {
-            "kind": "label",
+            "kind": "popup",
             "id": "kickoff_time",
-            "label": format_kickoff_time(settings.kickoff_hour, settings.kickoff_minute),
-            "action_id": "kickoff_custom",
+            "label": "Time",
+            "options": kickoff_time_options(
+                settings.kickoff_hour, settings.kickoff_minute
+            ),
+            "value": kickoff_time_value(
+                settings.kickoff_hour, settings.kickoff_minute
+            ),
         },
         {
             "kind": "group",
@@ -1301,8 +1306,11 @@ def run(switcher) -> int:
                 self._make_strategy(value)(None)
             elif row_id == "kickoff_enabled":
                 self.on_toggle_kickoff(None)
-            elif row_id == "kickoff_custom":
-                self.on_kickoff_custom(None)
+            elif row_id == "kickoff_time":
+                self.on_kickoff_time(value)
+                # The popup already shows the pick; do not rebuild the page
+                # under the open menu.
+                return
             elif row_id == "show_icon":
                 self.on_toggle_icon(None)
             else:
@@ -1674,30 +1682,18 @@ def run(switcher) -> int:
             self.settings.kickoff_enabled = not self.settings.kickoff_enabled
             self._save_and_rebuild()
 
-        def on_kickoff_custom(self, _sender):
-            import AppKit
-            AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-            win = rumps.Window(
-                title="Start 5-hour window",
-                message="Local time (for example 7:00 or 7:30 AM):",
-                ok="Set",
-                cancel="Cancel",
-                dimensions=(320, 24),
-                default_text=format_kickoff_time(
-                    self.settings.kickoff_hour, self.settings.kickoff_minute
-                ),
-            )
-            resp = win.run()
-            if resp.clicked != 1:
-                return
-            parsed = parse_kickoff_time(resp.text)
+        def on_kickoff_time(self, value):
+            parsed = parse_kickoff_time("" if value is None else str(value))
             if parsed is None:
-                rumps.alert(
-                    title="claude-swap",
-                    message="Use a time like 7:00 or 7:30 AM.",
-                )
                 return
-            self.settings.kickoff_hour, self.settings.kickoff_minute = parsed
+            hour, minute = parsed
+            if (
+                hour == self.settings.kickoff_hour
+                and minute == self.settings.kickoff_minute
+            ):
+                return
+            self.settings.kickoff_hour = hour
+            self.settings.kickoff_minute = minute
             self._save_and_rebuild()
 
         def _maybe_kickoff(self):

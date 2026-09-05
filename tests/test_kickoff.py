@@ -20,6 +20,8 @@ from claude_swap.kickoff import (
     kickoff_backoff_active,
     kickoff_is_due,
     kickoff_pass_complete,
+    kickoff_time_options,
+    kickoff_time_value,
     kickoff_uses_default_login,
     parse_kickoff_time,
 )
@@ -233,3 +235,22 @@ def test_parse_and_format_kickoff_time():
     assert parse_kickoff_time("nope") is None
     assert format_kickoff_time(7, 0) == "7:00 AM"
     assert format_kickoff_time(19, 30) == "7:30 PM"
+
+
+def test_kickoff_time_options_are_hourly_and_keep_off_hour_current():
+    hourly = kickoff_time_options(7, 0)
+    assert len(hourly) == 24
+    assert hourly[0] == ("0:00", "12:00 AM")
+    assert hourly[7] == ("7:00", "7:00 AM")
+    assert hourly[19] == ("19:00", "7:00 PM")
+    assert hourly[-1] == ("23:00", "11:00 PM")
+    assert kickoff_time_value(7, 0) == "7:00"
+
+    odd = kickoff_time_options(19, 30)
+    assert len(odd) == 25
+    values = [value for value, _lab in odd]
+    assert "19:00" in values
+    assert "19:30" in values
+    assert "20:00" in values
+    assert values.index("19:00") < values.index("19:30") < values.index("20:00")
+    assert ("19:30", "7:30 PM") in odd

@@ -28,6 +28,7 @@ from AppKit import (
     NSGraphicsContext,
     NSLineBreakByTruncatingTail,
     NSNoImage,
+    NSPopUpButton,
     NSPopover,
     NSPopoverBehaviorApplicationDefined,
     NSRectEdgeMinY,
@@ -134,12 +135,13 @@ RUNNING_LINE_H = 16.0
 FOOTER_H = 38.0
 SETTINGS_TOGGLE_H = 30.0
 SETTINGS_GROUP_H = 22.0
-SETTINGS_LABEL_H = 30.0
 SETTINGS_CHOICE_LABEL_H = 16.0
 SETTINGS_BTN_H = 22.0
 SETTINGS_BTN_GAP_X = 6.0
 SETTINGS_BTN_GAP_Y = 4.0
 SETTINGS_ROW_GAP = 6.0
+SETTINGS_POPUP_W = 118.0
+SETTINGS_POPUP_H = 24.0
 CARD_GAP = 8.0
 CARD_PAD = 11.0
 CARD_RADIUS = 10.0
@@ -261,6 +263,27 @@ def _label(text, font, color, frame, align="left"):
     elif align == "center":
         field.setAlignment_(1)
     return field
+
+
+class _PopupButton(NSPopUpButton):
+    """Time popup whose menu keeps the popover from auto-closing."""
+
+    def initWithPanel_frame_(self, panel, frame):
+        self = objc.super(_PopupButton, self).initWithFrame_pullsDown_(frame, False)
+        if self is None:
+            return None
+        self._panel = panel
+        return self
+
+    def mouseDown_(self, event):
+        panel = getattr(self, "_panel", None)
+        if panel is not None:
+            panel._hold_overflow(True)
+        try:
+            objc.super(_PopupButton, self).mouseDown_(event)
+        finally:
+            if panel is not None:
+                panel._hold_overflow(False)
 
 
 class _Trampoline(NSObject):
@@ -728,18 +751,24 @@ class MenuBarPanel:
         if self._menu_open or self._pointer_over_ui():
             self._cancel_close_timer()
 
+    def _hold_overflow(self, holding: bool) -> None:
+        """Pause leave-delay close while an NSMenu (More, time popup) is up."""
+        self._menu_open = bool(holding)
+        if holding:
+            self._cancel_close_timer()
+            return
+        if self.is_shown():
+            if self._pointer_over_ui():
+                self._cancel_close_timer()
+            else:
+                self._reset_close_timer()
+
     def _more(self, sender):
-        self._menu_open = True
-        self._cancel_close_timer()
+        self._hold_overflow(True)
         try:
             self._on_more(sender)
         finally:
-            self._menu_open = False
-            if self.is_shown():
-                if self._pointer_over_ui():
-                    self._cancel_close_timer()
-                else:
-                    self._reset_close_timer()
+            self._hold_overflow(False)
 
     def _tramp(self, fn) -> _Trampoline:
         t = _Trampoline.alloc().initWithCallback_(fn)
@@ -759,19 +788,32 @@ class MenuBarPanel:
         if cb is not None:
             cb(row_id, value)
 
-    def _change_kickoff(self, _sender=None):
-        # rumps.Window is outside the popover; hold dismiss like More does.
-        self._menu_open = True
-        self._cancel_close_timer()
-        try:
-            self._emit_setting("kickoff_custom", None)
-        finally:
-            self._menu_open = False
-            if self.is_shown():
-                if self._pointer_over_ui():
-                    self._cancel_close_timer()
-                else:
-                    self._reset_close_timer()
+    def _add_popup(self, root, options, current, frame, row_id, font):
+        btn = _PopupButton.alloc().initWithPanel_frame_(self, frame)
+        btn.setControlSize_(NSControlSizeSmall)
+        btn.setFont_(font)
+        btn.removeAllItems()
+        selected = 0
+        for i, (value, lab) in enumerate(options or []):
+            btn.addItemWithTitle_(lab)
+            item = btn.lastItem()
+            if item is not None:
+                item.setRepresentedObject_(value)
+            if value == current:
+                selected = i
+        if btn.numberOfItems() > 0:
+            btn.selectItemAtIndex_(selected)
+        btn.setTarget_(
+            self._tramp(lambda sender, rid=row_id: self._on_popup(rid, sender))
+        )
+        btn.setAction_("act:")
+        root.addSubview_(btn)
+        return btn
+
+    def _on_popup(self, row_id, sender):
+        item = sender.selectedItem() if sender is not None else None
+        value = item.representedObject() if item is not None else None
+        self._emit_setting(row_id, value)
 
     def _add_button(self, root, title, frame, cb, font):
         btn = NSButton.alloc().initWithFrame_(frame)
@@ -1061,8 +1103,8 @@ class MenuBarPanel:
                 return SETTINGS_GROUP_H
             if kind == "toggle":
                 return SETTINGS_TOGGLE_H
-            if kind == "label":
-                return SETTINGS_LABEL_H
+            if kind == "popup":
+                return SETTINGS_TOGGLE_H
             if kind == "choice":
                 n = max(len(_choice_lines(row)), 1)
                 return SETTINGS_CHOICE_LABEL_H + n * (SETTINGS_BTN_H + SETTINGS_BTN_GAP_Y)
@@ -1129,20 +1171,26 @@ class MenuBarPanel:
                     )
                 )
                 root.addSubview_(sw)
-            elif kind == "label":
+            elif kind == "popup":
                 root.addSubview_(
                     _label(
                         row.get("label") or "",
                         font_body,
                         pal["fg"],
-                        NSMakeRect(PAD, y + 5, inner_w - 88, 20),
+                        NSMakeRect(PAD, y + 5, inner_w - SETTINGS_POPUP_W - 8, 20),
                     )
                 )
-                self._add_button(
+                self._add_popup(
                     root,
-                    "Change…",
-                    NSMakeRect(PANEL_WIDTH - PAD - 80, y + (h - 22) / 2, 80, 22),
-                    self._change_kickoff,
+                    row.get("options") or [],
+                    row.get("value"),
+                    NSMakeRect(
+                        PANEL_WIDTH - PAD - SETTINGS_POPUP_W,
+                        y + (h - SETTINGS_POPUP_H) / 2,
+                        SETTINGS_POPUP_W,
+                        SETTINGS_POPUP_H,
+                    ),
+                    row["id"],
                     font_small,
                 )
             elif kind == "choice":

@@ -135,7 +135,7 @@ def test_settings_page_constants():
 
 
 def test_settings_page_rows_include_required_ids_and_values():
-    from claude_swap.kickoff import format_kickoff_time
+    from claude_swap.kickoff import kickoff_time_options, kickoff_time_value
 
     s = menubar.MenuBarSettings(
         show_account_name=False,
@@ -191,9 +191,11 @@ def test_settings_page_rows_include_required_ids_and_values():
     assert by_id["strategy"]["kind"] == "choice"
     assert by_id["strategy"]["value"] == "soonest-5h"
     assert by_id["strategy"]["options"] == list(menubar.AUTO_STRATEGY_CHOICES)
-    assert by_id["kickoff_time"]["label"] == format_kickoff_time(19, 30)
-    assert by_id["kickoff_time"]["id"] == "kickoff_time"
-    assert by_id["kickoff_time"].get("action_id") == "kickoff_custom"
+    assert by_id["kickoff_time"]["kind"] == "popup"
+    assert by_id["kickoff_time"]["label"] == "Time"
+    assert by_id["kickoff_time"]["value"] == kickoff_time_value(19, 30)
+    assert by_id["kickoff_time"]["options"] == kickoff_time_options(19, 30)
+    assert "action_id" not in by_id["kickoff_time"]
 
 
 _USAGE = {
@@ -731,7 +733,7 @@ def test_on_setting_reloads_settings_page_not_rebuild_menu():
         "_make_threshold",
         "_make_strategy",
         "on_toggle_kickoff",
-        "on_kickoff_custom",
+        "on_kickoff_time",
         "on_toggle_icon",
     ):
         assert name in body
@@ -739,6 +741,22 @@ def test_on_setting_reloads_settings_page_not_rebuild_menu():
     assert "reload()" in body
     rebuild = text[text.index("def rebuild_menu") : text.index("def _add_menu")]
     assert "self._panel.reload()" not in rebuild
+
+
+def test_kickoff_popup_holds_overflow_like_more():
+    panel = (Path(menubar.__file__).resolve().parent / "menubar_panel.py").read_text(
+        encoding="utf-8"
+    )
+    popup = panel[panel.index("class _PopupButton") : panel.index("class _Trampoline")]
+    assert "def mouseDown_" in popup
+    assert "_hold_overflow(True)" in popup
+    assert "_hold_overflow(False)" in popup
+    more = panel[panel.index("def _more") : panel.index("def _tramp")]
+    assert "_hold_overflow(True)" in more
+    setting = Path(menubar.__file__).read_text(encoding="utf-8")
+    body = setting[setting.index("def _on_setting") : setting.index("def _popup_overflow")]
+    kickoff = body[body.index("kickoff_time") :]
+    assert "return" in kickoff[: kickoff.index("show_icon")]
 
 
 def test_panel_settings_page_does_not_set_menu_open():
@@ -749,7 +767,9 @@ def test_panel_settings_page_does_not_set_menu_open():
     assert "SETTINGS_PAGE" in text
     assert "MAIN_PAGE" in text
     assert '"Settings"' in text
-    assert "Change…" in text
+    assert "Change…" not in text
+    assert "NSPopUpButton" in text
+    assert "class _PopupButton" in text
     show = text[text.index("def _show_settings") : text.index("def _show_main")]
     assert "SETTINGS_PAGE" in show
     assert "self.reload()" in show

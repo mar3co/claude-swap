@@ -38,7 +38,7 @@ Settings-page strategies: **Most quota left** (`best`), **Soonest weekly reset**
 
 ## Kickoff
 
-`kickoff.py` is due/eligibility + `claude -p ok`. The extra owns the clock (`kickoff_hour` / `minute`, `kickoff_last_date`). Toggle and time live on the Settings page; **Change…** still uses `rumps.Window`. Persist `kickoff_last_date` only after a successful pass. Skip API-key accounts and windows whose `resets_at` is still in the future.
+`kickoff.py` is due/eligibility + `claude -p ok`. The extra owns the clock (`kickoff_hour` / `minute`, `kickoff_last_date`). Toggle and time live on the Settings page; time is an hourly `NSPopUpButton` (`kickoff_time_options`). Persist `kickoff_last_date` only after a successful pass. Skip API-key accounts and windows whose `resets_at` is still in the future.
 
 ## Notifications
 

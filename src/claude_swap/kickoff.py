@@ -132,6 +132,29 @@ def format_kickoff_time(hour: int, minute: int = 0) -> str:
     return f"{h12}:{m:02d} {suffix}"
 
 
+def kickoff_time_value(hour: int, minute: int = 0) -> str:
+    """Stable popup value, ``H:MM`` in 24-hour local time."""
+    h24 = int(hour) % 24
+    m = max(0, min(int(minute), 59))
+    return f"{h24}:{m:02d}"
+
+
+def kickoff_time_options(hour: int = 7, minute: int = 0) -> list[tuple[str, str]]:
+    """Hourly choices for the extra's time popup.
+
+    A saved time that is not on the hour stays in the list so enabling the
+    popup does not silently change it. New picks are on the hour.
+    """
+    items = [
+        (kickoff_time_value(h, 0), format_kickoff_time(h, 0)) for h in range(24)
+    ]
+    current = kickoff_time_value(hour, minute)
+    if current not in {value for value, _lab in items}:
+        items.append((current, format_kickoff_time(hour, minute)))
+        items.sort(key=lambda item: parse_kickoff_time(item[0]) or (99, 0))
+    return items
+
+
 def parse_kickoff_time(text: str) -> tuple[int, int] | None:
     """Parse ``7:30``, ``07:30``, ``7:30 AM``, or ``7 AM`` into ``(hour, minute)``."""
     raw = (text or "").strip().lower()
