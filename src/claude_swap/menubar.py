@@ -1137,6 +1137,7 @@ def run(switcher) -> int:
             self.refresh_async()
 
         def on_sync_tick(self, _timer):
+            self._consume_widget_command()
             if self._dirty:
                 self._dirty = False
                 self.rebuild_menu()
@@ -1147,6 +1148,14 @@ def run(switcher) -> int:
             self._drain_engine_events()
             self._drain_kickoff_results()
             self._maybe_kickoff()
+
+        def _consume_widget_command(self):
+            # switch_to and rumps.alert must run on the UI thread.
+            from claude_swap.widget_snapshot import consume_switch_command
+
+            num = consume_switch_command()
+            if num is not None:
+                self._switch_from_widget(num)
 
         def _detect_active_change(self):
             # Reflect account switches from any source (menu, CLI, auto engine)
@@ -1513,6 +1522,14 @@ def run(switcher) -> int:
             )
             self._finish_manual_switch(
                 result, self._name_for_num(num), close_panel=True
+            )
+
+        def _switch_from_widget(self, num):
+            result = self._run_switch(
+                lambda: self.switcher.switch_to(str(num), json_output=True)
+            )
+            self._finish_manual_switch(
+                result, self._name_for_num(num), close_panel=False
             )
 
         def _switch(self, strategy):

@@ -21,14 +21,72 @@ from claude_swap.menubar import panel_accounts
 
 SCHEMA_VERSION = 1
 SNAPSHOT_FILENAME = "widget-snapshot.json"
+COMMAND_FILENAME = "widget-command.json"
 RELOAD_NOTIFICATION = "com.cswap.widget.reload"
 WIDGET_APP_NAME = "cswap Widget.app"
 
 
+def _support_dir(home: Path | None = None) -> Path:
+    root = home if home is not None else Path.home()
+    return root / "Library" / "Application Support" / "cswap"
+
+
 def default_snapshot_path(home: Path | None = None) -> Path:
     """``~/Library/Application Support/cswap/widget-snapshot.json``."""
-    root = home if home is not None else Path.home()
-    return root / "Library" / "Application Support" / "cswap" / SNAPSHOT_FILENAME
+    return _support_dir(home) / SNAPSHOT_FILENAME
+
+
+def default_command_path(home: Path | None = None) -> Path:
+    """``~/Library/Application Support/cswap/widget-command.json``."""
+    return _support_dir(home) / COMMAND_FILENAME
+
+
+def parse_switch_command(raw: dict) -> str | None:
+    """Return slot num if ``op=='switch'`` and ``num`` is a non-empty str/int.
+
+    Never raises on a bad JSON shape.
+    """
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("op") != "switch":
+        return None
+    num = raw.get("num")
+    if isinstance(num, bool):
+        return None
+    if isinstance(num, int):
+        return str(num)
+    if isinstance(num, str) and num:
+        return num
+    return None
+
+
+def consume_switch_command(path: Path | None = None) -> str | None:
+    """Read, delete, and return a switch slot num.
+
+    Missing file → ``None``. Unreadable or invalid → delete if possible,
+    return ``None`` (do not retry a poison file).
+    """
+    dest = path if path is not None else default_command_path()
+    try:
+        text = dest.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError:
+        _unlink_quiet(dest)
+        return None
+    _unlink_quiet(dest)
+    try:
+        raw = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return parse_switch_command(raw)
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 def widget_app_path(home: Path | None = None) -> Path:

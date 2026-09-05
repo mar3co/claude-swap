@@ -76,3 +76,60 @@ def test_notify_and_wake_are_noop_off_darwin(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(ws.sys, "platform", "linux")
     ws.notify_widget_reload()  # must not raise
     ws.wake_widget_host(tmp_path)  # must not raise
+
+
+def test_default_command_path_under_application_support(tmp_path: Path):
+    assert ws.default_command_path(tmp_path) == (
+        tmp_path / "Library" / "Application Support" / "cswap" / "widget-command.json"
+    )
+
+
+def test_parse_switch_command_happy_path():
+    assert ws.parse_switch_command({"op": "switch", "num": "2"}) == "2"
+    assert ws.parse_switch_command({"op": "switch", "num": 3}) == "3"
+
+
+def test_parse_switch_command_missing_num():
+    assert ws.parse_switch_command({"op": "switch"}) is None
+    assert ws.parse_switch_command({"op": "switch", "num": ""}) is None
+    assert ws.parse_switch_command({"op": "switch", "num": None}) is None
+
+
+def test_parse_switch_command_op_not_switch():
+    assert ws.parse_switch_command({"op": "reload", "num": "1"}) is None
+    assert ws.parse_switch_command({"num": "1"}) is None
+    assert ws.parse_switch_command("switch") is None
+
+
+def test_consume_switch_command_happy_path(tmp_path: Path):
+    path = tmp_path / "widget-command.json"
+    path.write_text('{"op":"switch","num":"1","at":1.0}', encoding="utf-8")
+    assert ws.consume_switch_command(path) == "1"
+    assert not path.exists()
+
+
+def test_consume_switch_command_missing_file(tmp_path: Path):
+    path = tmp_path / "no-such-command.json"
+    assert ws.consume_switch_command(path) is None
+    assert not path.exists()
+
+
+def test_consume_switch_command_bad_json(tmp_path: Path):
+    path = tmp_path / "widget-command.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert ws.consume_switch_command(path) is None
+    assert not path.exists()
+
+
+def test_consume_switch_command_missing_num(tmp_path: Path):
+    path = tmp_path / "widget-command.json"
+    path.write_text('{"op":"switch"}', encoding="utf-8")
+    assert ws.consume_switch_command(path) is None
+    assert not path.exists()
+
+
+def test_consume_switch_command_op_not_switch(tmp_path: Path):
+    path = tmp_path / "widget-command.json"
+    path.write_text('{"op":"reload","num":"1"}', encoding="utf-8")
+    assert ws.consume_switch_command(path) is None
+    assert not path.exists()

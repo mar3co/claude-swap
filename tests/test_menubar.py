@@ -781,6 +781,19 @@ def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
     assert "close_panel=True" in from_panel
 
 
+def test_widget_tap_is_consumed_on_sync_tick_without_closing_panel():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    sync = text[text.index("def on_sync_tick") : text.index("def _detect_active_change")]
+    assert "consume_switch_command" in text
+    assert "_consume_widget_command" in sync or "consume_switch_command" in sync
+    from_widget = text[
+        text.index("def _switch_from_widget") : text.index("def _switch(self")
+    ]
+    assert "json_output=True" in from_widget
+    assert "close_panel=False" in from_widget
+    assert "record_manual_switch" in text
+
+
 def test_should_notify_manual_switch_only_when_switched():
     assert menubar.should_notify_manual_switch({"switched": True}) is True
     assert menubar.should_notify_manual_switch({"switched": False, "reason": "already-active"}) is False

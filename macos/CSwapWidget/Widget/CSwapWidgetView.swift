@@ -1,3 +1,4 @@
+import AppIntents
 import AppKit
 import SwiftUI
 import WidgetKit
@@ -57,18 +58,31 @@ struct CSwapWidgetView: View {
                         if index > 0 {
                             Divider().opacity(0.35)
                         }
-                        AccountBlock(
-                            account: account,
-                            now: entry.date,
-                            compact: family == .systemSmall,
-                            maxWindows: family == .systemSmall ? 3 : (family == .systemMedium ? 3 : 6)
-                        )
+                        accountBlock(for: account)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .containerBackground(.background, for: .widget)
+    }
+
+    @ViewBuilder
+    private func accountBlock(for account: AccountCard) -> some View {
+        let block = AccountBlock(
+            account: account,
+            now: entry.date,
+            compact: family == .systemSmall,
+            maxWindows: family == .systemSmall ? 3 : (family == .systemMedium ? 3 : 6)
+        )
+        if account.disabled {
+            block
+        } else {
+            Button(intent: SwitchAccountIntent(num: account.num)) {
+                block
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var visibleAccounts: [AccountCard] {
