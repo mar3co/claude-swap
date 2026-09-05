@@ -380,11 +380,7 @@ def format_title(
     now: float | None = None,
     alias: str | None = None,
 ) -> str:
-    """Build the menu-bar title from the active account and settings.
-
-    The circular-swap SF Symbol is the status-item image (not part of this
-    string). Empty string means image-only.
-    """
+    """Build the menu-bar title from the active account and settings."""
     if active_email is None:
         return ""
     if now is None:
@@ -734,11 +730,7 @@ def run(switcher) -> int:
         def _attach_panel_once(self, timer):
             timer.stop()
             try:
-                from claude_swap.menubar_panel import (
-                    MenuBarPanel,
-                    apply_status_symbol,
-                    pin_status_item,
-                )
+                from claude_swap.menubar_panel import MenuBarPanel, pin_status_item
                 nsitem = self._nsapp.nsstatusitem
             except Exception:
                 self.switcher._logger.debug("popover attach failed", exc_info=True)
@@ -747,10 +739,6 @@ def run(switcher) -> int:
                 pin_status_item(nsitem)
             except Exception:
                 self.switcher._logger.debug("status item autosave failed", exc_info=True)
-            try:
-                apply_status_symbol(nsitem)
-            except Exception:
-                self.switcher._logger.debug("status symbol failed", exc_info=True)
             self._panel = MenuBarPanel(
                 on_switch=self._switch_from_panel,
                 on_rotate=lambda *_a: self._switch(None)(None),
