@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -61,13 +61,37 @@ def test_kickoff_custom_minute_is_respected():
 
 # --- eligibility ---------------------------------------------------------------
 
-def test_eligibility_skips_api_key_and_open_five_hour_includes_idle_oauth():
-    assert not kickoff_account_eligible(is_api_key=True, five_hour_pct=0.0)
-    assert not kickoff_account_eligible(is_api_key=True, five_hour_pct=None)
-    assert not kickoff_account_eligible(is_api_key=False, five_hour_pct=12.0)
-    assert not kickoff_account_eligible(is_api_key=False, five_hour_pct=0.1)
-    assert kickoff_account_eligible(is_api_key=False, five_hour_pct=0.0)
-    assert kickoff_account_eligible(is_api_key=False, five_hour_pct=None)
+_ELIG_NOW = 1_000_000.0
+
+
+def _five_hour(pct: float, delta_s: float | None) -> dict:
+    window: dict = {"pct": pct}
+    if delta_s is not None:
+        window["resets_at"] = datetime.fromtimestamp(
+            _ELIG_NOW + delta_s, timezone.utc
+        ).isoformat()
+    return {"five_hour": window}
+
+
+def test_eligibility_skips_api_key_and_includes_idle_oauth():
+    assert not kickoff_account_eligible(is_api_key=True, usage=None, now=_ELIG_NOW)
+    assert not kickoff_account_eligible(
+        is_api_key=True, usage=_five_hour(0.0, -3600), now=_ELIG_NOW
+    )
+    assert kickoff_account_eligible(is_api_key=False, usage=None, now=_ELIG_NOW)
+    assert kickoff_account_eligible(
+        is_api_key=False, usage=_five_hour(0.0, None), now=_ELIG_NOW
+    )
+
+
+def test_eligibility_expired_last_good_is_idle_even_when_pct_positive():
+    usage = _five_hour(87.0, -3600)
+    assert kickoff_account_eligible(is_api_key=False, usage=usage, now=_ELIG_NOW)
+
+
+def test_eligibility_open_five_hour_with_future_reset_is_skipped():
+    usage = _five_hour(12.0, 3600)
+    assert not kickoff_account_eligible(is_api_key=False, usage=usage, now=_ELIG_NOW)
 
 
 # --- invoke path ---------------------------------------------------------------

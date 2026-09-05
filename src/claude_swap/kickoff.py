@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from claude_swap.exceptions import SessionError
@@ -51,11 +52,52 @@ def kickoff_is_due(
     return now >= scheduled
 
 
-def kickoff_account_eligible(*, is_api_key: bool, five_hour_pct: float | None) -> bool:
-    """Idle OAuth accounts only: skip API keys and already-open 5h windows."""
+def _as_posix(now: datetime | float | None) -> float:
+    if now is None:
+        return time.time()
+    if isinstance(now, datetime):
+        return now.timestamp()
+    return float(now)
+
+
+def _five_hour_resets_at_ts(usage: dict | str | None) -> float | None:
+    """POSIX timestamp of the 5h ``resets_at``, or None if missing/unparseable."""
+    if not isinstance(usage, dict):
+        return None
+    window = usage.get("five_hour")
+    if not isinstance(window, dict):
+        return None
+    raw = window.get("resets_at")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def kickoff_account_eligible(
+    *,
+    is_api_key: bool,
+    usage: dict | str | None = None,
+    now: datetime | float | None = None,
+) -> bool:
+    """Idle OAuth accounts only: skip API keys and currently-open 5h windows.
+
+    A 5h window is open only while its ``resets_at`` is still in the future.
+    Stale last-good rows from yesterday (pct > 0, reset already passed) are
+    idle again and must be pinged.
+    """
     if is_api_key:
         return False
-    if five_hour_pct is not None and five_hour_pct > 0:
+    resets_at = _five_hour_resets_at_ts(usage)
+    if resets_at is not None and resets_at > _as_posix(now):
         return False
     return True
 

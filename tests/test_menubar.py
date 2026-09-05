@@ -449,6 +449,8 @@ def test_kickoff_is_wired_from_menubar_sync_tick():
     assert "self._drain_kickoff_results()" in text
     assert 'rumps.MenuItem("Start 5-hour window")' in text
     assert "kickoff_last_date" in text
+    assert "five_hour_pct" not in text
+    assert "usage=last_good if isinstance(last_good, dict) else None" in text
 
 
 def test_format_title_truncates_long_local_part():

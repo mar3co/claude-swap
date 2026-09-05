@@ -1376,12 +1376,9 @@ def run(switcher) -> int:
                             SENTINEL_NOTES.get(USAGE_API_KEY),
                             USAGE_API_KEY,
                         )
-                    pct = _window_pct(
-                        last_good if isinstance(last_good, dict) else None,
-                        "five_hour",
-                    )
                     if not kickoff_account_eligible(
-                        is_api_key=is_api, five_hour_pct=pct
+                        is_api_key=is_api,
+                        usage=last_good if isinstance(last_good, dict) else None,
                     ):
                         continue
                     name = account_short_name(email, alias or None, num)
