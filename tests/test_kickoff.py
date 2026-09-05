@@ -17,7 +17,10 @@ from claude_swap.kickoff import (
     format_kickoff_time,
     invoke_kickoff,
     kickoff_account_eligible,
+    kickoff_backoff_active,
     kickoff_is_due,
+    kickoff_pass_complete,
+    kickoff_uses_default_login,
     parse_kickoff_time,
 )
 from claude_swap.session import AUTH_OVERRIDE_ENV_VARS
@@ -57,6 +60,29 @@ def test_kickoff_custom_minute_is_respected():
     at = datetime(2026, 9, 5, 7, 30, 0)
     assert not kickoff_is_due(True, 7, 30, last_date="", now=before)
     assert kickoff_is_due(True, 7, 30, last_date="", now=at)
+
+
+def test_kickoff_pass_complete_only_when_nothing_failed():
+    """Persist last_date after an empty or all-ok pass, never after a failure."""
+    assert kickoff_pass_complete([]) is True
+    assert kickoff_pass_complete([("personal", True, "")]) is True
+    assert kickoff_pass_complete([("a", True, ""), ("b", True, "")]) is True
+    assert kickoff_pass_complete([("personal", False, "auth failed")]) is False
+    assert kickoff_pass_complete(
+        [("personal", True, ""), ("adsonline", False, "timeout")]
+    ) is False
+
+
+def test_kickoff_backoff_active_until_retry_after():
+    assert kickoff_backoff_active(now=100.0, retry_after=150.0) is True
+    assert kickoff_backoff_active(now=150.0, retry_after=150.0) is False
+    assert kickoff_backoff_active(now=151.0, retry_after=150.0) is False
+    assert kickoff_backoff_active(now=100.0, retry_after=None) is False
+
+
+def test_kickoff_uses_default_login_only_for_the_active_slot():
+    assert kickoff_uses_default_login(is_active=True) is True
+    assert kickoff_uses_default_login(is_active=False) is False
 
 
 # --- eligibility ---------------------------------------------------------------
@@ -141,6 +167,40 @@ def test_invoke_kickoff_source_uses_subprocess_not_exec():
 def test_invoke_kickoff_missing_claude_raises(tmp_path: Path):
     with pytest.raises(SessionError, match="claude"):
         invoke_kickoff(tmp_path, which=lambda _name: None, run=lambda *_a, **_k: None)
+
+
+def test_invoke_kickoff_default_login_omits_config_dir():
+    """Live default login: no second credential copy, no CLAUDE_CONFIG_DIR."""
+    captured: dict = {}
+
+    def fake_which(name: str):
+        return "/opt/fake/claude" if name == "claude" else None
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = list(argv)
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+
+    result = invoke_kickoff(
+        None,
+        which=fake_which,
+        run=fake_run,
+        environ={
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/tmp/other-session",
+            "ANTHROPIC_API_KEY": "sk-test",
+        },
+    )
+
+    argv = captured["argv"]
+    assert "-p" in argv or "--print" in argv
+    assert KICKOFF_PROMPT in argv
+    env = captured["kwargs"]["env"]
+    assert "CLAUDE_CONFIG_DIR" not in env
+    assert "ANTHROPIC_API_KEY" not in env
+    assert captured["kwargs"].get("cwd") in (None, "")
+    assert captured["kwargs"].get("check") is False
+    assert result.returncode == 0
 
 
 def test_build_kickoff_argv_is_print_mode():

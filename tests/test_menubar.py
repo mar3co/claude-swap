@@ -398,6 +398,13 @@ def test_format_title_empty_when_no_active_account():
     assert menubar.format_title(None, None, s) == ""
 
 
+def test_format_title_icon_when_no_active_account():
+    s = menubar.MenuBarSettings(
+        show_account_name=True, title_pct="both", show_icon=True
+    )
+    assert menubar.format_title(None, None, s) == menubar.STATUS_ICON
+
+
 def test_kickoff_settings_round_trip(tmp_path: Path):
     path = tmp_path / "menubar_settings.json"
     original = menubar.MenuBarSettings(
@@ -451,6 +458,33 @@ def test_kickoff_is_wired_from_menubar_sync_tick():
     assert "kickoff_last_date" in text
     assert "five_hour_pct" not in text
     assert "usage=last_good if isinstance(last_good, dict) else None" in text
+    sync = text[text.index("def on_sync_tick") : text.index("def _detect_active_change")]
+    assert sync.index("self._drain_kickoff_results()") < sync.index(
+        "self._maybe_kickoff()"
+    )
+
+
+def test_maybe_kickoff_does_not_stamp_last_date_before_the_worker():
+    """A failed morning must remain due; last_date is recorded only after success."""
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    maybe = text[
+        text.index("def _maybe_kickoff") : text.index("def _run_kickoff")
+    ]
+    drain = text[text.index("def _drain_kickoff_results") :]
+    drain = drain[: drain.index("\n        def ", 1)]
+    assert "kickoff_last_date =" not in maybe
+    assert ".save(" not in maybe
+    assert "kickoff_backoff_active" in maybe
+    assert "kickoff_pass_complete" in drain
+    assert "kickoff_last_date =" in drain
+
+
+def test_kickoff_skips_setup_session_for_the_live_default_login():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    run = text[text.index("def _run_kickoff") : text.index("def _drain_kickoff_results")]
+    assert "kickoff_uses_default_login" in run
+    assert "setup_session" in run
+    assert "invoke_kickoff()" in run or "invoke_kickoff(None)" in run
 
 
 def test_format_title_truncates_long_local_part():

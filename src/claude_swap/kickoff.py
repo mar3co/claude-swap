@@ -3,8 +3,9 @@
 The menu bar (or any other host) decides *when* to fire; this module is the
 pure due/eligibility policy plus a returning ``claude -p`` invoke. It never
 replaces the current process (no POSIX ``exec``) and never writes the default
-``~/.claude`` login: each ping runs under that account's session profile via
-``CLAUDE_CONFIG_DIR``.
+``~/.claude`` login. Inactive accounts ping under a session profile via
+``CLAUDE_CONFIG_DIR``; the live default login is pinged in place so a second
+credential copy cannot rotate its refresh token.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from claude_swap.session import AUTH_OVERRIDE_ENV_VARS
 
 KICKOFF_PROMPT = "ok"
 KICKOFF_TIMEOUT_S = 90.0
+KICKOFF_RETRY_BACKOFF_S = 300.0
 
 
 def kickoff_is_due(
@@ -50,6 +52,25 @@ def kickoff_is_due(
         return False
     scheduled = now.replace(hour=hour_i, minute=minute_i, second=0, microsecond=0)
     return now >= scheduled
+
+
+def kickoff_pass_complete(results: list[tuple[str, bool, str]]) -> bool:
+    """True when this pass should mark the local day done.
+
+    An empty pass (nothing eligible) is complete. Any failed ping keeps the
+    day open so a later tick can retry.
+    """
+    return all(ok for _name, ok, _err in results)
+
+
+def kickoff_backoff_active(*, now: float, retry_after: float | None) -> bool:
+    """True while a failed pass is cooling down (avoids a 1s retry/notify loop)."""
+    return retry_after is not None and now < retry_after
+
+
+def kickoff_uses_default_login(*, is_active: bool) -> bool:
+    """The live default login must not get a second credential copy."""
+    return bool(is_active)
 
 
 def _as_posix(now: datetime | float | None) -> float:
@@ -153,25 +174,32 @@ def build_kickoff_argv(claude_bin: str) -> list[str]:
 
 
 def build_kickoff_env(
-    session_dir: Path | str,
+    session_dir: Path | str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Env for a session-profile ping: isolated config dir, no auth overrides."""
+    """Env for a ping: no auth overrides; session dir only for inactive slots."""
     src = os.environ if environ is None else environ
     env = {k: v for k, v in src.items() if k not in AUTH_OVERRIDE_ENV_VARS}
-    env["CLAUDE_CONFIG_DIR"] = str(session_dir)
+    if session_dir is not None:
+        env["CLAUDE_CONFIG_DIR"] = str(session_dir)
+    else:
+        env.pop("CLAUDE_CONFIG_DIR", None)
     return env
 
 
 def invoke_kickoff(
-    session_dir: Path | str,
+    session_dir: Path | str | None = None,
     *,
     which: Callable[[str], str | None] | None = None,
     run: Callable[..., subprocess.CompletedProcess] | None = None,
     timeout: float = KICKOFF_TIMEOUT_S,
     environ: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
-    """Headless print-mode ping against one session profile.
+    """Headless print-mode ping against one account.
+
+    ``session_dir`` is the isolated profile for an inactive slot. ``None``
+    pings the live default login (no ``CLAUDE_CONFIG_DIR``) so the backup
+    refresh token is not spent a second time.
 
     Uses a returning ``subprocess.run`` (or the injected ``run``). Never calls
     ``os.execvpe`` / ``os.execvp`` — the menu-bar process must keep running.
@@ -185,10 +213,11 @@ def invoke_kickoff(
         )
     argv = build_kickoff_argv(claude_bin)
     env = build_kickoff_env(session_dir, environ)
+    cwd = str(session_dir) if session_dir is not None else None
     return run_fn(
         argv,
         env=env,
-        cwd=str(session_dir),
+        cwd=cwd,
         capture_output=True,
         text=True,
         timeout=timeout,

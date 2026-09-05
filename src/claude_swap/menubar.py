@@ -30,10 +30,14 @@ from pathlib import Path
 from claude_swap import pace
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
 from claude_swap.kickoff import (
+    KICKOFF_RETRY_BACKOFF_S,
     format_kickoff_time,
     invoke_kickoff,
     kickoff_account_eligible,
+    kickoff_backoff_active,
     kickoff_is_due,
+    kickoff_pass_complete,
+    kickoff_uses_default_login,
     parse_kickoff_time,
 )
 from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY
@@ -552,7 +556,7 @@ def format_title(
 ) -> str:
     """Build the menu-bar title from the active account and settings."""
     if active_email is None:
-        return ""
+        return STATUS_ICON if settings.show_icon else ""
     if now is None:
         now = time.time()
     segments: list[str] = []
@@ -743,6 +747,9 @@ def run(switcher) -> int:
             self._panel = None
             self._kickoff_running = False
             self._kickoff_results = None
+            self._kickoff_retry_after: float | None = None
+            self._kickoff_succeeded_nums: set[str] = set()
+            self._kickoff_success_date = ""
             self.rebuild_menu()
             # Background display refresh on the user's interval, plus a fast
             # UI-sync tick that applies snapshots + engine events on the main thread.
@@ -812,8 +819,8 @@ def run(switcher) -> int:
                 self.rebuild_menu()
             self._detect_active_change()
             self._drain_engine_events()
-            self._maybe_kickoff()
             self._drain_kickoff_results()
+            self._maybe_kickoff()
 
         def _detect_active_change(self):
             # Reflect account switches from any source (menu, CLI, auto engine)
@@ -1340,10 +1347,18 @@ def run(switcher) -> int:
             self._save_and_rebuild()
 
         def _maybe_kickoff(self):
-            if self._kickoff_running:
+            if self._kickoff_running or self._kickoff_results is not None:
+                return
+            now = datetime.now()
+            today = now.date().isoformat()
+            if self._kickoff_success_date != today:
+                self._kickoff_succeeded_nums.clear()
+                self._kickoff_success_date = today
+            if kickoff_backoff_active(
+                now=time.time(), retry_after=self._kickoff_retry_after
+            ):
                 return
             s = self.settings
-            now = datetime.now()
             if not kickoff_is_due(
                 s.kickoff_enabled,
                 s.kickoff_hour,
@@ -1352,11 +1367,9 @@ def run(switcher) -> int:
                 now,
             ):
                 return
-            # Don't burn today's slot before the first snapshot has arrived.
+            # Don't start before the first snapshot has arrived.
             if not self.snapshot.get("accounts") and self._snapshot_at == 0.0:
                 return
-            self.settings.kickoff_last_date = now.date().isoformat()
-            self.settings.save(settings_path)
             self._kickoff_running = True
             threading.Thread(target=self._run_kickoff, daemon=True).start()
 
@@ -1367,8 +1380,10 @@ def run(switcher) -> int:
 
                 mgr = SessionManager(self.switcher)
                 for (
-                    num, email, _act, display, last_good, alias, _dis, _fa
+                    num, email, is_active, display, last_good, alias, _dis, _fa
                 ) in self.snapshot["accounts"]:
+                    if str(num) in self._kickoff_succeeded_nums:
+                        continue
                     try:
                         is_api = self.switcher._account_kind(str(num)) == "api_key"
                     except Exception:
@@ -1383,12 +1398,16 @@ def run(switcher) -> int:
                         continue
                     name = account_short_name(email, alias or None, num)
                     try:
-                        session_dir, _, _ = mgr.setup_session(
-                            str(num), share=True, share_history=False
-                        )
-                        proc = invoke_kickoff(session_dir)
+                        if kickoff_uses_default_login(is_active=bool(is_active)):
+                            proc = invoke_kickoff()
+                        else:
+                            session_dir, _, _ = mgr.setup_session(
+                                str(num), share=True, share_history=False
+                            )
+                            proc = invoke_kickoff(session_dir)
                         if proc.returncode == 0:
                             results.append((name, True, ""))
+                            self._kickoff_succeeded_nums.add(str(num))
                         else:
                             err = (
                                 proc.stderr or proc.stdout or "claude exited with an error"
@@ -1396,10 +1415,12 @@ def run(switcher) -> int:
                             results.append((name, False, err[:200]))
                     except Exception as e:
                         results.append((name, False, str(e)))
+            except Exception as e:
+                results.append(("kickoff", False, str(e)))
+            finally:
                 with self._event_lock:
                     self._kickoff_results = results
-            finally:
-                self._kickoff_running = False
+                    self._kickoff_running = False
 
         def _drain_kickoff_results(self):
             with self._event_lock:
@@ -1407,6 +1428,13 @@ def run(switcher) -> int:
                 self._kickoff_results = None
             if results is None:
                 return
+            if kickoff_pass_complete(results):
+                self.settings.kickoff_last_date = datetime.now().date().isoformat()
+                self.settings.save(settings_path)
+                self._kickoff_retry_after = None
+                self._kickoff_succeeded_nums.clear()
+            else:
+                self._kickoff_retry_after = time.time() + KICKOFF_RETRY_BACKOFF_S
             self._notify(notification_copy_for_kickoff(results))
             self.refresh_async()
 
