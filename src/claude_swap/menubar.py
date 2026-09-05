@@ -734,11 +734,19 @@ def run(switcher) -> int:
         def _attach_panel_once(self, timer):
             timer.stop()
             try:
-                from claude_swap.menubar_panel import MenuBarPanel, apply_status_symbol
+                from claude_swap.menubar_panel import (
+                    MenuBarPanel,
+                    apply_status_symbol,
+                    pin_status_item,
+                )
                 nsitem = self._nsapp.nsstatusitem
             except Exception:
                 self.switcher._logger.debug("popover attach failed", exc_info=True)
                 return
+            try:
+                pin_status_item(nsitem)
+            except Exception:
+                self.switcher._logger.debug("status item autosave failed", exc_info=True)
             try:
                 apply_status_symbol(nsitem)
             except Exception:

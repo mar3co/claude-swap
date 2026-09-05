@@ -60,6 +60,16 @@ from claude_swap.tui.theme import (
 )
 
 STATUS_SYMBOL_NAME = "arrow.triangle.2.circlepath"
+STATUS_AUTOSAVE_NAME = "com.cswap.menubar"
+
+
+def pin_status_item(nsstatusitem) -> None:
+    """Remember Cmd-drag order across launches.
+
+    macOS has no API to sit next to another app's extra (e.g. Claude). Setting
+    an autosave name is what makes a user-placed position actually stick.
+    """
+    nsstatusitem.setAutosaveName_(STATUS_AUTOSAVE_NAME)
 
 
 def apply_status_symbol(nsstatusitem) -> None:
