@@ -164,8 +164,8 @@ def settings_page_rows(
 
     Each dict: ``{"kind": "toggle"|"choice"|"group"|"popup", "id": str, "label": str, ...}``.
     Choice and popup rows include ``options`` ``(value, label)`` and the current
-    ``value``. Toggles include a bool ``value``. Threshold and strategy are
-    omitted while auto-switch is off.
+    ``value``. Toggles include a bool ``value``. Child rows are omitted while
+    their parent is off (title_scoped, auto-switch policy, kickoff time).
     """
     rows = [
         {
@@ -181,26 +181,33 @@ def settings_page_rows(
             "options": [(mode, TITLE_PCT_LABELS[mode]) for mode in TITLE_PCT_CHOICES],
             "value": settings.title_pct,
         },
-        {
-            "kind": "toggle",
-            "id": "title_scoped",
-            "label": "Show model limits in title",
-            "value": bool(settings.title_scoped),
-        },
-        {
-            "kind": "choice",
-            "id": "refresh_interval",
-            "label": "Refresh interval",
-            "options": [(secs, REFRESH_LABELS[secs]) for secs in REFRESH_CHOICES],
-            "value": settings.refresh_interval,
-        },
-        {
-            "kind": "toggle",
-            "id": "auto_switch_enabled",
-            "label": "Auto-switch accounts",
-            "value": bool(settings.auto_switch_enabled),
-        },
     ]
+    if settings.title_pct != "off":
+        rows.append(
+            {
+                "kind": "toggle",
+                "id": "title_scoped",
+                "label": "Show model limits in title",
+                "value": bool(settings.title_scoped),
+            }
+        )
+    rows.extend(
+        [
+            {
+                "kind": "choice",
+                "id": "refresh_interval",
+                "label": "Refresh interval",
+                "options": [(secs, REFRESH_LABELS[secs]) for secs in REFRESH_CHOICES],
+                "value": settings.refresh_interval,
+            },
+            {
+                "kind": "toggle",
+                "id": "auto_switch_enabled",
+                "label": "Auto-switch accounts",
+                "value": bool(settings.auto_switch_enabled),
+            },
+        ]
+    )
     if settings.auto_switch_enabled:
         rows.extend(
             [
@@ -220,14 +227,16 @@ def settings_page_rows(
                 },
             ]
         )
-    rows.extend(
-        [
-            {
-                "kind": "toggle",
-                "id": "kickoff_enabled",
-                "label": "Start 5-hour window",
-                "value": bool(settings.kickoff_enabled),
-            },
+    rows.append(
+        {
+            "kind": "toggle",
+            "id": "kickoff_enabled",
+            "label": "Start 5-hour window",
+            "value": bool(settings.kickoff_enabled),
+        }
+    )
+    if settings.kickoff_enabled:
+        rows.append(
             {
                 "kind": "popup",
                 "id": "kickoff_time",
@@ -238,7 +247,10 @@ def settings_page_rows(
                 "value": kickoff_time_value(
                     settings.kickoff_hour, settings.kickoff_minute
                 ),
-            },
+            }
+        )
+    rows.extend(
+        [
             {
                 "kind": "group",
                 "id": "group_advanced",

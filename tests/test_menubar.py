@@ -220,6 +220,46 @@ def test_settings_page_hides_autoswitch_policy_when_disabled():
     assert ids_on.index("strategy") < ids_on.index("kickoff_enabled")
 
 
+def test_settings_page_hides_kickoff_time_when_disabled():
+    off = menubar.settings_page_rows(
+        menubar.MenuBarSettings(kickoff_enabled=False),
+        strategy="best",
+        threshold=90,
+    )
+    ids_off = [row["id"] for row in off]
+    assert "kickoff_enabled" in ids_off
+    assert "kickoff_time" not in ids_off
+
+    on = menubar.settings_page_rows(
+        menubar.MenuBarSettings(kickoff_enabled=True),
+        strategy="best",
+        threshold=90,
+    )
+    ids_on = [row["id"] for row in on]
+    assert ids_on.index("kickoff_enabled") < ids_on.index("kickoff_time")
+    assert ids_on.index("kickoff_time") < ids_on.index("group_advanced")
+
+
+def test_settings_page_hides_scoped_title_when_pct_is_off():
+    off = menubar.settings_page_rows(
+        menubar.MenuBarSettings(title_pct="off", title_scoped=True),
+        strategy="best",
+        threshold=90,
+    )
+    ids_off = [row["id"] for row in off]
+    assert "title_pct" in ids_off
+    assert "title_scoped" not in ids_off
+
+    on = menubar.settings_page_rows(
+        menubar.MenuBarSettings(title_pct="both", title_scoped=True),
+        strategy="best",
+        threshold=90,
+    )
+    ids_on = [row["id"] for row in on]
+    assert ids_on.index("title_pct") < ids_on.index("title_scoped")
+    assert ids_on.index("title_scoped") < ids_on.index("refresh_interval")
+
+
 _USAGE = {
     "five_hour": {"pct": 42.0},
     "seven_day": {"pct": 18.0},
