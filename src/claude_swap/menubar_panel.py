@@ -62,8 +62,10 @@ from claude_swap.menubar import (
     MenuBarSettings,
     POPOVER_AUTO_CLOSE_S,
     SETTINGS_PAGE,
+    SETTINGS_POPUP_W,
     panel_accounts,
     resolve_popover_theme,
+    settings_header_frames,
     settings_page_rows,
     status_item_length,
     trailing_header_frames,
@@ -140,8 +142,9 @@ SETTINGS_BTN_H = 22.0
 SETTINGS_BTN_GAP_X = 6.0
 SETTINGS_BTN_GAP_Y = 4.0
 SETTINGS_ROW_GAP = 6.0
-SETTINGS_POPUP_W = 118.0
 SETTINGS_POPUP_H = 24.0
+SETTINGS_BACK_W = 64.0
+SETTINGS_BACK_H = 22.0
 CARD_GAP = 8.0
 CARD_PAD = 11.0
 CARD_RADIUS = 10.0
@@ -803,6 +806,12 @@ class MenuBarPanel:
                 selected = i
         if btn.numberOfItems() > 0:
             btn.selectItemAtIndex_(selected)
+        menu = btn.menu()
+        if menu is not None:
+            try:
+                menu.setMinimumWidth_(frame.size.width)
+            except Exception:
+                pass
         btn.setTarget_(
             self._tramp(lambda sender, rid=row_id: self._on_popup(rid, sender))
         )
@@ -1120,17 +1129,15 @@ class MenuBarPanel:
         root.setBlendingMode_(NSVisualEffectBlendingModeBehindWindow)
         root.setState_(NSVisualEffectStateActive)
 
-        self._add_button(
-            root, "Back", NSMakeRect(PAD, PAD, 64, 22), self._show_main, font_small
+        title = _label("Settings", font_title, pal["fg"], NSMakeRect(0, 0, 80, 20))
+        title.sizeToFit()
+        ts = title.frame().size
+        back_f, title_f = settings_header_frames(
+            PAD, (SETTINGS_BACK_W, SETTINGS_BACK_H), (ts.width, ts.height)
         )
-        root.addSubview_(
-            _label(
-                "Settings",
-                font_title,
-                pal["fg"],
-                NSMakeRect(PAD + 72, PAD, inner_w - 72, 20),
-            )
-        )
+        self._add_button(root, "Back", NSMakeRect(*back_f), self._show_main, font_small)
+        title.setFrame_(NSMakeRect(*title_f))
+        root.addSubview_(title)
         hairline = _FillView.alloc().initWithColor_(pal["hairline"])
         hairline.setFrame_(NSMakeRect(PAD, PAD + HEADER_H - 4, inner_w, 1))
         root.addSubview_(hairline)

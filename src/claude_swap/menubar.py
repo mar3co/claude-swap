@@ -255,6 +255,11 @@ NS_VARIABLE_STATUS_ITEM_LENGTH = -1.0
 POPOVER_AUTO_CLOSE_S = 12.0
 HEADER_TITLE_H = 20.0
 HEADER_CONTROL_GAP = 6.0
+# NSTextField glyphs sit high in their bounds next to a bezeled button.
+HEADER_LABEL_OPTICAL_DY = 3.0
+SETTINGS_HEADER_GAP = 8.0
+# First control was 118pt; +25% so "12:00 AM" is not clipped.
+SETTINGS_POPUP_W = 148.0
 
 
 @dataclass(frozen=True)
@@ -863,6 +868,27 @@ def trailing_header_frames(
     ly = max(pad, mid_y - lh / 2.0)
     cy = max(pad, mid_y - ch / 2.0)
     return (x, ly, lw, lh), (x + lw + gap, cy, cw, ch)
+
+
+def settings_header_frames(
+    pad: float,
+    back_wh: tuple[float, float],
+    title_wh: tuple[float, float],
+    *,
+    gap: float = SETTINGS_HEADER_GAP,
+    optical_dy: float = HEADER_LABEL_OPTICAL_DY,
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
+    """Back button + Settings title, sharing the button's vertical center.
+
+    Returns ``(back_frame, title_frame)`` as ``(x, y, w, h)`` in a flipped
+    view. ``optical_dy`` nudges the title down so NSTextField glyphs line up
+    with the bezeled button label.
+    """
+    bw, bh = back_wh
+    tw, th = title_wh
+    mid = pad + bh / 2.0
+    ty = mid - th / 2.0 + optical_dy
+    return (pad, pad, bw, bh), (pad + bw + gap, ty, tw, th)
 
 
 def format_usage_log(email: str, usage: dict | str | None) -> str | None:

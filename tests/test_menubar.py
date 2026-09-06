@@ -683,6 +683,19 @@ def test_trailing_header_frames_hug_the_right_edge():
     assert control[1] == 12.0  # taller than the title row, clamped to pad
 
 
+def test_settings_header_frames_center_title_on_back():
+    back, title = menubar.settings_header_frames(12.0, (64.0, 22.0), (54.0, 16.0))
+    assert back == (12.0, 12.0, 64.0, 22.0)
+    assert title[0] == 12.0 + 64.0 + menubar.SETTINGS_HEADER_GAP
+    back_mid = back[1] + back[3] / 2.0
+    title_mid = title[1] + title[3] / 2.0
+    assert title_mid == back_mid + menubar.HEADER_LABEL_OPTICAL_DY
+
+
+def test_settings_popup_is_a_quarter_wider():
+    assert menubar.SETTINGS_POPUP_W == 148.0
+
+
 def test_popover_auto_close_delay_is_a_few_seconds():
     assert 8.0 <= menubar.POPOVER_AUTO_CLOSE_S <= 30.0
 
@@ -770,6 +783,9 @@ def test_panel_settings_page_does_not_set_menu_open():
     assert "Change…" not in text
     assert "NSPopUpButton" in text
     assert "class _PopupButton" in text
+    assert "settings_header_frames" in text
+    assert "SETTINGS_POPUP_W" in text
+    assert "setMinimumWidth_" in text
     show = text[text.index("def _show_settings") : text.index("def _show_main")]
     assert "SETTINGS_PAGE" in show
     assert "self.reload()" in show
