@@ -692,8 +692,8 @@ def test_settings_header_frames_center_title_on_back():
     assert title_mid == back_mid + menubar.HEADER_LABEL_OPTICAL_DY
 
 
-def test_settings_popup_is_a_quarter_wider():
-    assert menubar.SETTINGS_POPUP_W == 148.0
+def test_popover_is_a_quarter_wider():
+    assert menubar.PANEL_WIDTH == 390.0
 
 
 def test_popover_auto_close_delay_is_a_few_seconds():
@@ -785,6 +785,7 @@ def test_panel_settings_page_does_not_set_menu_open():
     assert "class _PopupButton" in text
     assert "settings_header_frames" in text
     assert "SETTINGS_POPUP_W" in text
+    assert "PANEL_WIDTH" in text
     assert "setMinimumWidth_" in text
     show = text[text.index("def _show_settings") : text.index("def _show_main")]
     assert "SETTINGS_PAGE" in show

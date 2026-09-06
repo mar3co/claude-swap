@@ -258,8 +258,9 @@ HEADER_CONTROL_GAP = 6.0
 # NSTextField glyphs sit high in their bounds next to a bezeled button.
 HEADER_LABEL_OPTICAL_DY = 3.0
 SETTINGS_HEADER_GAP = 8.0
-# First control was 118pt; +25% so "12:00 AM" is not clipped.
-SETTINGS_POPUP_W = 148.0
+SETTINGS_POPUP_W = 118.0
+# Was 312. The extra's popover is the "dropdown"; 390 is +25%.
+PANEL_WIDTH = 390.0
 
 
 @dataclass(frozen=True)

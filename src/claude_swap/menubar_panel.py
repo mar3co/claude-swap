@@ -60,6 +60,7 @@ from Foundation import (
 from claude_swap.menubar import (
     MAIN_PAGE,
     MenuBarSettings,
+    PANEL_WIDTH,
     POPOVER_AUTO_CLOSE_S,
     SETTINGS_PAGE,
     SETTINGS_POPUP_W,
@@ -129,7 +130,6 @@ def fit_status_item(nsstatusitem, *, compact: bool) -> None:
     nsstatusitem.setLength_(status_item_length(width, compact=compact))
 
 
-PANEL_WIDTH = 312.0
 PAD = 12.0
 HEADER_H = 36.0
 HOLD_LINE_H = 16.0
