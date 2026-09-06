@@ -102,28 +102,34 @@ def pin_status_item(nsstatusitem) -> None:
     nsstatusitem.setAutosaveName_(STATUS_AUTOSAVE_NAME)
 
 
-def fit_status_item(nsstatusitem, *, compact: bool) -> None:
-    """Shrink the extra to the title when the leading icon is off.
+def fit_status_item(nsstatusitem, *, compact: bool, title: str | None = None) -> None:
+    """Put the title on the button and size the extra.
 
-    AppKit's default title item is ~10pt inset on each side; with no icon
-    that left gap is empty. Measuring the title and setting length keeps
-    about 3pt per side.
+    rumps writes ``NSStatusItem.setTitle_`` (deprecated). The visible extra
+    is the button, so we set that too. The extra is text (optional ✻ in the
+    string), so the image is always cleared. Compact (icon off) uses a tight
+    length; otherwise the extra is variable-width.
     """
     button = nsstatusitem.button()
     if button is None:
         return
-    if compact:
+    if title is not None:
         try:
-            button.setImagePosition_(NSNoImage)
+            button.setTitle_(title)
         except Exception:
             pass
-    title = str(button.title() or "")
+    try:
+        button.setImage_(None)
+        button.setImagePosition_(NSNoImage)
+    except Exception:
+        pass
+    shown = str(button.title() or title or "")
     width = 0.0
-    if title:
+    if shown:
         font = button.font() or NSFont.menuBarFontOfSize_(0)
         width = (
             NSAttributedString.alloc()
-            .initWithString_attributes_(title, {NSFontAttributeName: font})
+            .initWithString_attributes_(shown, {NSFontAttributeName: font})
             .size()
             .width
         )

@@ -749,8 +749,9 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
         now = time.time()
     cards = []
     for row in snapshot.get("accounts") or []:
-        num, email, is_active, display, _last_good, alias, org_name, disabled, fetched_at = row
+        num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at = row
         note = display if isinstance(display, str) else None
+        usage = display if isinstance(display, dict) else last_good
         title, subtitle = account_card_names(email, alias, org_name)
         cards.append(
             {
@@ -761,7 +762,7 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
                 "disabled": bool(disabled),
                 "note": note,
                 "windows": panel_windows(
-                    display if isinstance(display, dict) else None, now, fetched_at
+                    usage if isinstance(usage, dict) else None, now, fetched_at
                 ),
             }
         )
@@ -985,6 +986,7 @@ EMPTY_SNAPSHOT: dict = {
     "active_email": None,
     "active_num": None,
     "active_usage": None,
+    "active_last_good": None,
     "active_alias": None,
     "active_org": None,
 }
@@ -995,8 +997,8 @@ def _adapt_snapshot(snap) -> dict:
 
     Shape: ``{"accounts": [(num, email, is_active, display_usage, last_good, alias, org_name, disabled, fetched_at), ...],
     "active_email": str | None, "active_num": str | None,
-    "active_usage": dict | str | None, "active_alias": str | None,
-    "active_org": str | None}``. The snapshot itself is produced by
+    "active_usage": dict | str | None, "active_last_good": dict | None,
+    "active_alias": str | None, "active_org": str | None}``. The snapshot itself is produced by
     ``SnapshotSource`` (the paced read path), so this is a pure transform — no
     fetching, no I/O. Per-account ``fetched_at`` is the underlying
     measurement's fetch time, used only for the pace marker (issue #125).
@@ -1005,6 +1007,7 @@ def _adapt_snapshot(snap) -> dict:
     active_email = None
     active_num = None
     active_usage = None
+    active_last_good = None
     active_alias = None
     active_org = None
     for acc in snap.accounts:
@@ -1020,14 +1023,31 @@ def _adapt_snapshot(snap) -> dict:
             active_email, active_usage, active_alias = acc.email, display, acc.alias
             active_org = org_name
             active_num = str(acc.number)
+            active_last_good = acc.usage.last_good
     return {
         "accounts": accounts,
         "active_email": active_email,
         "active_num": active_num,
         "active_usage": active_usage,
+        "active_last_good": active_last_good,
         "active_alias": active_alias,
         "active_org": active_org,
     }
+
+
+def title_usage(snapshot: dict) -> dict | str | None:
+    """Usage dict for the extra title.
+
+    A sentinel note on the active slot still has ``last_good``. Percentages
+    should follow that instead of going blank.
+    """
+    usage = snapshot.get("active_usage")
+    if isinstance(usage, dict):
+        return usage
+    last = snapshot.get("active_last_good")
+    if isinstance(last, dict):
+        return last
+    return usage
 
 
 def should_notify_manual_switch(result: dict | None) -> bool:
@@ -1385,7 +1405,7 @@ def run(switcher) -> int:
                 pass
             menu.popUpMenuPositioningItem_atLocation_inView_(None, loc, view)
 
-        def _fit_status_item(self):
+        def _fit_status_item(self, title: str | None = None):
             nsapp = getattr(self, "_nsapp", None)
             nsitem = getattr(nsapp, "nsstatusitem", None) if nsapp is not None else None
             if nsitem is None:
@@ -1393,19 +1413,24 @@ def run(switcher) -> int:
             try:
                 from claude_swap.menubar_panel import fit_status_item
 
-                fit_status_item(nsitem, compact=not self.settings.show_icon)
+                fit_status_item(
+                    nsitem,
+                    compact=not self.settings.show_icon,
+                    title=title,
+                )
             except Exception:
                 self.switcher._logger.debug("status item fit failed", exc_info=True)
 
         def rebuild_menu(self):
-            self.title = format_title(
+            title = format_title(
                 self.snapshot["active_email"],
-                self.snapshot["active_usage"],
+                title_usage(self.snapshot),
                 self.settings,
                 alias=self.snapshot.get("active_alias"),
                 org_name=self.snapshot.get("active_org"),
             )
-            self._fit_status_item()
+            self.title = title
+            self._fit_status_item(title)
             # Stop a rumps memory leak: rumps registers each menu item's callback
             # in the process-global NSApp._ns_to_py_and_callback, but Menu.clear()
             # never removes them, so rebuilding the whole menu on every refresh

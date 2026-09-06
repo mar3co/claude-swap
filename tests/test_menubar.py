@@ -28,7 +28,7 @@ from claude_swap.autoswitch import (
     SwitchEvent,
 )
 from claude_swap.exceptions import ClaudeSwitchError
-from claude_swap.switcher import USAGE_API_KEY
+from claude_swap.switcher import USAGE_API_KEY, USAGE_FOREIGN_CREDENTIAL
 
 
 # --- notification identity -----------------------------------------------------
@@ -457,6 +457,28 @@ def test_panel_accounts_prefers_alias_and_keeps_note():
     assert cards[1]["windows"] == []
     assert cards[2]["title"] == "Ads Online"
     assert cards[2]["subtitle"] == "c@x.com"
+
+
+def test_panel_accounts_uses_last_good_when_display_is_a_sentinel():
+    snap = {
+        "accounts": [
+            (
+                2,
+                "a@x.com",
+                True,
+                menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL],
+                _USAGE,
+                "adsonline",
+                "Ads Online",
+                False,
+                None,
+            ),
+        ]
+    }
+    cards = menubar.panel_accounts(snap)
+    assert cards[0]["note"] == menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL]
+    assert [w["label"] for w in cards[0]["windows"]] == ["5h", "7d"]
+    assert cards[0]["windows"][0]["pct"] == 42.0
 
 
 # --- auto-switch hold line (popover, consume strategies only) ------------------
@@ -924,10 +946,13 @@ def test_status_item_length_compacts_only_when_icon_is_off():
 
 def test_rebuild_menu_fits_status_item_from_show_icon():
     text = Path(menubar.__file__).read_text(encoding="utf-8")
-    assert "self._fit_status_item()" in text
+    assert "title_usage(self.snapshot)" in text
+    assert "self._fit_status_item(title)" in text
     assert "compact=not self.settings.show_icon" in text
     panel = Path(menubar.__file__).resolve().parent / "menubar_panel.py"
-    assert "def fit_status_item" in panel.read_text(encoding="utf-8")
+    body = panel.read_text(encoding="utf-8")
+    assert "def fit_status_item" in body
+    assert "button.setTitle_" in body
 
 
 def test_kickoff_is_wired_from_menubar_sync_tick():
@@ -1111,6 +1136,7 @@ def test_adapt_snapshot_shape_and_active_selection():
     assert snap["active_email"] == "a@x.com"
     assert snap["active_num"] == "1"
     assert snap["active_usage"] == lg
+    assert snap["active_last_good"] == lg
     assert snap["active_alias"] == ""
     assert snap["active_org"] == ""
     # (num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at)
@@ -1124,6 +1150,44 @@ def test_adapt_snapshot_shape_and_active_selection():
 
 def test_adapt_snapshot_empty():
     assert menubar._adapt_snapshot(_FakeSnap([])) == menubar.EMPTY_SNAPSHOT
+
+
+def test_title_usage_falls_back_to_last_good_on_sentinel():
+    lg = {"five_hour": {"pct": 13.0}, "scoped": [{"name": "Fable", "pct": 23.0}]}
+    note = menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL]
+    snap = {
+        **menubar.EMPTY_SNAPSHOT,
+        "active_email": "a@x.com",
+        "active_usage": note,
+        "active_last_good": lg,
+        "active_alias": "adsonline",
+    }
+    assert menubar.title_usage(snap) == lg
+    s = menubar.MenuBarSettings(
+        show_account_name=True, title_pct="5h", title_scoped=True, show_icon=True
+    )
+    assert menubar.format_title(
+        snap["active_email"], menubar.title_usage(snap), s, alias="adsonline"
+    ) == f"{menubar.STATUS_ICON} adsonline · 13% · Fable 23%"
+    assert menubar.title_usage({"active_usage": lg}) == lg
+    assert menubar.title_usage(menubar.EMPTY_SNAPSHOT) is None
+
+
+def test_adapt_snapshot_keeps_last_good_when_active_is_sentinel():
+    lg = {"five_hour": {"pct": 0.0}}
+    accts = [
+        _FakeAcct(
+            "2",
+            "a@x.com",
+            True,
+            _FakeEntry(sentinel=USAGE_FOREIGN_CREDENTIAL, last_good=lg),
+            alias="adsonline",
+        ),
+    ]
+    snap = menubar._adapt_snapshot(_FakeSnap(accts))
+    assert snap["active_usage"] == menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL]
+    assert snap["active_last_good"] == lg
+    assert menubar.title_usage(snap) == lg
 
 
 # --- weekly reset roll-forward (static 7-day cadence) --------------------------
