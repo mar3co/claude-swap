@@ -53,12 +53,25 @@ AUTO_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (
     ("soonest-5h", "Soonest 5-hour reset"),
 )
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
-TITLE_PCT_LABELS: dict[str, str] = {
-    "off": "None",
-    "5h": "Session (5h)",
-    "7d": "Weekly (7d)",
-    "both": "Both (5h · 7d)",
-}
+
+
+def title_shows_5h(title_pct: str) -> bool:
+    return title_pct in ("5h", "both")
+
+
+def title_shows_7d(title_pct: str) -> bool:
+    return title_pct in ("7d", "both")
+
+
+def combine_title_pct(show_5h: bool, show_7d: bool) -> str:
+    """Map the two extra toggles back to the stored ``title_pct`` value."""
+    if show_5h and show_7d:
+        return "both"
+    if show_5h:
+        return "5h"
+    if show_7d:
+        return "7d"
+    return "off"
 REFRESH_LABELS: dict[int, str] = {30: "30 seconds", 60: "60 seconds", 300: "5 minutes"}
 SETTINGS_PAGE = "settings"
 MAIN_PAGE = "main"
@@ -175,11 +188,16 @@ def settings_page_rows(
             "value": bool(settings.show_account_name),
         },
         {
-            "kind": "choice",
-            "id": "title_pct",
-            "label": "Title percentage",
-            "options": [(mode, TITLE_PCT_LABELS[mode]) for mode in TITLE_PCT_CHOICES],
-            "value": settings.title_pct,
+            "kind": "toggle",
+            "id": "title_pct_5h",
+            "label": "Show 5-hour % in menu bar",
+            "value": title_shows_5h(settings.title_pct),
+        },
+        {
+            "kind": "toggle",
+            "id": "title_pct_7d",
+            "label": "Show 7-day % in menu bar",
+            "value": title_shows_7d(settings.title_pct),
         },
     ]
     if settings.title_pct != "off":
@@ -840,11 +858,11 @@ def format_title(
     if settings.show_account_name:
         org = org_name.strip() if org_name else ""
         segments.append(alias or org or _local_part(active_email))
-    if settings.title_pct in ("5h", "both"):
+    if title_shows_5h(settings.title_pct):
         p = _window_pct(active_usage, "five_hour")
         if p is not None:
             segments.append(f"{p:.0f}%")
-    if settings.title_pct in ("7d", "both"):
+    if title_shows_7d(settings.title_pct):
         seven = active_usage.get("seven_day") if isinstance(active_usage, dict) else None
         seven = _rolled_weekly_window(seven, now)  # reflect a passed weekly reset
         p = seven["pct"] if isinstance(seven, dict) and isinstance(seven.get("pct"), (int, float)) else None
@@ -1362,8 +1380,10 @@ def run(switcher) -> int:
         def _on_setting(self, row_id, value):
             if row_id == "show_account_name":
                 self.on_toggle_name(None)
-            elif row_id == "title_pct":
-                self._make_title_pct(value)(None)
+            elif row_id == "title_pct_5h":
+                self.on_toggle_title_5h(None)
+            elif row_id == "title_pct_7d":
+                self.on_toggle_title_7d(None)
             elif row_id == "title_scoped":
                 self.on_toggle_scoped(None)
             elif row_id == "refresh_interval":
@@ -1722,11 +1742,19 @@ def run(switcher) -> int:
             self.settings.title_scoped = not self.settings.title_scoped
             self._save_and_rebuild()
 
-        def _make_title_pct(self, mode):
-            def cb(_sender):
-                self.settings.title_pct = mode
-                self._save_and_rebuild()
-            return cb
+        def on_toggle_title_5h(self, _sender):
+            self.settings.title_pct = combine_title_pct(
+                not title_shows_5h(self.settings.title_pct),
+                title_shows_7d(self.settings.title_pct),
+            )
+            self._save_and_rebuild()
+
+        def on_toggle_title_7d(self, _sender):
+            self.settings.title_pct = combine_title_pct(
+                title_shows_5h(self.settings.title_pct),
+                not title_shows_7d(self.settings.title_pct),
+            )
+            self._save_and_rebuild()
 
         def _make_interval(self, secs):
             def cb(_sender):

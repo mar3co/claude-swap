@@ -152,7 +152,8 @@ def test_settings_page_rows_include_required_ids_and_values():
     by_id = {row["id"]: row for row in rows}
     required = (
         "show_account_name",
-        "title_pct",
+        "title_pct_5h",
+        "title_pct_7d",
         "title_scoped",
         "refresh_interval",
         "auto_switch_enabled",
@@ -173,11 +174,10 @@ def test_settings_page_rows_include_required_ids_and_values():
     assert by_id["kickoff_enabled"]["value"] is True
     assert by_id["show_icon"]["value"] is True
 
-    assert by_id["title_pct"]["kind"] == "choice"
-    assert by_id["title_pct"]["value"] == "5h"
-    assert by_id["title_pct"]["options"] == [
-        (mode, menubar.TITLE_PCT_LABELS[mode]) for mode in menubar.TITLE_PCT_CHOICES
-    ]
+    assert by_id["title_pct_5h"]["kind"] == "toggle"
+    assert by_id["title_pct_5h"]["value"] is True
+    assert by_id["title_pct_7d"]["kind"] == "toggle"
+    assert by_id["title_pct_7d"]["value"] is False
     assert by_id["refresh_interval"]["kind"] == "choice"
     assert by_id["refresh_interval"]["value"] == 30
     assert by_id["refresh_interval"]["options"] == [
@@ -247,7 +247,8 @@ def test_settings_page_hides_scoped_title_when_pct_is_off():
         threshold=90,
     )
     ids_off = [row["id"] for row in off]
-    assert "title_pct" in ids_off
+    assert "title_pct_5h" in ids_off
+    assert "title_pct_7d" in ids_off
     assert "title_scoped" not in ids_off
 
     on = menubar.settings_page_rows(
@@ -256,8 +257,20 @@ def test_settings_page_hides_scoped_title_when_pct_is_off():
         threshold=90,
     )
     ids_on = [row["id"] for row in on]
-    assert ids_on.index("title_pct") < ids_on.index("title_scoped")
+    assert ids_on.index("title_pct_5h") < ids_on.index("title_scoped")
+    assert ids_on.index("title_pct_7d") < ids_on.index("title_scoped")
     assert ids_on.index("title_scoped") < ids_on.index("refresh_interval")
+
+
+def test_combine_title_pct_round_trips_the_two_toggles():
+    assert menubar.combine_title_pct(False, False) == "off"
+    assert menubar.combine_title_pct(True, False) == "5h"
+    assert menubar.combine_title_pct(False, True) == "7d"
+    assert menubar.combine_title_pct(True, True) == "both"
+    assert menubar.title_shows_5h("5h") and not menubar.title_shows_7d("5h")
+    assert menubar.title_shows_7d("7d") and not menubar.title_shows_5h("7d")
+    assert menubar.title_shows_5h("both") and menubar.title_shows_7d("both")
+    assert not menubar.title_shows_5h("off") and not menubar.title_shows_7d("off")
 
 
 _USAGE = {
@@ -670,6 +683,9 @@ def test_format_title_both_windows_with_name():
 def test_format_title_empty_when_name_and_pct_off():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="off")
     assert menubar.format_title("loc@papaya.asia", _USAGE, s) == ""
+    assert "%" not in menubar.format_title(
+        "loc@papaya.asia", {"five_hour": {"pct": 0.0}, "seven_day": {"pct": 0.0}}, s
+    )
 
 
 def test_format_title_scoped_appends_model_limits():
@@ -823,7 +839,8 @@ def test_on_setting_reloads_settings_page_not_rebuild_menu():
     body = text[text.index("def _on_setting") : text.index("def _popup_overflow")]
     for name in (
         "on_toggle_name",
-        "_make_title_pct",
+        "on_toggle_title_5h",
+        "on_toggle_title_7d",
         "on_toggle_scoped",
         "_make_interval",
         "on_toggle_autoswitch",
