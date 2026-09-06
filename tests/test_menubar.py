@@ -198,6 +198,28 @@ def test_settings_page_rows_include_required_ids_and_values():
     assert "action_id" not in by_id["kickoff_time"]
 
 
+def test_settings_page_hides_autoswitch_policy_when_disabled():
+    off = menubar.settings_page_rows(
+        menubar.MenuBarSettings(auto_switch_enabled=False),
+        strategy="best",
+        threshold=90,
+    )
+    ids_off = [row["id"] for row in off]
+    assert "auto_switch_enabled" in ids_off
+    assert "threshold" not in ids_off
+    assert "strategy" not in ids_off
+
+    on = menubar.settings_page_rows(
+        menubar.MenuBarSettings(auto_switch_enabled=True),
+        strategy="best",
+        threshold=90,
+    )
+    ids_on = [row["id"] for row in on]
+    assert ids_on.index("auto_switch_enabled") < ids_on.index("threshold")
+    assert ids_on.index("threshold") < ids_on.index("strategy")
+    assert ids_on.index("strategy") < ids_on.index("kickoff_enabled")
+
+
 _USAGE = {
     "five_hour": {"pct": 42.0},
     "seven_day": {"pct": 18.0},

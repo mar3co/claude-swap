@@ -164,9 +164,10 @@ def settings_page_rows(
 
     Each dict: ``{"kind": "toggle"|"choice"|"group"|"popup", "id": str, "label": str, ...}``.
     Choice and popup rows include ``options`` ``(value, label)`` and the current
-    ``value``. Toggles include a bool ``value``.
+    ``value``. Toggles include a bool ``value``. Threshold and strategy are
+    omitted while auto-switch is off.
     """
-    return [
+    rows = [
         {
             "kind": "toggle",
             "id": "show_account_name",
@@ -199,49 +200,59 @@ def settings_page_rows(
             "label": "Auto-switch accounts",
             "value": bool(settings.auto_switch_enabled),
         },
-        {
-            "kind": "choice",
-            "id": "threshold",
-            "label": "Auto-switch threshold",
-            "options": [(pct, f"{pct}%") for pct in AUTO_THRESHOLD_CHOICES],
-            "value": int(threshold),
-        },
-        {
-            "kind": "choice",
-            "id": "strategy",
-            "label": "Auto-switch strategy",
-            "options": list(AUTO_STRATEGY_CHOICES),
-            "value": strategy,
-        },
-        {
-            "kind": "toggle",
-            "id": "kickoff_enabled",
-            "label": "Start 5-hour window",
-            "value": bool(settings.kickoff_enabled),
-        },
-        {
-            "kind": "popup",
-            "id": "kickoff_time",
-            "label": "Time",
-            "options": kickoff_time_options(
-                settings.kickoff_hour, settings.kickoff_minute
-            ),
-            "value": kickoff_time_value(
-                settings.kickoff_hour, settings.kickoff_minute
-            ),
-        },
-        {
-            "kind": "group",
-            "id": "group_advanced",
-            "label": "Advanced",
-        },
-        {
-            "kind": "toggle",
-            "id": "show_icon",
-            "label": "Show asterisk in menu bar",
-            "value": bool(settings.show_icon),
-        },
     ]
+    if settings.auto_switch_enabled:
+        rows.extend(
+            [
+                {
+                    "kind": "choice",
+                    "id": "threshold",
+                    "label": "Auto-switch threshold",
+                    "options": [(pct, f"{pct}%") for pct in AUTO_THRESHOLD_CHOICES],
+                    "value": int(threshold),
+                },
+                {
+                    "kind": "choice",
+                    "id": "strategy",
+                    "label": "Auto-switch strategy",
+                    "options": list(AUTO_STRATEGY_CHOICES),
+                    "value": strategy,
+                },
+            ]
+        )
+    rows.extend(
+        [
+            {
+                "kind": "toggle",
+                "id": "kickoff_enabled",
+                "label": "Start 5-hour window",
+                "value": bool(settings.kickoff_enabled),
+            },
+            {
+                "kind": "popup",
+                "id": "kickoff_time",
+                "label": "Time",
+                "options": kickoff_time_options(
+                    settings.kickoff_hour, settings.kickoff_minute
+                ),
+                "value": kickoff_time_value(
+                    settings.kickoff_hour, settings.kickoff_minute
+                ),
+            },
+            {
+                "kind": "group",
+                "id": "group_advanced",
+                "label": "Advanced",
+            },
+            {
+                "kind": "toggle",
+                "id": "show_icon",
+                "label": "Show asterisk in menu bar",
+                "value": bool(settings.show_icon),
+            },
+        ]
+    )
+    return rows
 
 
 STATUS_ICON = "✻"
