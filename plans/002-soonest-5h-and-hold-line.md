@@ -5,7 +5,7 @@
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, do **not** update `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/claude_swap/autoswitch.py src/claude_swap/settings.py src/claude_swap/menubar.py src/claude_swap/menubar_panel.py src/claude_swap/cli.py tests/test_autoswitch.py tests/test_settings.py tests/test_menubar.py docs/menubar.md README.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/openswap/autoswitch.py src/openswap/settings.py src/openswap/menubar.py src/openswap/menubar_panel.py src/openswap/cli.py tests/test_autoswitch.py tests/test_settings.py tests/test_menubar.py docs/menubar.md README.md`
 > After plan 001 is merged, HEAD will differ from `5e4ffde` in `menubar.py`
 > (9-tuples, org titles). That is expected — use the **post-001** tuple
 > shape. STOP only if ranking / strategy code in `autoswitch.py` no longer
@@ -31,17 +31,17 @@ reason in the popover so “staying on personal” is visible.
 
 ## Current state
 
-- `src/claude_swap/settings.py` `AutoSwitchSettings.strategy` default `"best"`;
+- `src/openswap/settings.py` `AutoSwitchSettings.strategy` default `"best"`;
   `SETTING_SPECS["autoswitch.strategy"].choices = ("best", "consume-first")`.
-- `src/claude_swap/autoswitch.py`:
+- `src/openswap/autoswitch.py`:
   - `_seven_day_reset_ts` ranks weekly only (lines 538–557).
   - `if settings.strategy != "consume-first":` below-threshold hold (1004).
   - `consume_first = settings.strategy == "consume-first"` (1124).
   - `_rank_candidates` uses `_seven_day_reset_ts` when `consume_first`.
   - Trigger string stays `"consume-first"` for events.
-- `src/claude_swap/cli.py` `_auto_command` `--strategy` choices
+- `src/openswap/cli.py` `_auto_command` `--strategy` choices
   `("best", "consume-first")`.
-- `src/claude_swap/menubar.py` `AUTO_STRATEGY_CHOICES = (("best", "Most quota left"), ("consume-first", "Soonest weekly reset"))`.
+- `src/openswap/menubar.py` `AUTO_STRATEGY_CHOICES = (("best", "Most quota left"), ("consume-first", "Soonest weekly reset"))`.
   `test_auto_strategy_choices_match_core_settings` requires extra choices ==
   `SETTING_SPECS` choices.
 - Tests: `tests/test_autoswitch.py` `TestConsumeFirstStrategy` (~2819)
@@ -65,11 +65,11 @@ trigger name `"consume-first"` for both consume strategies so the 20
 ## Scope
 
 **In scope**:
-- `src/claude_swap/autoswitch.py`
-- `src/claude_swap/settings.py`
-- `src/claude_swap/cli.py` (the `--strategy` choices/help on `cswap auto` only)
-- `src/claude_swap/menubar.py`
-- `src/claude_swap/menubar_panel.py` (one muted status line under the header)
+- `src/openswap/autoswitch.py`
+- `src/openswap/settings.py`
+- `src/openswap/cli.py` (the `--strategy` choices/help on `openswap auto` only)
+- `src/openswap/menubar.py`
+- `src/openswap/menubar_panel.py` (one muted status line under the header)
 - `tests/test_autoswitch.py`
 - `tests/test_settings.py`
 - `tests/test_menubar.py`

@@ -6,7 +6,7 @@
 > report — do not improvise. When done, do **not** update `plans/README.md`
 > (the reviewer maintains the index).
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/claude_swap/menubar.py src/claude_swap/menubar_panel.py src/claude_swap/widget_snapshot.py tests/test_menubar.py tests/test_widget_snapshot.py macos/CSwapWidget/Widget/CSwapWidgetView.swift docs/menubar.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/openswap/menubar.py src/openswap/menubar_panel.py src/openswap/widget_snapshot.py tests/test_menubar.py tests/test_widget_snapshot.py macos/OpenSwapWidget/Widget/OpenSwapWidgetView.swift docs/menubar.md`
 > If any in-scope file changed since this plan was written, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
@@ -31,22 +31,22 @@ and the widget use org name (or alias) the same way the TUI does.
 
 ## Current state
 
-- `src/claude_swap/models.py` — `AccountSnapshot.org_name` and `display_tag`
+- `src/openswap/models.py` — `AccountSnapshot.org_name` and `display_tag`
   (`org_name if org_name else "personal"`). Do not change this file.
-- `src/claude_swap/switcher.py` — `accounts_snapshot()` already passes
+- `src/openswap/switcher.py` — `accounts_snapshot()` already passes
   `org_name=org_name` into `AccountSnapshot` (~1751–1760). Do not change.
-- `src/claude_swap/menubar.py` — extra snapshot adapter **drops** org:
+- `src/openswap/menubar.py` — extra snapshot adapter **drops** org:
   `_adapt_snapshot` appends
   `(acc.number, acc.email, acc.is_active, display, acc.usage.last_good, acc.alias, acc.disabled, acc.usage.fetched_at)`
   with no `org_name`. `EMPTY_SNAPSHOT` has no `active_org`.
   `panel_accounts` titles `"title": alias or email` and
   `"subtitle": email if alias else ""`.
   `format_title` uses `alias if alias else _local_part(active_email)`.
-- `src/claude_swap/menubar_panel.py` — draws `card["title"]` only; no subtitle
+- `src/openswap/menubar_panel.py` — draws `card["title"]` only; no subtitle
   line. Card height: `CARD_PAD * 2 + TITLE_H + 6 + n * ROW_H`. `TITLE_H = 18.0`.
-- `src/claude_swap/widget_snapshot.py` — copies `panel_accounts` dicts as-is.
+- `src/openswap/widget_snapshot.py` — copies `panel_accounts` dicts as-is.
   No code change required if `panel_accounts` grows `subtitle`.
-- `macos/CSwapWidget/Widget/CSwapWidgetView.swift` — `AccountBlock` draws
+- `macos/OpenSwapWidget/Widget/OpenSwapWidgetView.swift` — `AccountBlock` draws
   `account.title` only; `AccountCard.subtitle` exists in `Snapshot.swift` and
   is unused.
 - Tests: `tests/test_menubar.py` `test_panel_accounts_prefers_alias_and_keeps_note`
@@ -67,7 +67,7 @@ re-implement quota math. Display-only change.
 | Tests (this plan) | `uv run pytest tests/test_menubar.py tests/test_widget_snapshot.py -n auto` | all pass |
 | Broader extra | `uv run pytest tests/test_menubar.py tests/test_widget_snapshot.py tests/test_appearance.py -n auto` | all pass |
 
-Working directory: the git worktree root (the `claude-swap` checkout).
+Working directory: the git worktree root (the `openswap` checkout).
 
 ## Suggested executor toolkit
 
@@ -77,15 +77,15 @@ Working directory: the git worktree root (the `claude-swap` checkout).
 ## Scope
 
 **In scope**:
-- `src/claude_swap/menubar.py`
-- `src/claude_swap/menubar_panel.py`
-- `macos/CSwapWidget/Widget/CSwapWidgetView.swift`
+- `src/openswap/menubar.py`
+- `src/openswap/menubar_panel.py`
+- `macos/OpenSwapWidget/Widget/OpenSwapWidgetView.swift`
 - `tests/test_menubar.py`
 - `tests/test_widget_snapshot.py`
 - `docs/menubar.md` (one short sentence: cards use alias or org tag, email as subtitle)
 
 **Out of scope**:
-- `src/claude_swap/models.py`, `switcher.py`, `autoswitch.py`
+- `src/openswap/models.py`, `switcher.py`, `autoswitch.py`
 - Wiki repo
 - Widget entitlements, App Intents, accessory families (plan 005)
 - Settings UI (plan 004)
@@ -184,14 +184,14 @@ title (`font_small`, `pal["muted"]`), and add `SUBTITLE_H = 14.0` to card
 height when subtitle is non-empty. Both the empty-state height loop at the
 top of `_build` and the per-card loop must use the same formula.
 
-`CSwapWidgetView.swift` `AccountBlock`: under the title `HStack`, if
+`OpenSwapWidgetView.swift` `AccountBlock`: under the title `HStack`, if
 `!account.subtitle.isEmpty`, `Text(account.subtitle)` caption, `Palette.muted`,
 `lineLimit(1)`.
 
 No AppKit tests. Do not change snapshot JSON schema number.
 
 **Verify**: `uv run pytest tests/test_menubar.py tests/test_widget_snapshot.py -n auto` still passes. Swift is compile-checked later by the human via
-`cswap widget --install`; do not run xcodebuild unless it is already fast and
+`openswap widget --install`; do not run xcodebuild unless it is already fast and
 does not change signing.
 
 ### Step 5: Docs + commit

@@ -7,7 +7,7 @@
                            │ switcher writes credentials
         ┌──────────────────┼──────────────────┐
         │                  │                  │
-   cswap CLI/TUI     AutoSwitchEngine    rumps extra
+   openswap CLI/TUI     AutoSwitchEngine    rumps extra
    (cli.py, tui/)    (autoswitch.py)     (menubar.py)
         │                  │                  │
         └────────┬─────────┴────────┬─────────┘
@@ -20,7 +20,7 @@
                  └──── menubar extra writes widget-snapshot.json
                                     │
                                     ▼
-                           cswap Widget.app (Swift)
+                           OpenSwap.app (Swift)
                            WidgetKit extension
 ```
 
@@ -34,7 +34,7 @@
 | Extra display knobs | `menubar.MenuBarSettings` | `menubar_settings.json` only |
 | Popover UI | `menubar_panel.py` | AppKit, imported after rumps |
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
-| Session `cswap run` | `session.py` | Must not POSIX-`exec` the extra |
+| Session `openswap run` | `session.py` | Must not POSIX-`exec` the extra |
 | Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; extension reads |
 | Widget build | `widget_install.py` | `xcodebuild` + LaunchAgent |
 
@@ -44,13 +44,13 @@ The extra is a thin shell. It must not re-implement quota math, ranking, or cred
 
 | Path | Who |
 | --- | --- |
-| `~/.claude-swap-backup/settings.json` | CLI + extra (policy) |
-| `~/.claude-swap-backup/menubar_settings.json` | Extra (title, auto on/off, kickoff) |
-| `~/.claude-swap-backup/autoswitch_state.json` | Engine (cooldown, last switch, quarantine). Extra stamps `lastSwitchAt` after a hand switch |
-| `~/Library/Application Support/cswap/widget-snapshot.json` | Extra → widget |
-| `~/Library/LaunchAgents/com.cswap.menubar.plist` | Extra service |
-| `~/Library/LaunchAgents/com.cswap.widget.plist` | Widget host |
-| `~/Applications/cswap Widget.app` | Signed WidgetKit host |
+| `~/Library/Application Support/OpenSwap/settings.json` | CLI + extra (policy). First run moves `~/.claude-swap-backup` here |
+| `~/Library/Application Support/OpenSwap/menubar_settings.json` | Extra (title, auto on/off, kickoff) |
+| `~/Library/Application Support/OpenSwap/autoswitch_state.json` | Engine (cooldown, last switch, quarantine). Extra stamps `lastSwitchAt` after a hand switch |
+| `~/Library/Application Support/OpenSwap/widget-snapshot.json` | Extra → widget |
+| `~/Library/LaunchAgents/com.opensoft.openswap.menubar.plist` | Extra service |
+| `~/Library/LaunchAgents/com.opensoft.openswap.widget.plist` | Widget host |
+| `~/Applications/OpenSwap.app` | Signed WidgetKit host |
 
 Credentials on macOS are Keychain, not files in the backup dir.
 

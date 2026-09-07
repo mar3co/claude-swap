@@ -3,44 +3,6 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "claude-swap"
-version = "0.27.0b1"
-source = { editable = "." }
-dependencies = [
-    { name = "keyring", marker = "sys_platform == 'win32'" },
-    { name = "textual" },
-    { name = "truststore" },
-]
-
-[package.optional-dependencies]
-menubar = [
-    { name = "rumps" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-xdist" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "keyring", marker = "sys_platform == 'win32'", specifier = ">=25.0.0" },
-    { name = "rumps", marker = "extra == 'menubar'", specifier = ">=0.4.0" },
-    { name = "textual", specifier = ">=8.2.8,<9" },
-    { name = "truststore", specifier = ">=0.10.4" },
-]
-provides-extras = ["menubar"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-xdist", specifier = ">=3.5" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -108,7 +70,7 @@ dependencies = [
     { name = "jaraco-classes" },
     { name = "jaraco-context" },
     { name = "jaraco-functools" },
-    { name = "pywin32-ctypes", marker = "sys_platform == 'win32'" },
+    { name = "pywin32-ctypes" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
 wheels = [
@@ -172,6 +134,44 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/de/1d/f4da6f02cdffe04d6362210b807146a26044c88d839208aec273bb0d9184/more_itertools-11.1.0.tar.gz", hash = "sha256:48e8f4d9e7e5878571ecf6f2b4e57634f93cd474cc8cfbd2376f2d11b396e30d", size = 145772, upload-time = "2026-05-22T14:14:29.909Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e8/3d/1087453384dbde46a8c7f9356eead2c58be8a7bf156bca40243377c85715/more_itertools-11.1.0-py3-none-any.whl", hash = "sha256:4b65538ae22f6fed0ce4874efd317463a7489796a0939fa66824dd542125a192", size = 72226, upload-time = "2026-05-22T14:14:28.824Z" },
+]
+
+[[package]]
+name = "openswap"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "keyring", marker = "sys_platform == 'win32'" },
+    { name = "textual" },
+    { name = "truststore" },
+]
+
+[package.optional-dependencies]
+menubar = [
+    { name = "rumps" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "keyring", marker = "sys_platform == 'win32'", specifier = ">=25.0.0" },
+    { name = "rumps", marker = "extra == 'menubar'", specifier = ">=0.4.0" },
+    { name = "textual", specifier = ">=8.2.8,<9" },
+    { name = "truststore", specifier = ">=0.10.4" },
+]
+provides-extras = ["menubar"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-xdist", specifier = ">=3.5" },
 ]
 
 [[package]]

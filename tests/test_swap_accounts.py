@@ -1,4 +1,4 @@
-"""Tests for `cswap swap` (ClaudeAccountSwitcher.swap_accounts)."""
+"""Tests for `openswap swap` (ClaudeAccountSwitcher.swap_accounts)."""
 
 import os
 import sys
@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from claude_swap.credentials import CredentialStore
-from claude_swap.exceptions import (
+from openswap.credentials import CredentialStore
+from openswap.exceptions import (
     AccountNotFoundError,
     ConfigError,
     CredentialError,
     ValidationError,
 )
-from claude_swap.models import Platform
-from claude_swap.switcher import ClaudeAccountSwitcher
+from openswap.models import Platform
+from openswap.switcher import ClaudeAccountSwitcher
 
 
 class TestSwapAccounts:
@@ -53,7 +53,7 @@ class TestSwapAccounts:
         self, temp_home: Path, sample_sequence_data: dict
     ):
         """Sequence stays sorted, so rotation and list order follow the new
-        numbers — the accounts genuinely trade places in `cswap list`."""
+        numbers — the accounts genuinely trade places in `openswap list`."""
         switcher = ClaudeAccountSwitcher()
         self._write(switcher, sample_sequence_data)
 
@@ -285,7 +285,7 @@ class TestSwapAccounts:
 
         # Scoped context: see H-1 comment above.
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("claude_swap.switcher.os.chmod", failing_chmod)
+            mp.setattr("openswap.switcher.os.chmod", failing_chmod)
             with pytest.raises(OSError):
                 switcher._write_json(switcher.sequence_file, {"x": 1})
 
@@ -419,7 +419,7 @@ class TestSwapAccounts:
             def __exit__(self, *exc):
                 return False
 
-        monkeypatch.setattr("claude_swap.switcher.FileLock", SpyLock)
+        monkeypatch.setattr("openswap.switcher.FileLock", SpyLock)
         switcher.swap_accounts("1", "2")
 
         assert entered == [switcher.lock_file]

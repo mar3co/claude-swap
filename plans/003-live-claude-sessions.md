@@ -5,7 +5,7 @@
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, do **not** update `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/claude_swap/menubar.py src/claude_swap/menubar_panel.py src/claude_swap/process_detection.py tests/test_menubar.py docs/menubar.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/openswap/menubar.py src/openswap/menubar_panel.py src/openswap/process_detection.py tests/test_menubar.py docs/menubar.md`
 > Expect 001 (and possibly 002) diffs in `menubar.py` / `menubar_panel.py`.
 > STOP if `notification_copy_for_manual_switch` / `process_detection.get_running_instances`
 > no longer exist.
@@ -22,7 +22,7 @@
 ## Why this matters
 
 Every extra switch toasts “Restart Claude Code to apply now, or wait about
-30 seconds” even when nothing is running. `cswap list` already prints
+30 seconds” even when nothing is running. `openswap list` already prints
 running instances via `get_running_instances()`. The extra never calls it.
 After this plan, the toast omits the restart sentence when no live session
 or IDE lock is found, and the popover shows a short “Claude Code is running
@@ -30,14 +30,14 @@ or IDE lock is found, and the popover shows a short “Claude Code is running
 
 ## Current state
 
-- `src/claude_swap/process_detection.py` — `ClaudeSession`, `IdeInstance`,
+- `src/openswap/process_detection.py` — `ClaudeSession`, `IdeInstance`,
   `get_running_instances()` → `(list[ClaudeSession], list[IdeInstance])`.
   `list_sessions` is SCAN (skips unreadable). Extra display is a SCAN: using
   `get_running_instances` is correct. Do not use this for destructive
   guards.
-- `src/claude_swap/switcher.py` ~5544 — CLI `list` prints “Running instances”.
+- `src/openswap/switcher.py` ~5544 — CLI `list` prints “Running instances”.
   Extra does not.
-- `src/claude_swap/menubar.py`
+- `src/openswap/menubar.py`
   - `notification_copy_for_event` switch body always:
     `"Restart Claude Code to apply now, or wait about 30 seconds."`
   - `notification_copy_for_manual_switch(dest_name)` same body.
@@ -57,8 +57,8 @@ or IDE lock is found, and the popover shows a short “Claude Code is running
 ## Scope
 
 **In scope**:
-- `src/claude_swap/menubar.py`
-- `src/claude_swap/menubar_panel.py`
+- `src/openswap/menubar.py`
+- `src/openswap/menubar_panel.py`
 - `tests/test_menubar.py`
 - `docs/menubar.md` (toast + optional running line)
 

@@ -2,23 +2,23 @@
 
 Python cannot host WidgetKit. Split:
 
-1. Extra writes `~/Library/Application Support/cswap/widget-snapshot.json` (`widget_snapshot.py`). Payload is `accounts` plus `combined.five_hour` / `combined.seven_day` (remaining slots across healthy accounts; signed-out and disabled omitted). The widget computes the same from `accounts` if `combined` is missing.
-2. Extra posts Darwin notification `com.cswap.widget.reload`.
-3. `cswap Widget.app` (LSUIElement) listens and calls `WidgetCenter.shared.reloadAllTimelines()`.
-4. The appex reads the JSON (sandbox: home-relative read-write exception on `Library/Application Support/cswap/` only + `getpwuid` for the real home; container `NSHomeDirectory()` is wrong).
-5. A tap writes `~/Library/Application Support/cswap/widget-command.json` (`{"op":"switch","num":…}`). The extra consumes it on the 1s sync tick and handles it like a popover card click (switch, or signed-out repair). Combined remaining taps the slot with the most remaining on the primary window. The extra must be running; the widget cannot switch on its own. Disabled cards are not tappable. Sentinel notes render even when last-good bars are present.
+1. Extra writes `~/Library/Application Support/OpenSwap/widget-snapshot.json` (`widget_snapshot.py`). Payload is `accounts` plus `combined.five_hour` / `combined.seven_day` (remaining slots across healthy accounts; signed-out and disabled omitted). The widget computes the same from `accounts` if `combined` is missing.
+2. Extra posts Darwin notification `com.opensoft.openswap.widget.reload`.
+3. `OpenSwap.app` (LSUIElement) listens and calls `WidgetCenter.shared.reloadAllTimelines()`.
+4. The appex reads the JSON (sandbox: home-relative read-write exception on `Library/Application Support/OpenSwap/` only + `getpwuid` for the real home; container `NSHomeDirectory()` is wrong).
+5. A tap writes `~/Library/Application Support/OpenSwap/widget-command.json` (`{"op":"switch","num":…}`). The extra consumes it on the 1s sync tick and handles it like a popover card click (switch, or signed-out repair). Combined remaining taps the slot with the most remaining on the primary window. The extra must be running; the widget cannot switch on its own. Disabled cards are not tappable. Sentinel notes render even when last-good bars are present.
 
-The widget is `AppIntentConfiguration` (`CSwapWidgetIntent`). Right-click → Edit Widget sets layout (all accounts, combined remaining, one account), which windows (5h, 7d, both), and the account picker for one-account. Those choices live on the widget instance, not in extra Settings.
+The widget is `AppIntentConfiguration` (`OpenSwapWidgetIntent`). Right-click → Edit Widget sets layout (all accounts, combined remaining, one account), which windows (5h, 7d, both), and the account picker for one-account. Those choices live on the widget instance, not in extra Settings.
 
-Sources: `macos/CSwapWidget/`. Install: `cswap widget --install` (`widget_install.py`).
+Sources: `macos/OpenSwapWidget/`. Install: `openswap widget --install` (`widget_install.py`).
 
 ## Build
 
-`xcodebuild` scheme `CSwapWidget`, Release, `DEVELOPMENT_TEAM=…`, copy to `~/Applications/cswap Widget.app`, bootstrap LaunchAgent `com.cswap.widget`.
+`xcodebuild` scheme `OpenSwapWidget`, Release, `DEVELOPMENT_TEAM=…`, copy to `~/Applications/OpenSwap.app`, bootstrap LaunchAgent `com.opensoft.openswap.widget`.
 
-`project_dir()` walks from `widget_install.py` until it finds `macos/CSwapWidget/CSwapWidget.xcodeproj`. That only works from this git checkout (or if sources are vendored next to the package as `macos_widget`). A PyPI wheel does not include `macos/`.
+`project_dir()` walks from `widget_install.py` until it finds `macos/OpenSwapWidget/OpenSwapWidget.xcodeproj`. That only works from this git checkout (or if sources are vendored next to the package as `macos_widget`). A PyPI wheel does not include `macos/`.
 
-Regenerate the Xcode project with xcodegen from `macos/CSwapWidget/project.yml` if you change that file or add a `.swift` file under `Widget/`. `cswap widget --install` runs `xcodebuild` only.
+Regenerate the Xcode project with xcodegen from `macos/OpenSwapWidget/project.yml` if you change that file or add a `.swift` file under `Widget/`. `openswap widget --install` runs `xcodebuild` only.
 
 ## Signing
 
@@ -29,7 +29,7 @@ Regenerate the Xcode project with xcodegen from `macos/CSwapWidget/project.yml` 
 3. Xcode last-selected team, if it has a local Apple Development cert
 4. Any local cert OU
 
-Last Xcode team on a machine that also has VirtualShield can be `5LHJJ5JW3C`. Prefer the installed app’s team (`KJ999FVUJ4` on this Mac) so `com.cswap.widget` does not change and already-placed widgets do not go blank.
+Last Xcode team on a machine that also has VirtualShield can be `5LHJJ5JW3C`. Prefer the installed app’s team (`KJ999FVUJ4` on this Mac) so `com.opensoft.openswap.widget` does not change and already-placed widgets do not go blank.
 
 No App Group: that needs the Developer Portal. The home-relative sandbox exception is enough (read-write on that directory only, so the appex can write the command file).
 
@@ -43,4 +43,4 @@ Colors match the TUI (`SEV_OK` / `WARN` / `CRIT`, 70 / 90). Use `NSColor` dynami
 
 ## Caches
 
-xcodebuild derived data: `~/Library/Caches/cswap-widget`. Safe to delete.
+xcodebuild derived data: `~/Library/Caches/openswap-widget`. Safe to delete.

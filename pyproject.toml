@@ -1,7 +1,7 @@
 [project]
-name = "claude-swap"
-version = "0.27.0b1"
-description = "Multi-account switcher for Claude Code"
+name = "openswap"
+version = "0.1.0"
+description = "OpenSoft menu bar app for rotating AI coding accounts"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,9 +13,9 @@ dependencies = [
     "textual>=8.2.8,<9",
     "truststore>=0.10.4",
 ]
-authors = [{name = "Onur Cetinkol", email = "onurcetinkol@gmail.com"}]
+authors = [{name = "OpenSoft"}]
 license = {text = "MIT"}
-keywords = ["claude", "claude-code", "account-switcher", "cli"]
+keywords = ["openswap", "claude-code", "account-switcher", "menubar"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -35,20 +35,20 @@ classifiers = [
 menubar = ["rumps>=0.4.0"]
 
 [project.urls]
-Homepage = "https://github.com/mar3co/claude-swap"
-Repository = "https://github.com/mar3co/claude-swap"
-Issues = "https://github.com/mar3co/claude-swap/issues"
+Homepage = "https://github.com/mar3co/openswap"
+Repository = "https://github.com/mar3co/openswap"
+Issues = "https://github.com/mar3co/openswap/issues"
 
 [project.scripts]
-claude-swap = "claude_swap.cli:main"
-cswap = "claude_swap.cli:main"
+openswap = "openswap.cli:main"
+cswap = "openswap.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/claude_swap"]
+packages = ["src/openswap"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-xdist>=3.5"]

@@ -5,7 +5,7 @@
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, do **not** update `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/claude_swap/menubar.py src/claude_swap/menubar_panel.py tests/test_menubar.py docs/menubar.md docs/testing.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/openswap/menubar.py src/openswap/menubar_panel.py tests/test_menubar.py docs/menubar.md docs/testing.md`
 > Expect 001–003 changes. STOP if `_more` / `_settings_menu` / `AUTO_STRATEGY_CHOICES`
 > are gone.
 
@@ -56,8 +56,8 @@ popover.
 ## Scope
 
 **In scope**:
-- `src/claude_swap/menubar.py`
-- `src/claude_swap/menubar_panel.py`
+- `src/openswap/menubar.py`
+- `src/openswap/menubar_panel.py`
 - `tests/test_menubar.py`
 - `docs/menubar.md`
 - `docs/testing.md` (exercise Settings page instead of More → Settings)

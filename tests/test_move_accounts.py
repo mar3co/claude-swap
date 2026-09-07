@@ -1,4 +1,4 @@
-"""Tests for `cswap move` (ClaudeAccountSwitcher.move_account)."""
+"""Tests for `openswap move` (ClaudeAccountSwitcher.move_account)."""
 
 import os
 import sys
@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from claude_swap import macos_keychain
-from claude_swap.credentials import CredentialStore
-from claude_swap.exceptions import (
+from openswap import macos_keychain
+from openswap.credentials import CredentialStore
+from openswap.exceptions import (
     AccountNotFoundError,
     ConfigError,
     CredentialError,
     ValidationError,
 )
-from claude_swap.models import Platform
-from claude_swap.switcher import ClaudeAccountSwitcher
+from openswap.models import Platform
+from openswap.switcher import ClaudeAccountSwitcher
 
 
 class TestMoveAccount:
@@ -85,7 +85,7 @@ class TestMoveAccount:
             def __exit__(self, *exc):
                 return False
 
-        monkeypatch.setattr("claude_swap.switcher.FileLock", SpyLock)
+        monkeypatch.setattr("openswap.switcher.FileLock", SpyLock)
         switcher.move_account("2", "5")
 
         assert entered == [switcher.lock_file]
@@ -121,7 +121,7 @@ class TestMoveAccount:
             def __exit__(self, *exc):
                 return False
 
-        monkeypatch.setattr("claude_swap.switcher.FileLock", SpyLock)
+        monkeypatch.setattr("openswap.switcher.FileLock", SpyLock)
         num_src, num_target, swapped = switcher.move_account("1", "2")
 
         assert (num_src, num_target, swapped) == ("1", "2", True)
@@ -238,7 +238,7 @@ class TestMoveAccount:
         ever reached — and raises ``ConfigError`` instead. The invariant
         this test exists to pin (nothing committed, the stale item
         survives) is unchanged; only which guard catches it first is."""
-        from claude_swap.credentials import SECURITY_SERVICE
+        from openswap.credentials import SECURITY_SERVICE
 
         switcher = ClaudeAccountSwitcher()
         self._write(switcher, sample_sequence_data)

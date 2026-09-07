@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_swap.exceptions import LockError
-from claude_swap.locking import FileLock
+from openswap.exceptions import LockError
+from openswap.locking import FileLock
 
 
 class TestFileLock:

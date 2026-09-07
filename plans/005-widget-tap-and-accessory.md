@@ -5,7 +5,7 @@
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, do **not** update `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- macos/CSwapWidget src/claude_swap/widget_snapshot.py src/claude_swap/menubar.py tests/test_widget_snapshot.py tests/test_menubar.py docs/widget.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- macos/OpenSwapWidget src/openswap/widget_snapshot.py src/openswap/menubar.py tests/test_widget_snapshot.py tests/test_menubar.py docs/widget.md`
 > Expect 001 subtitle on `AccountCard`. STOP if `panel_accounts` / snapshot
 > path / `RELOAD_NOTIFICATION` are gone.
 
@@ -28,17 +28,17 @@ a command file the extra consumes and switches, same as a card click.
 
 ## Current state
 
-- `macos/CSwapWidget/Widget/CSwapWidget.swift` — `StaticConfiguration`,
+- `macos/OpenSwapWidget/Widget/OpenSwapWidget.swift` — `StaticConfiguration`,
   families `[.systemSmall, .systemMedium, .systemLarge]`.
-- `CSwapWidgetView.swift` — `AccountBlock` is display-only (001 may add
+- `OpenSwapWidgetView.swift` — `AccountBlock` is display-only (001 may add
   subtitle).
 - `Widget.entitlements` — sandbox + **read-only**
   `temporary-exception.files.home-relative-path.read-only` for
-  `/Library/Application Support/cswap/`.
-- Host `main.swift` — listens `com.cswap.widget.reload`, accessory policy.
+  `/Library/Application Support/openswap/`.
+- Host `main.swift` — listens `com.opensoft.openswap.widget.reload`, accessory policy.
   Host is also sandboxed (`Host.entitlements`) with **no** file exception.
 - Python extra writes `widget-snapshot.json`; notification
-  `com.cswap.widget.reload`.
+  `com.opensoft.openswap.widget.reload`.
 - Extra switch path: `switch_to(str(num), json_output=True)` then
   `record_manual_switch` if `result["switched"]`.
 
@@ -50,7 +50,7 @@ in widgets are available.
 | Purpose | Command | Expected on success |
 |---------|---------|---------------------|
 | Python tests | `uv run pytest tests/test_widget_snapshot.py tests/test_menubar.py -n auto` | all pass |
-| Widget compile (optional) | `cswap widget --install` | app replaced; do not flip DEVELOPMENT_TEAM |
+| Widget compile (optional) | `openswap widget --install` | app replaced; do not flip DEVELOPMENT_TEAM |
 
 Signing: keep TeamIdentifier `KJ999FVUJ4` if the installed app has it
 (`docs/widget.md`). Do not pick VirtualShield `5LHJJ5JW3C`.
@@ -65,12 +65,12 @@ Signing: keep TeamIdentifier `KJ999FVUJ4` if the installed app has it
 ## Scope
 
 **In scope**:
-- `macos/CSwapWidget/Widget/Widget.entitlements` (read-write exception)
-- `macos/CSwapWidget/Widget/*.swift` (new intent file allowed)
-- `macos/CSwapWidget/project.yml` only if a new target is required
+- `macos/OpenSwapWidget/Widget/Widget.entitlements` (read-write exception)
+- `macos/OpenSwapWidget/Widget/*.swift` (new intent file allowed)
+- `macos/OpenSwapWidget/project.yml` only if a new target is required
   (prefer **no** new target: App Intent in the widget extension)
-- `src/claude_swap/widget_snapshot.py` (command path + consume helper)
-- `src/claude_swap/menubar.py` (poll consume helper on refresh)
+- `src/openswap/widget_snapshot.py` (command path + consume helper)
+- `src/openswap/menubar.py` (poll consume helper on refresh)
 - `tests/test_widget_snapshot.py`
 - `tests/test_menubar.py` (consume → should_notify / record_manual_switch
   wiring if you add a pure helper)
@@ -78,7 +78,7 @@ Signing: keep TeamIdentifier `KJ999FVUJ4` if the installed app has it
 
 **Out of scope**:
 - App Groups / Developer Portal
-- Changing bundle id `com.cswap.widget`
+- Changing bundle id `com.opensoft.openswap.widget`
 - Switching without going through extra `switch_to` (do not have Swift
   write Keychain)
 - Push / wiki
@@ -104,7 +104,7 @@ In `widget_snapshot.py` (next to snapshot path):
 COMMAND_FILENAME = "widget-command.json"
 
 def default_command_path(home: Path | None = None) -> Path:
-    """~/Library/Application Support/cswap/widget-command.json"""
+    """~/Library/Application Support/openswap/widget-command.json"""
 
 def parse_switch_command(raw: dict) -> str | None:
     """Return slot num string if op=='switch' and num is a non-empty str/int.
@@ -148,19 +148,19 @@ Change `Widget.entitlements` read-only key to:
 
 `com.apple.security.temporary-exception.files.home-relative-path.read-write`
 
-same path `/Library/Application Support/cswap/`.
+same path `/Library/Application Support/openswap/`.
 
 Add `SwitchAccountIntent.swift` in `Widget/`:
 
 - `AppIntent` with `@Parameter var num: String`
-- `title`: “Switch cswap account”
+- `title`: “Switch openswap account”
 - `perform()` writes `{"op":"switch","num": num, "at": Date().timeIntervalSince1970}`
-  atomically to `realHomeDirectory()/Library/Application Support/cswap/widget-command.json`
+  atomically to `realHomeDirectory()/Library/Application Support/openswap/widget-command.json`
   (reuse `realHomeDirectory()` from `Snapshot.swift`; if needed, move it to
   a small shared file in `Widget/`).
 - Do not use App Groups.
 
-`CSwapWidgetView.swift`: wrap each `AccountBlock` in
+`OpenSwapWidgetView.swift`: wrap each `AccountBlock` in
 `Button(intent: SwitchAccountIntent(num: account.num))` so a tap switches.
 Disabled cards: no button (or button disabled). Keep the visual layout.
 
@@ -168,22 +168,22 @@ Do not switch from `getTimeline` (that would fire without a tap).
 
 ### Step 5: Accessory families
 
-`CSwapUsageWidget.supportedFamilies` add `.accessoryRectangular` and
+`OpenSwapUsageWidget.supportedFamilies` add `.accessoryRectangular` and
 `.accessoryCircular` (macOS 14 WidgetKit).
 
-`CSwapWidgetView`:
+`OpenSwapWidgetView`:
 - `accessoryCircular`: active account 5h pct as a single number (or `—`)
 - `accessoryRectangular`: active title + 5h/7d pcts on one line
 
 Use `family == .accessoryCircular` / `.accessoryRectangular`. Empty
-snapshot: short “cswap” text.
+snapshot: short “openswap” text.
 
 ### Step 6: Docs + optional install
 
 `docs/widget.md`: families list; tap writes command file; extra must be
 running; entitlement is read-write on that directory only.
 
-If `cswap widget --install` is run, do not change DEVELOPMENT_TEAM away
+If `openswap widget --install` is run, do not change DEVELOPMENT_TEAM away
 from the installed app’s team.
 
 Commit.
@@ -198,12 +198,12 @@ Commit.
 - Pattern: `tests/test_widget_snapshot.py`
 
 Swift UI/intents are not covered by pytest; the human verifies with
-`cswap widget --install` and a tap.
+`openswap widget --install` and a tap.
 
 ## Done criteria
 
 - [ ] Python tests above pass
-- [ ] Widget entitlements are read-write only for `cswap/` under Application Support
+- [ ] Widget entitlements are read-write only for `openswap/` under Application Support
 - [ ] Tap path cannot write credentials or Keychain
 - [ ] Accessory families in `supportedFamilies`
 - [ ] Extra uses existing `switch_to` + `record_manual_switch`

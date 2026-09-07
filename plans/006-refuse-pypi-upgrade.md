@@ -5,7 +5,7 @@
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, do **not** update `plans/README.md`.
 >
-> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/claude_swap/update_check.py tests/test_update_check.py README.md pyproject.toml docs/hacking.md`
+> **Drift check (run first)**: `git diff --stat 5e4ffde..HEAD -- src/openswap/update_check.py tests/test_update_check.py README.md pyproject.toml docs/hacking.md`
 > If any in-scope file changed since this plan was written, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
@@ -21,29 +21,29 @@
 
 ## Why this matters
 
-This fork’s extra, widget, and kickoff are not on PyPI. `cswap upgrade` runs
-`uv tool upgrade claude-swap`, which installs `realiti4`’s wheel and drops
+This fork’s extra, widget, and kickoff are not on PyPI. `openswap upgrade` runs
+`uv tool upgrade openswap`, which installs `realiti4`’s wheel and drops
 those features. `check_for_update` nags about PyPI even for an editable
-checkout. After this plan, an install whose `claude_swap` package lives inside
+checkout. After this plan, an install whose `openswap` package lives inside
 a git work tree refuses PyPI upgrade and does not nag; README/pyproject point
 at the mar3co repo.
 
 ## Current state
 
-- `src/claude_swap/update_check.py`
-  - `PYPI_URL = "https://pypi.org/pypi/claude-swap/json"`
+- `src/openswap/update_check.py`
+  - `PYPI_URL = "https://pypi.org/pypi/openswap/json"`
   - `check_for_update` compares PyPI latest to `current_version`
-  - `run_self_upgrade` runs `uv tool upgrade claude-swap` or `pipx upgrade claude-swap`
+  - `run_self_upgrade` runs `uv tool upgrade openswap` or `pipx upgrade openswap`
   - Comment already: `If you installed with pip install -e ., use git pull instead.`
 - `pyproject.toml` `[project.urls]` still:
   `Homepage` / `Repository` / `Issues` → `https://github.com/realiti4/claude-swap`
-- `README.md` first install is `uv tool install 'claude-swap[menubar]'` (PyPI),
+- `README.md` first install is `uv tool install 'openswap[menubar]'` (PyPI),
   fork clone is secondary.
 - `docs/hacking.md` already says PyPI will not see this checkout’s widget
   sources.
 
 This machine: `uv tool install --editable '.[menubar]'` so
-`claude_swap.__file__` is under `/Users/yohan/GitHub/claude-swap` which has
+`openswap.__file__` is under `/Users/yohan/GitHub/openswap` which has
 `.git`. Detection must use the **package file path**, not `sys.prefix`
 (prefix is still `uv/tools`).
 
@@ -63,14 +63,14 @@ Do not rename the PyPI package. Do not publish.
 ## Scope
 
 **In scope**:
-- `src/claude_swap/update_check.py`
+- `src/openswap/update_check.py`
 - `tests/test_update_check.py`
 - `README.md`
 - `pyproject.toml` (`[project.urls]` only)
 - `docs/hacking.md` (one sentence if upgrade is not mentioned)
 
 **Out of scope**:
-- Changing `name = "claude-swap"` or version
+- Changing `name = "openswap"` or version
 - A new PyPI project
 - Widget / extra code
 - Push / `upstream`
@@ -93,11 +93,11 @@ Add to `tests/test_update_check.py` (model after `TestCheckForUpdate`):
 
 ```python
 def test_package_from_git_checkout_is_detected(tmp_path, monkeypatch):
-    # tmp_path is a fake clone: .git dir + src/claude_swap/__init__.py
+    # tmp_path is a fake clone: .git dir + src/openswap/__init__.py
     # _package_is_git_checkout(path) is True
 
 def test_package_inside_uv_tools_without_git_is_not_a_checkout(tmp_path):
-    # path under uv/tools/claude-swap, no .git ancestor → False
+    # path under uv/tools/openswap, no .git ancestor → False
 
 def test_check_for_update_skips_pypi_for_git_checkout(monkeypatch, tmp_path):
     # patch detection True; urlopen must NOT be called; result is None
@@ -119,9 +119,9 @@ In `update_check.py`:
 
 ```python
 def _package_is_git_checkout(package_file: Path | None = None) -> bool:
-    """True when claude_swap is loaded from a directory that has a .git ancestor.
+    """True when openswap is loaded from a directory that has a .git ancestor.
 
-    Walk parents of package_file (default: claude_swap.__file__). Stop at
+    Walk parents of package_file (default: openswap.__file__). Stop at
     filesystem root. A `.git` file (gitdir for worktrees) or directory both
     count. Never follow the path into uv/tools or pipx as a positive: those
     copies have no `.git`.
@@ -146,20 +146,20 @@ including existing PyPI tests.
 `pyproject.toml` `[project.urls]`:
 
 ```toml
-Homepage = "https://github.com/mar3co/claude-swap"
-Repository = "https://github.com/mar3co/claude-swap"
-Issues = "https://github.com/mar3co/claude-swap/issues"
+Homepage = "https://github.com/mar3co/openswap"
+Repository = "https://github.com/mar3co/openswap"
+Issues = "https://github.com/mar3co/openswap/issues"
 ```
 
 `README.md` Install section: put the **fork clone + editable** block first.
-Keep `uv tool install 'claude-swap[menubar]'` as “upstream PyPI (no extra
-widget/kickoff from this fork)”. Mention that `cswap upgrade` on an editable
+Keep `uv tool install 'openswap[menubar]'` as “upstream PyPI (no extra
+widget/kickoff from this fork)”. Mention that `openswap upgrade` on an editable
 checkout will refuse PyPI.
 
-`docs/hacking.md`: one sentence that `cswap upgrade` refuses PyPI when running
+`docs/hacking.md`: one sentence that `openswap upgrade` refuses PyPI when running
 from this tree.
 
-**Verify**: grep `realiti4/claude-swap` in `pyproject.toml` has no matches
+**Verify**: grep `realiti4/openswap` in `pyproject.toml` has no matches
 under `[project.urls]`. README still mentions upstream once as attribution
 (that is fine).
 
@@ -178,7 +178,7 @@ under `[project.urls]`. README still mentions upstream once as attribution
 ## Done criteria
 
 - [ ] `uv run pytest tests/test_update_check.py -n auto` exits 0
-- [ ] Editable git install: no PyPI nag, no `uv tool upgrade claude-swap`
+- [ ] Editable git install: no PyPI nag, no `uv tool upgrade openswap`
 - [ ] `[project.urls]` point at mar3co
 - [ ] README leads with the fork clone
 - [ ] No files outside scope

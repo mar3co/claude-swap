@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claude_swap import widget_snapshot as ws
-from claude_swap.menubar import panel_windows
+from openswap import widget_snapshot as ws
+from openswap.menubar import panel_windows
 
 _NOW = 1_000_000.0
 _USAGE = {
@@ -51,7 +51,7 @@ def test_panel_windows_exposes_resets_at_ts_for_the_widget():
 
 
 def test_write_widget_snapshot_atomic(tmp_path: Path):
-    dest = tmp_path / "Library" / "Application Support" / "cswap" / "widget-snapshot.json"
+    dest = tmp_path / "Library" / "Application Support" / "OpenSwap" / "widget-snapshot.json"
     written = ws.write_widget_snapshot(_snap(), now=_NOW, dest=dest)
     assert written == dest
     data = json.loads(dest.read_text(encoding="utf-8"))
@@ -63,7 +63,7 @@ def test_write_widget_snapshot_atomic(tmp_path: Path):
 
 def test_default_snapshot_path_under_application_support(tmp_path: Path):
     assert ws.default_snapshot_path(tmp_path) == (
-        tmp_path / "Library" / "Application Support" / "cswap" / "widget-snapshot.json"
+        tmp_path / "Library" / "Application Support" / "OpenSwap" / "widget-snapshot.json"
     )
 
 
@@ -85,7 +85,7 @@ def test_notify_and_wake_are_noop_off_darwin(monkeypatch, tmp_path: Path):
 
 def test_default_command_path_under_application_support(tmp_path: Path):
     assert ws.default_command_path(tmp_path) == (
-        tmp_path / "Library" / "Application Support" / "cswap" / "widget-command.json"
+        tmp_path / "Library" / "Application Support" / "OpenSwap" / "widget-command.json"
     )
 
 

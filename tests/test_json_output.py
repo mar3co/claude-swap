@@ -9,18 +9,18 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_swap import oauth
-from claude_swap.exceptions import ConfigError, SwitchError
-from claude_swap.json_output import (
+from openswap import oauth
+from openswap.exceptions import ConfigError, SwitchError
+from openswap.json_output import (
     SCHEMA_VERSION,
     account_row,
     error_envelope,
     usage_fields,
     usage_to_json,
 )
-from claude_swap.credentials import ActiveCredentials
-from claude_swap.models import Platform
-from claude_swap.switcher import ClaudeAccountSwitcher
+from openswap.credentials import ActiveCredentials
+from openswap.models import Platform
+from openswap.switcher import ClaudeAccountSwitcher
 
 
 # --------------------------------------------------------------------------- #
@@ -138,7 +138,7 @@ class TestJsonHelpers:
         assert "aheadOfPace" not in out["sevenDay"]
 
     def test_usage_fields_variants(self):
-        from claude_swap.json_output import (
+        from openswap.json_output import (
             USAGE_KEYCHAIN_UNAVAILABLE,
             USAGE_NO_CREDENTIALS,
             USAGE_RELOGIN_REQUIRED,
@@ -162,13 +162,13 @@ class TestJsonHelpers:
         }
 
     def test_account_row_includes_alias_when_set(self):
-        from claude_swap.json_output import account_row
+        from openswap.json_output import account_row
 
         row = account_row(1, "a@x.com", "", "", True, None, alias="dev")
         assert row["alias"] == "dev"
 
     def test_account_row_omits_alias_when_unset(self):
-        from claude_swap.json_output import account_row
+        from openswap.json_output import account_row
 
         row = account_row(1, "a@x.com", "", "", True, None)
         assert "alias" not in row
@@ -211,7 +211,7 @@ class TestListJson:
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
              patch.object(switcher, "_read_account_credentials", return_value=backup_creds), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(usage)):
+             patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(usage)):
             payload = switcher.list_accounts(json_output=True)
 
         # Method itself prints nothing — the CLI serializes.
@@ -238,7 +238,7 @@ class TestListJson:
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
              patch.object(switcher, "_read_account_credentials", return_value=""), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
+             patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
             payload = switcher.list_accounts(json_output=True)
 
         by_num = {a["number"]: a for a in payload["accounts"]}
@@ -261,7 +261,7 @@ class TestListJson:
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
              patch.object(switcher, "_read_account_credentials", return_value=""), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
+             patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
             payload = switcher.list_accounts(json_output=True)
 
         by_num = {a["number"]: a for a in payload["accounts"]}
@@ -286,7 +286,7 @@ class TestListJson:
         """
         import time as time_mod
 
-        from claude_swap.usage_store import FetchRecord, UsageStore
+        from openswap.usage_store import FetchRecord, UsageStore
 
         sample_sequence_data["accounts"]["1"]["email"] = "test@example.com"
         active_creds = json.dumps({"claudeAiOauth": {"accessToken": "sk-active"}})
@@ -308,7 +308,7 @@ class TestListJson:
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
              patch.object(switcher, "_read_account_credentials", return_value=""), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account",
+             patch("openswap.oauth.try_fetch_usage_for_account",
                    return_value=oauth.UsageOutcome(None, error="timeout")):
             payload = switcher.list_accounts(json_output=True)
 
@@ -357,7 +357,7 @@ class TestStatusJson:
 
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(usage)):
+             patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(usage)):
             payload = switcher.status(json_output=True)
 
         assert capsys.readouterr().out == ""
@@ -374,7 +374,7 @@ class TestStatusJson:
     ):
         import time as time_mod
 
-        from claude_swap.usage_store import UsageEntry
+        from openswap.usage_store import UsageEntry
 
         sample_sequence_data["accounts"]["1"]["email"] = "test@example.com"
         active_creds = json.dumps({"claudeAiOauth": {"accessToken": "sk-active"}})
@@ -413,7 +413,7 @@ class TestStatusJson:
 
         with patch.object(switcher, "_read_active_credentials",
                           return_value=ActiveCredentials(active_creds, False)), \
-             patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
+             patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)):
             payload = switcher.status(json_output=True)
 
         assert payload["active"]["alias"] == "dev"
@@ -470,7 +470,7 @@ def _install_patches(switcher, creds_store, configs_store, live_state):
         patch.object(switcher, "_write_credentials",
                      side_effect=lambda c: live_state.__setitem__("creds", c)),
         # Don't make network calls from the (suppressed) post-switch usage path.
-        patch("claude_swap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)),
+        patch("openswap.oauth.try_fetch_usage_for_account", return_value=oauth.UsageOutcome(None)),
     ]
     for p in patches:
         p.start()

@@ -11,16 +11,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from claude_swap import __version__
-from claude_swap import cli
-from claude_swap.credentials import ActiveCredentials
-from claude_swap.switcher import ClaudeAccountSwitcher
+from openswap import __version__
+from openswap import cli
+from openswap.credentials import ActiveCredentials
+from openswap.switcher import ClaudeAccountSwitcher
 
-# src layout: ensure subprocess can find claude_swap
+# src layout: ensure subprocess can find openswap
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 
 # A throwaway HOME for subprocesses. The in-process autouse Keychain/HOME guards
-# do NOT reach child processes, so a spawned ``python -m claude_swap`` would
+# do NOT reach child processes, so a spawned ``python -m openswap`` would
 # otherwise resolve to the developer's real ``~/.claude-swap-backup`` and run the
 # data migration against real accounts (touching the real Keychain on macOS). An empty,
 # isolated HOME has no ``sequence.json`` → the migration skips before any Keychain
@@ -69,7 +69,7 @@ class TestCLI:
     def test_version_flag(self):
         """Test --version flag."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--version"],
+            [sys.executable, "-m", "openswap", "--version"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -80,7 +80,7 @@ class TestCLI:
     def test_help_flag(self):
         """Test --help flag."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -88,7 +88,7 @@ class TestCLI:
         assert result.returncode == 0
         assert "Multi-Account Switcher" in result.stdout
         # Bare subcommands are the documented interface and lead the help.
-        assert "cswap add" in result.stdout or "add " in result.stdout
+        assert "openswap add" in result.stdout or "add " in result.stdout
         assert "switch <num|email>" in result.stdout
         assert "list " in result.stdout
         assert "status " in result.stdout
@@ -105,7 +105,7 @@ class TestCLI:
     def test_no_args_shows_error(self):
         """Test that running without args (non-TTY) shows a clean no-command error."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap"],
+            [sys.executable, "-m", "openswap"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -119,7 +119,7 @@ class TestCLI:
     def test_mutually_exclusive_args(self):
         """Test that mutually exclusive args are enforced."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--list", "--status"],
+            [sys.executable, "-m", "openswap", "--list", "--status"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -130,7 +130,7 @@ class TestCLI:
     def test_debug_flag_accepted(self):
         """Test that --debug flag is accepted."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--debug", "--status"],
+            [sys.executable, "-m", "openswap", "--debug", "--status"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -140,7 +140,7 @@ class TestCLI:
 
     def test_token_status_flag_requires_list(self, capsys):
         """--token-status should only be accepted alongside --list."""
-        with patch.object(sys, "argv", ["claude-swap", "--token-status", "--status"]):
+        with patch.object(sys, "argv", ["openswap", "--token-status", "--status"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -149,10 +149,10 @@ class TestCLI:
 
     def test_token_status_flag_is_forwarded_to_list(self):
         """--list --token-status should call list_accounts(show_token_status=True)."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--list", "--token-status"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--list", "--token-status"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.list_accounts.assert_called_once_with(
@@ -162,7 +162,7 @@ class TestCLI:
 
     def test_strategy_best_requires_switch(self, capsys):
         """--strategy should only be accepted alongside --switch."""
-        with patch.object(sys, "argv", ["claude-swap", "--strategy", "best", "--list"]):
+        with patch.object(sys, "argv", ["openswap", "--strategy", "best", "--list"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -171,7 +171,7 @@ class TestCLI:
 
     def test_strategy_next_available_requires_switch(self, capsys):
         """--strategy next-available should only be accepted alongside --switch."""
-        with patch.object(sys, "argv", ["claude-swap", "--strategy", "next-available", "--list"]):
+        with patch.object(sys, "argv", ["openswap", "--strategy", "next-available", "--list"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -180,7 +180,7 @@ class TestCLI:
 
     def test_strategy_rejects_unknown_value(self, capsys):
         """argparse rejects strategies outside the known choices."""
-        with patch.object(sys, "argv", ["claude-swap", "--switch", "--strategy", "bogus"]):
+        with patch.object(sys, "argv", ["openswap", "--switch", "--strategy", "bogus"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -188,14 +188,14 @@ class TestCLI:
 
     def test_switch_strategy_forwarded(self):
         """--switch --strategy best forwards the strategy to switch()."""
-        from claude_swap.settings import AutoSwitchSettings
+        from openswap.settings import AutoSwitchSettings
 
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch", "--strategy", "best"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch", "--strategy", "best"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.settings.load_settings",
+             patch("openswap.settings.load_settings",
                    return_value=AutoSwitchSettings()), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch.assert_called_once_with(
@@ -205,14 +205,14 @@ class TestCLI:
     def test_switch_strategy_falls_back_to_configured_model(self):
         """Without --model, the persistent autoswitch.model steers the
         strategy — reported as coming from the setting, not the CLI."""
-        from claude_swap.settings import AutoSwitchSettings
+        from openswap.settings import AutoSwitchSettings
 
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch", "--strategy", "best"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch", "--strategy", "best"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.settings.load_settings",
+             patch("openswap.settings.load_settings",
                    return_value=AutoSwitchSettings(model="Fable")), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch.assert_called_once_with(
@@ -222,17 +222,17 @@ class TestCLI:
 
     def test_switch_model_flag_overrides_setting(self):
         """--model beats autoswitch.model, is deduped, and reports 'cli'."""
-        from claude_swap.settings import AutoSwitchSettings
+        from openswap.settings import AutoSwitchSettings
 
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
              patch.object(sys, "argv", [
-                 "claude-swap", "--switch", "--strategy", "next-available",
+                 "openswap", "--switch", "--strategy", "next-available",
                  "--model", "Opus, opus,Fable",
              ]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.settings.load_settings",
+             patch("openswap.settings.load_settings",
                    return_value=AutoSwitchSettings(model="Sonnet")), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch.assert_called_once_with(
@@ -242,7 +242,7 @@ class TestCLI:
 
     def test_switch_model_without_strategy_is_rejected(self, capsys):
         """--model is meaningless without a usage-aware strategy."""
-        with patch.object(sys, "argv", ["claude-swap", "--switch", "--model", "Fable"]):
+        with patch.object(sys, "argv", ["openswap", "--switch", "--model", "Fable"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
@@ -250,10 +250,10 @@ class TestCLI:
 
     def test_plain_switch_passes_no_strategy(self):
         """Bare --switch forwards strategy=None."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch.assert_called_once_with(
@@ -262,7 +262,7 @@ class TestCLI:
 
     def test_slot_flag_requires_add_account(self, capsys):
         """--slot should only be accepted alongside --add-account or --add-token."""
-        with patch.object(sys, "argv", ["claude-swap", "--list", "--slot", "3"]):
+        with patch.object(sys, "argv", ["openswap", "--list", "--slot", "3"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -272,7 +272,7 @@ class TestCLI:
     def test_slot_flag_in_help(self):
         """--slot should appear in help output."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -282,7 +282,7 @@ class TestCLI:
     def test_account_flag_requires_export(self, capsys):
         """--account should only be accepted alongside --export."""
         with patch.object(
-            sys, "argv", ["claude-swap", "--list", "--account", "1"]
+            sys, "argv", ["openswap", "--list", "--account", "1"]
         ):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
@@ -291,7 +291,7 @@ class TestCLI:
 
     def test_force_flag_requires_import_or_switch_to(self, capsys):
         """--force should only be accepted alongside --import or --switch-to."""
-        with patch.object(sys, "argv", ["claude-swap", "--list", "--force"]):
+        with patch.object(sys, "argv", ["openswap", "--list", "--force"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
@@ -302,10 +302,10 @@ class TestCLI:
 
     def test_switch_to_force_forwarded(self):
         """--switch-to 2 --force forwards force=True to switch_to()."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch-to", "2", "--force"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch-to", "2", "--force"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch_to.assert_called_once_with(
@@ -314,10 +314,10 @@ class TestCLI:
 
     def test_switch_to_without_force_forwards_false(self):
         """Plain --switch-to forwards force=False."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch-to", "2"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch-to", "2"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
 
         switcher_cls.return_value.switch_to.assert_called_once_with(
@@ -330,7 +330,7 @@ class TestCLI:
             [
                 sys.executable,
                 "-m",
-                "claude_swap",
+                "openswap",
                 "--export",
                 "/tmp/x",
                 "--import",
@@ -346,7 +346,7 @@ class TestCLI:
     def test_export_in_help(self):
         """The export/import subcommands should appear in help output."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -356,13 +356,13 @@ class TestCLI:
 
     def test_export_dispatch_calls_transfer(self):
         """--export dispatches into transfer.export_accounts."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch("claude_swap.transfer.export_accounts") as export_fn, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch("openswap.transfer.export_accounts") as export_fn, \
              patch.object(
-                 sys, "argv", ["claude-swap", "--export", "/tmp/x", "--account", "2"]
+                 sys, "argv", ["openswap", "--export", "/tmp/x", "--account", "2"]
              ), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         export_fn.assert_called_once_with(
             switcher_cls.return_value, "/tmp/x", account="2", full=False
@@ -370,7 +370,7 @@ class TestCLI:
 
     def test_full_flag_requires_export(self, capsys):
         """--full should only be accepted alongside --export."""
-        with patch.object(sys, "argv", ["claude-swap", "--list", "--full"]):
+        with patch.object(sys, "argv", ["openswap", "--list", "--full"]):
             with pytest.raises(SystemExit) as exc_info:
                 cli.main()
         assert exc_info.value.code == 2
@@ -378,13 +378,13 @@ class TestCLI:
 
     def test_full_flag_dispatches_with_full_true(self):
         """--export --full should pass full=True into export_accounts."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch("claude_swap.transfer.export_accounts") as export_fn, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch("openswap.transfer.export_accounts") as export_fn, \
              patch.object(
-                 sys, "argv", ["claude-swap", "--export", "/tmp/x", "--full"]
+                 sys, "argv", ["openswap", "--export", "/tmp/x", "--full"]
              ), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         export_fn.assert_called_once_with(
             switcher_cls.return_value, "/tmp/x", account=None, full=True
@@ -392,13 +392,13 @@ class TestCLI:
 
     def test_import_dispatch_calls_transfer(self):
         """--import dispatches into transfer.import_accounts."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch("claude_swap.transfer.import_accounts") as import_fn, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch("openswap.transfer.import_accounts") as import_fn, \
              patch.object(
-                 sys, "argv", ["claude-swap", "--import", "/tmp/x", "--force"]
+                 sys, "argv", ["openswap", "--import", "/tmp/x", "--force"]
              ), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         import_fn.assert_called_once_with(
             switcher_cls.return_value, "/tmp/x", force=True
@@ -407,7 +407,7 @@ class TestCLI:
     def test_upgrade_in_help(self):
         """The upgrade subcommand should appear in help output."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -416,11 +416,11 @@ class TestCLI:
 
     def test_upgrade_dispatches_without_constructing_switcher(self):
         """--upgrade should call run_self_upgrade and skip switcher init."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
              patch(
-                 "claude_swap.update_check.run_self_upgrade", return_value=0
+                 "openswap.update_check.run_self_upgrade", return_value=0
              ) as upgrade_fn, \
-             patch.object(sys, "argv", ["claude-swap", "--upgrade"]):
+             patch.object(sys, "argv", ["openswap", "--upgrade"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -442,9 +442,9 @@ class TestCLI:
             return 0
 
         monkeypatch.setattr(cli, "ClaudeAccountSwitcher", _FakeSwitcher)
-        monkeypatch.setattr(sys, "argv", ["cswap", "--menubar"])
+        monkeypatch.setattr(sys, "argv", ["openswap", "--menubar"])
         monkeypatch.setattr(sys, "platform", "darwin")
-        monkeypatch.setattr("claude_swap.menubar.run", _fake_run, raising=False)
+        monkeypatch.setattr("openswap.menubar.run", _fake_run, raising=False)
         # geteuid only exists on POSIX; ensure non-root path
         monkeypatch.setattr(cli.os, "geteuid", lambda: 1000, raising=False)
 
@@ -454,7 +454,7 @@ class TestCLI:
         assert called.get("ran") is True
 
     def test_menubar_subcommand_dispatches(self, monkeypatch):
-        """Bare `cswap menubar` should route exactly like `cswap --menubar`."""
+        """Bare `openswap menubar` should route exactly like `openswap --menubar`."""
         called = {}
 
         class _FakeSwitcher:
@@ -468,9 +468,9 @@ class TestCLI:
             return 0
 
         monkeypatch.setattr(cli, "ClaudeAccountSwitcher", _FakeSwitcher)
-        monkeypatch.setattr(sys, "argv", ["cswap", "menubar"])
+        monkeypatch.setattr(sys, "argv", ["openswap", "menubar"])
         monkeypatch.setattr(sys, "platform", "darwin")
-        monkeypatch.setattr("claude_swap.menubar.run", _fake_run, raising=False)
+        monkeypatch.setattr("openswap.menubar.run", _fake_run, raising=False)
         monkeypatch.setattr(cli.os, "geteuid", lambda: 1000, raising=False)
 
         with pytest.raises(SystemExit) as exc:
@@ -479,7 +479,7 @@ class TestCLI:
         assert called.get("ran") is True
 
     def _service_harness(self, monkeypatch, argv):
-        """Drive `cswap menubar <service flag>` with launch_agent stubbed out."""
+        """Drive `openswap menubar <service flag>` with launch_agent stubbed out."""
         seen = {"menubar_ran": False}
 
         class _FakeSwitcher:
@@ -503,31 +503,31 @@ class TestCLI:
         monkeypatch.setattr(cli, "ClaudeAccountSwitcher", _FakeSwitcher)
         monkeypatch.setattr(sys, "argv", argv)
         monkeypatch.setattr(sys, "platform", "darwin")
-        monkeypatch.setattr("claude_swap.menubar.run", _fake_menubar, raising=False)
+        monkeypatch.setattr("openswap.menubar.run", _fake_menubar, raising=False)
         monkeypatch.setattr(cli.os, "geteuid", lambda: 1000, raising=False)
         monkeypatch.setattr(
-            "claude_swap.launch_agent.install",
+            "openswap.launch_agent.install",
             _record(
                 "install",
                 {
-                    "label": "com.cswap.menubar",
+                    "label": "com.opensoft.openswap.menubar",
                     "plist": "/tmp/p.plist",
-                    "program": ["/tmp/cswap", "menubar"],
+                    "program": ["/tmp/openswap", "menubar"],
                     "stdout_log": "/tmp/o.log",
                     "stderr_log": "/tmp/e.log",
                 },
             ),
         )
         monkeypatch.setattr(
-            "claude_swap.launch_agent.uninstall",
-            _record("uninstall", {"label": "com.cswap.menubar", "was_loaded": True, "removed_plist": True}),
+            "openswap.launch_agent.uninstall",
+            _record("uninstall", {"label": "com.opensoft.openswap.menubar", "was_loaded": True, "removed_plist": True}),
         )
         monkeypatch.setattr(
-            "claude_swap.launch_agent.status",
+            "openswap.launch_agent.status",
             _record(
                 "status",
                 {
-                    "label": "com.cswap.menubar",
+                    "label": "com.opensoft.openswap.menubar",
                     "installed": True,
                     "loaded": True,
                     "state": "running",
@@ -539,7 +539,7 @@ class TestCLI:
         return seen
 
     def test_menubar_install_service_routes_to_launch_agent(self, monkeypatch, capsys):
-        seen = self._service_harness(monkeypatch, ["cswap", "menubar", "--install-service"])
+        seen = self._service_harness(monkeypatch, ["openswap", "menubar", "--install-service"])
 
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -551,7 +551,7 @@ class TestCLI:
         assert "installed" in capsys.readouterr().out
 
     def test_menubar_uninstall_service_routes_to_launch_agent(self, monkeypatch, capsys):
-        seen = self._service_harness(monkeypatch, ["cswap", "menubar", "--uninstall-service"])
+        seen = self._service_harness(monkeypatch, ["openswap", "menubar", "--uninstall-service"])
 
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -562,7 +562,7 @@ class TestCLI:
         assert "removed" in capsys.readouterr().out
 
     def test_menubar_service_status_reports_state_and_pid(self, monkeypatch, capsys):
-        seen = self._service_harness(monkeypatch, ["cswap", "menubar", "--service-status"])
+        seen = self._service_harness(monkeypatch, ["openswap", "menubar", "--service-status"])
 
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -573,7 +573,7 @@ class TestCLI:
         assert "running" in out and "4242" in out
 
     def test_menubar_service_flags_still_refuse_off_macos(self, monkeypatch):
-        self._service_harness(monkeypatch, ["cswap", "menubar", "--install-service"])
+        self._service_harness(monkeypatch, ["openswap", "menubar", "--install-service"])
         monkeypatch.setattr(sys, "platform", "linux")
 
         with pytest.raises(SystemExit) as exc:
@@ -583,8 +583,8 @@ class TestCLI:
 
     def test_service_flags_are_rejected_outside_menubar(self, monkeypatch, capsys):
         # `--full` already guards this way; without a matching check
-        # `cswap list --install-service` would be accepted and silently ignored.
-        monkeypatch.setattr(sys, "argv", ["cswap", "list", "--install-service"])
+        # `openswap list --install-service` would be accepted and silently ignored.
+        monkeypatch.setattr(sys, "argv", ["openswap", "list", "--install-service"])
 
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -593,7 +593,7 @@ class TestCLI:
         assert "can only be used with 'menubar'" in capsys.readouterr().err
 
     def test_plain_menubar_does_not_touch_the_service(self, monkeypatch):
-        seen = self._service_harness(monkeypatch, ["cswap", "menubar"])
+        seen = self._service_harness(monkeypatch, ["openswap", "menubar"])
 
         with pytest.raises(SystemExit) as exc:
             cli.main()
@@ -609,7 +609,7 @@ class TestCLICommands:
     def test_status_no_account(self, temp_home: Path):
         """Test status command with no account."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--status"],
+            [sys.executable, "-m", "openswap", "--status"],
             capture_output=True,
             text=True,
             env=_subprocess_env(HOME=str(temp_home)),
@@ -620,7 +620,7 @@ class TestCLICommands:
     def test_list_no_accounts(self, temp_home: Path):
         """Test list command with no accounts."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--list"],
+            [sys.executable, "-m", "openswap", "--list"],
             capture_output=True,
             text=True,
             input="n\n",  # Answer 'n' to first-run prompt
@@ -630,10 +630,10 @@ class TestCLICommands:
 
     def test_add_token_without_email_dispatches_with_none(self, temp_home: Path, capsys):
         """--add-token without --email should dispatch with email=None (defaulted by switcher)."""
-        from claude_swap.switcher import ClaudeAccountSwitcher
+        from openswap.switcher import ClaudeAccountSwitcher
 
         with patch.object(
-            sys, "argv", ["claude-swap", "--add-token", "sk-ant-oat01-abc"],
+            sys, "argv", ["openswap", "--add-token", "sk-ant-oat01-abc"],
         ), patch.object(
             ClaudeAccountSwitcher, "add_account_from_token"
         ) as mock_add:
@@ -645,7 +645,7 @@ class TestCLICommands:
 
     def test_email_without_add_token_errors(self, capsys):
         """--email without --add-token should exit with a clear error."""
-        with patch.object(sys, "argv", ["claude-swap", "--list", "--email", "u@x.com"]):
+        with patch.object(sys, "argv", ["openswap", "--list", "--email", "u@x.com"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
@@ -653,11 +653,11 @@ class TestCLICommands:
 
     def test_add_token_dispatches_to_switcher(self, temp_home: Path, capsys):
         """--add-token with --email should call add_account_from_token."""
-        from claude_swap.switcher import ClaudeAccountSwitcher
+        from openswap.switcher import ClaudeAccountSwitcher
 
         with patch.object(
             sys, "argv",
-            ["claude-swap", "--add-token", "mytoken", "--email", "u@example.com"],
+            ["openswap", "--add-token", "mytoken", "--email", "u@example.com"],
         ), patch.object(
             ClaudeAccountSwitcher, "add_account_from_token"
         ) as mock_add:
@@ -669,11 +669,11 @@ class TestCLICommands:
 
     def test_add_token_with_slot(self, temp_home: Path, capsys):
         """--add-token --slot should forward slot to add_account_from_token."""
-        from claude_swap.switcher import ClaudeAccountSwitcher
+        from openswap.switcher import ClaudeAccountSwitcher
 
         with patch.object(
             sys, "argv",
-            ["claude-swap", "--add-token", "tok", "--email", "u@example.com", "--slot", "3"],
+            ["openswap", "--add-token", "tok", "--email", "u@example.com", "--slot", "3"],
         ), patch.object(
             ClaudeAccountSwitcher, "add_account_from_token"
         ) as mock_add:
@@ -686,7 +686,7 @@ class TestCLICommands:
     def test_add_token_in_help(self):
         """The add-token subcommand and the still-visible --email modifier appear."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -696,7 +696,7 @@ class TestCLICommands:
 
 
 class TestRunCommand:
-    """`cswap run` pre-dispatch: parsing, forwarding, and dispatch."""
+    """`openswap run` pre-dispatch: parsing, forwarding, and dispatch."""
 
     def _dispatch(self, argv: list[str]):
         """Run cli.main() with a fake SessionManager; returns recorded calls."""
@@ -719,10 +719,10 @@ class TestRunCommand:
                     require_session,
                 ))
 
-        with patch("claude_swap.session.SessionManager", FakeSessionManager), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher"), \
+        with patch("openswap.session.SessionManager", FakeSessionManager), \
+             patch("openswap.cli.ClaudeAccountSwitcher"), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", *argv]):
+             patch.object(sys, "argv", ["openswap", *argv]):
             cli.main()
         return calls
 
@@ -755,18 +755,18 @@ class TestRunCommand:
         assert ("run", "2", ["--resume", "--model", "x"], True, False, False) in calls
 
     def test_tail_may_contain_run_flags(self):
-        """Args after `--` are NOT parsed by cswap, even if they look like ours."""
+        """Args after `--` are NOT parsed by openswap, even if they look like ours."""
         calls = self._dispatch(["run", "2", "--", "--no-share"])
         assert ("run", "2", ["--no-share"], True, False, False) in calls
 
     def test_run_unknown_flag_errors(self, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "run", "2", "--bogus"]):
+        with patch.object(sys, "argv", ["openswap", "run", "2", "--bogus"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
 
     def test_run_help(self, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "run", "--help"]):
+        with patch.object(sys, "argv", ["openswap", "run", "--help"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 0
@@ -776,7 +776,7 @@ class TestRunCommand:
 
     def test_main_help_mentions_run(self):
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -785,7 +785,7 @@ class TestRunCommand:
 
     def test_main_help_mentions_alias(self):
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -805,14 +805,14 @@ class TestRunCommand:
                 share_history=False,
                 require_session=False,
             ):
-                from claude_swap.exceptions import SessionError
+                from openswap.exceptions import SessionError
 
                 raise SessionError("boom")
 
-        with patch("claude_swap.session.SessionManager", FailingSessionManager), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher"), \
+        with patch("openswap.session.SessionManager", FailingSessionManager), \
+             patch("openswap.cli.ClaudeAccountSwitcher"), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run", "2"]):
+             patch.object(sys, "argv", ["openswap", "run", "2"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
 
@@ -821,7 +821,7 @@ class TestRunCommand:
 
 
 class TestSubcommandAliases:
-    """Memorable subcommands (`cswap switch`, `cswap list`, ...) → classic flags."""
+    """Memorable subcommands (`openswap switch`, `openswap list`, ...) → classic flags."""
 
     def test_translate_is_noop_for_flags(self):
         """argv that already uses --flags is passed through untouched."""
@@ -852,8 +852,8 @@ class TestSubcommandAliases:
         assert cli._translate_subcommand(["menubar"]) == ["--menubar"]
 
     def test_translate_value_verbs_pass_through_extra_flags(self):
-        assert cli._translate_subcommand(["export", "b.cswap", "--full"]) == [
-            "--export", "b.cswap", "--full",
+        assert cli._translate_subcommand(["export", "b.openswap", "--full"]) == [
+            "--export", "b.openswap", "--full",
         ]
         assert cli._translate_subcommand(["add-token", "sk-tok", "--slot", "3"]) == [
             "--add-token", "sk-tok", "--slot", "3",
@@ -864,34 +864,34 @@ class TestSubcommandAliases:
         assert cli._translate_subcommand(["bogus"]) == ["bogus"]
 
     def test_switch_subcommand_dispatches_switch_to(self):
-        """`cswap switch 2` reaches switch_to("2")."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "switch", "2"]), \
+        """`openswap switch 2` reaches switch_to("2")."""
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "switch", "2"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         switcher_cls.return_value.switch_to.assert_called_once_with(
             "2", json_output=False, force=False
         )
 
     def test_bare_switch_subcommand_dispatches_switch(self):
-        """`cswap switch` reaches switch() (rotate)."""
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "switch"]), \
+        """`openswap switch` reaches switch() (rotate)."""
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "switch"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         switcher_cls.return_value.switch.assert_called_once_with(
             strategy=None, json_output=False, models=(), model_source=None
         )
 
     def test_list_subcommand_with_json(self):
-        """`cswap list --json` reaches list_accounts(json_output=True)."""
+        """`openswap list --json` reaches list_accounts(json_output=True)."""
         payload = {"schemaVersion": 1, "accounts": []}
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "list", "--json"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "list", "--json"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             switcher_cls.return_value.list_accounts.return_value = payload
             cli.main()
         switcher_cls.return_value.list_accounts.assert_called_once_with(
@@ -899,7 +899,7 @@ class TestSubcommandAliases:
         )
 
     def test_run_subcommand_still_dispatches(self):
-        """`cswap run 2` keeps reaching the session pre-dispatch (not translated)."""
+        """`openswap run 2` keeps reaching the session pre-dispatch (not translated)."""
         calls = []
 
         class FakeSessionManager:
@@ -916,17 +916,17 @@ class TestSubcommandAliases:
             ):
                 calls.append((identifier, claude_args, share))
 
-        with patch("claude_swap.session.SessionManager", FakeSessionManager), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher"), \
+        with patch("openswap.session.SessionManager", FakeSessionManager), \
+             patch("openswap.cli.ClaudeAccountSwitcher"), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run", "2"]):
+             patch.object(sys, "argv", ["openswap", "run", "2"]):
             cli.main()
         assert calls == [("2", [], True)]
 
     def test_help_subcommand_prints_help(self):
-        """`cswap help` exits 0 and prints help (with subcommand docs)."""
+        """`openswap help` exits 0 and prints help (with subcommand docs)."""
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "help"],
+            [sys.executable, "-m", "openswap", "help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -942,14 +942,14 @@ class TestJsonOutputCli:
 
     def test_json_rejected_without_supported_command(self, capsys):
         """--purge --json is rejected (bare --json instead hits the required-group error)."""
-        with patch.object(sys, "argv", ["claude-swap", "--purge", "--json"]):
+        with patch.object(sys, "argv", ["openswap", "--purge", "--json"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
         assert "--json can only be used with" in capsys.readouterr().err
 
     def test_token_status_with_json_rejected(self, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "--list", "--token-status", "--json"]):
+        with patch.object(sys, "argv", ["openswap", "--list", "--token-status", "--json"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
@@ -957,10 +957,10 @@ class TestJsonOutputCli:
 
     def test_list_json_serialized_to_stdout(self, capsys):
         payload = {"schemaVersion": 1, "activeAccountNumber": None, "accounts": []}
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--list", "--json"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--list", "--json"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             switcher_cls.return_value.list_accounts.return_value = payload
             cli.main()
 
@@ -972,10 +972,10 @@ class TestJsonOutputCli:
 
     def test_switch_json_forwarded_and_serialized(self, capsys):
         payload = {"schemaVersion": 1, "switched": True}
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--switch", "--json"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--switch", "--json"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             switcher_cls.return_value.switch.return_value = payload
             cli.main()
 
@@ -988,13 +988,13 @@ class TestJsonOutputCli:
         """Additive models/modelSource fields make a model-steered pick
         auditable from scripts too."""
         payload = {"schemaVersion": 1, "switched": True}
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
              patch.object(sys, "argv", [
-                 "claude-swap", "--switch", "--strategy", "best",
+                 "openswap", "--switch", "--strategy", "best",
                  "--model", "Fable", "--json",
              ]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             switcher_cls.return_value.switch.return_value = payload
             cli.main()
 
@@ -1004,12 +1004,12 @@ class TestJsonOutputCli:
         assert out["switched"] is True
 
     def test_error_envelope_on_stdout_with_exit_1(self, capsys):
-        from claude_swap.exceptions import ConfigError
+        from openswap.exceptions import ConfigError
 
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", "--status", "--json"]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", "--status", "--json"]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             switcher_cls.return_value.status.side_effect = ConfigError("nope")
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
@@ -1022,7 +1022,7 @@ class TestJsonOutputCli:
 
 
 class TestAutoCommand:
-    """`cswap auto` pre-dispatch: parsing, settings merge, exit codes, JSONL."""
+    """`openswap auto` pre-dispatch: parsing, settings merge, exit codes, JSONL."""
 
     class FakeEngine:
         instances: list = []
@@ -1037,7 +1037,7 @@ class TestAutoCommand:
             type(self).instances.append(self)
 
         def tick(self):
-            from claude_swap.autoswitch import TickOutcome
+            from openswap.autoswitch import TickOutcome
 
             return type(self).tick_outcome or TickOutcome.NO_ACTION
 
@@ -1053,27 +1053,27 @@ class TestAutoCommand:
         self.FakeEngine.tick_outcome = None
 
     def _run(self, argv: list[str], temp_home):
-        with patch("claude_swap.autoswitch.AutoSwitchEngine", self.FakeEngine), \
+        with patch("openswap.autoswitch.AutoSwitchEngine", self.FakeEngine), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "auto", *argv]):
+             patch.object(sys, "argv", ["openswap", "auto", *argv]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         return excinfo.value.code
 
     def test_once_exit_code_switched(self, temp_home):
-        from claude_swap.autoswitch import TickOutcome
+        from openswap.autoswitch import TickOutcome
 
         self.FakeEngine.tick_outcome = TickOutcome.SWITCHED
         assert self._run(["--once"], temp_home) == 0
 
     def test_once_exit_code_no_action(self, temp_home):
-        from claude_swap.autoswitch import TickOutcome
+        from openswap.autoswitch import TickOutcome
 
         self.FakeEngine.tick_outcome = TickOutcome.NO_ACTION
         assert self._run(["--once"], temp_home) == 2
 
     def test_once_exit_code_blocked(self, temp_home):
-        from claude_swap.autoswitch import TickOutcome
+        from openswap.autoswitch import TickOutcome
 
         self.FakeEngine.tick_outcome = TickOutcome.BLOCKED
         assert self._run(["--once"], temp_home) == 3
@@ -1083,7 +1083,7 @@ class TestAutoCommand:
         assert self.FakeEngine.instances  # loop path constructed the engine
 
     def test_flags_override_settings_json(self, temp_home):
-        from claude_swap.paths import get_backup_root
+        from openswap.paths import get_backup_root
 
         backup = get_backup_root()
         backup.mkdir(parents=True, exist_ok=True)
@@ -1101,7 +1101,7 @@ class TestAutoCommand:
         assert self.FakeEngine.instances[-1].dry_run is True
 
     def test_json_stdout_is_pure_jsonl(self, temp_home, capsys):
-        from claude_swap.autoswitch import NoSwitchEvent, TickOutcome
+        from openswap.autoswitch import NoSwitchEvent, TickOutcome
 
         class EmittingEngine(self.FakeEngine):
             def tick(self):
@@ -1109,9 +1109,9 @@ class TestAutoCommand:
                 self.on_event(NoSwitchEvent(reason="cooldown"))
                 return TickOutcome.NO_ACTION
 
-        with patch("claude_swap.autoswitch.AutoSwitchEngine", EmittingEngine), \
+        with patch("openswap.autoswitch.AutoSwitchEngine", EmittingEngine), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "auto", "--once", "--json"]):
+             patch.object(sys, "argv", ["openswap", "auto", "--once", "--json"]):
             with pytest.raises(SystemExit):
                 cli.main()
         lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
@@ -1122,13 +1122,13 @@ class TestAutoCommand:
             assert payload["schemaVersion"] == 1
 
     def test_unknown_flag_errors(self, temp_home, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "auto", "--bogus"]):
+        with patch.object(sys, "argv", ["openswap", "auto", "--bogus"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
 
     def test_auto_help(self, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "auto", "--help"]):
+        with patch.object(sys, "argv", ["openswap", "auto", "--help"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 0
@@ -1138,7 +1138,7 @@ class TestAutoCommand:
 
     def test_main_help_mentions_auto(self):
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -1147,7 +1147,7 @@ class TestAutoCommand:
 
     def test_main_help_mentions_widget(self):
         result = subprocess.run(
-            [sys.executable, "-m", "claude_swap", "--help"],
+            [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
@@ -1155,7 +1155,7 @@ class TestAutoCommand:
         assert "widget --install" in result.stdout
 
     def test_widget_help(self, capsys):
-        with patch.object(sys, "argv", ["cswap", "widget", "--help"]):
+        with patch.object(sys, "argv", ["openswap", "widget", "--help"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 0
@@ -1164,23 +1164,23 @@ class TestAutoCommand:
         assert "Edit Widgets" in out
 
     def test_widget_requires_a_flag(self):
-        with patch.object(sys, "argv", ["cswap", "widget"]):
+        with patch.object(sys, "argv", ["openswap", "widget"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2
 
     def test_widget_install_dispatches(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "claude_swap.widget_install.install_widget",
+            "openswap.widget_install.install_widget",
             lambda: {
-                "app": "/tmp/cswap Widget.app",
+                "app": "/tmp/OpenSwap.app",
                 "team": "ABC",
                 "log": "/tmp/x.log",
-                "label": "com.cswap.widget",
+                "label": "com.opensoft.openswap.widget",
                 "plist": "/tmp/p.plist",
             },
         )
-        with patch.object(sys, "argv", ["cswap", "widget", "--install"]):
+        with patch.object(sys, "argv", ["openswap", "widget", "--install"]):
             with pytest.raises(SystemExit) as exc:
                 cli.main()
         assert exc.value.code == 0
@@ -1190,10 +1190,10 @@ class TestAutoCommand:
 
     def test_widget_uninstall_dispatches(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "claude_swap.widget_install.uninstall_widget",
+            "openswap.widget_install.uninstall_widget",
             lambda: {"removed_app": True, "removed_plist": True, "was_loaded": True},
         )
-        with patch.object(sys, "argv", ["cswap", "widget", "--uninstall"]):
+        with patch.object(sys, "argv", ["openswap", "widget", "--uninstall"]):
             with pytest.raises(SystemExit) as exc:
                 cli.main()
         assert exc.value.code == 0
@@ -1201,9 +1201,9 @@ class TestAutoCommand:
 
     def test_widget_status_dispatches(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "claude_swap.widget_install.widget_status",
+            "openswap.widget_install.widget_status",
             lambda: {
-                "app": "/tmp/cswap Widget.app",
+                "app": "/tmp/OpenSwap.app",
                 "app_installed": True,
                 "installed": True,
                 "loaded": True,
@@ -1211,7 +1211,7 @@ class TestAutoCommand:
                 "pid": 99,
             },
         )
-        with patch.object(sys, "argv", ["cswap", "widget", "--status"]):
+        with patch.object(sys, "argv", ["openswap", "widget", "--status"]):
             with pytest.raises(SystemExit) as exc:
                 cli.main()
         assert exc.value.code == 0
@@ -1220,11 +1220,11 @@ class TestAutoCommand:
         assert "99" in out
 
     def test_switcher_error_exits_1(self, temp_home, capsys):
-        from claude_swap.exceptions import ConfigError
+        from openswap.exceptions import ConfigError
 
-        with patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.cli.ClaudeAccountSwitcher",
                    side_effect=ConfigError("nope")), \
-             patch.object(sys, "argv", ["claude-swap", "auto", "--once"]):
+             patch.object(sys, "argv", ["openswap", "auto", "--once"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 1
@@ -1275,14 +1275,14 @@ class TestUnclaimedCommand:
         assert exc.value.code == 1
 
     def test_dispatched_from_main(self, temp_home):
-        with patch("claude_swap.cli._unclaimed_command") as fn, \
-             patch.object(sys, "argv", ["claude-swap", "unclaimed", "--purge", "x"]):
+        with patch("openswap.cli._unclaimed_command") as fn, \
+             patch.object(sys, "argv", ["openswap", "unclaimed", "--purge", "x"]):
             cli.main()
         fn.assert_called_once_with(["--purge", "x"])
 
 
 class TestMapCommand:
-    """`cswap map` / `cswap unmap` directory-mapping commands."""
+    """`openswap map` / `openswap unmap` directory-mapping commands."""
 
     def _seeded_switcher_env(self, temp_home):
         """Build a real switcher with one managed account (slot 2)."""
@@ -1302,7 +1302,7 @@ class TestMapCommand:
         return switcher
 
     def test_map_account_to_path(self, temp_home, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         self._seeded_switcher_env(temp_home)
         target = temp_home / "proj"
         target.mkdir()
@@ -1317,7 +1317,7 @@ class TestMapCommand:
         assert "Mapped" in capsys.readouterr().out
 
     def test_map_nonexistent_path_warns_but_maps(self, temp_home, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         self._seeded_switcher_env(temp_home)
         target = temp_home / "not-created-yet"
 
@@ -1328,7 +1328,7 @@ class TestMapCommand:
         assert "is not an existing directory" in capsys.readouterr().out
 
     def test_map_by_email_defaults_to_cwd(self, temp_home, monkeypatch, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         self._seeded_switcher_env(temp_home)
         cwd = temp_home / "here"
         cwd.mkdir()
@@ -1355,7 +1355,7 @@ class TestMapCommand:
         assert "No directory mappings yet" in capsys.readouterr().out
 
     def test_map_list_shows_entries(self, temp_home, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         switcher = self._seeded_switcher_env(temp_home)
         target = temp_home / "proj"
         target.mkdir()
@@ -1370,7 +1370,7 @@ class TestMapCommand:
         assert "2:" in out  # slot number resolved
 
     def test_map_list_flags_removed_account(self, temp_home, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         switcher = self._seeded_switcher_env(temp_home)
         target = temp_home / "proj"
         target.mkdir()
@@ -1383,7 +1383,7 @@ class TestMapCommand:
         assert "account removed" in capsys.readouterr().out
 
     def test_unmap_removes(self, temp_home, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
         switcher = self._seeded_switcher_env(temp_home)
         target = temp_home / "proj"
         target.mkdir()
@@ -1405,15 +1405,15 @@ class TestMapCommand:
         assert "No mapping for" in capsys.readouterr().out
 
     def test_map_dispatched_from_main(self, temp_home):
-        """`cswap map` routes through main() to _map_command."""
-        with patch("claude_swap.cli._map_command") as map_fn, \
-             patch.object(sys, "argv", ["claude-swap", "map", "2", "/tmp/x"]):
+        """`openswap map` routes through main() to _map_command."""
+        with patch("openswap.cli._map_command") as map_fn, \
+             patch.object(sys, "argv", ["openswap", "map", "2", "/tmp/x"]):
             cli.main()
         map_fn.assert_called_once_with(["2", "/tmp/x"])
 
     def test_unmap_dispatched_from_main(self, temp_home):
-        with patch("claude_swap.cli._unmap_command") as unmap_fn, \
-             patch.object(sys, "argv", ["claude-swap", "unmap", "/tmp/x"]):
+        with patch("openswap.cli._unmap_command") as unmap_fn, \
+             patch.object(sys, "argv", ["openswap", "unmap", "/tmp/x"]):
             cli.main()
         unmap_fn.assert_called_once_with(["/tmp/x"])
 
@@ -1439,7 +1439,7 @@ class TestMapCommand:
 
 
 class TestAliasCommand:
-    """`cswap alias` — set/unset/list a short display alias for an account."""
+    """`openswap alias` — set/unset/list a short display alias for an account."""
 
     def _seeded_switcher_env(self, temp_home):
         switcher = ClaudeAccountSwitcher()
@@ -1505,7 +1505,7 @@ class TestAliasCommand:
                 cli._alias_command(["2"])
 
     def test_unset_without_account_errors(self, temp_home, capsys):
-        """`cswap alias --unset` with no target must error, not silently list."""
+        """`openswap alias --unset` with no target must error, not silently list."""
         self._seeded_switcher_env(temp_home)
         with patch("os.geteuid", return_value=1000, create=True):
             with pytest.raises(SystemExit):
@@ -1533,8 +1533,8 @@ class TestAliasCommand:
         assert exc.value.code == 1
 
     def test_dispatched_from_main(self, temp_home):
-        with patch("claude_swap.cli._alias_command") as alias_fn, \
-             patch.object(sys, "argv", ["claude-swap", "alias", "2", "dev"]):
+        with patch("openswap.cli._alias_command") as alias_fn, \
+             patch.object(sys, "argv", ["openswap", "alias", "2", "dev"]):
             cli.main()
         alias_fn.assert_called_once_with(["2", "dev"])
 
@@ -1554,7 +1554,7 @@ class TestAliasCommand:
              patch.object(ClaudeAccountSwitcher, "_read_active_credentials",
                           return_value=ActiveCredentials(fake_creds, False)), \
              patch.object(ClaudeAccountSwitcher, "_write_account_credentials"), \
-             patch.object(sys, "argv", ["claude-swap", "add", "--alias", "dev"]):
+             patch.object(sys, "argv", ["openswap", "add", "--alias", "dev"]):
             cli.main()
 
         data = ClaudeAccountSwitcher()._get_sequence_data()
@@ -1562,7 +1562,7 @@ class TestAliasCommand:
 
     def test_alias_flag_without_add_errors(self, temp_home, capsys):
         with patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "list", "--alias", "dev"]):
+             patch.object(sys, "argv", ["openswap", "list", "--alias", "dev"]):
             with pytest.raises(SystemExit) as exc:
                 cli.main()
         assert exc.value.code == 2
@@ -1570,7 +1570,7 @@ class TestAliasCommand:
 
 
 class TestRunAutoResolve:
-    """`cswap run` with no account resolves the cwd's directory mapping."""
+    """`openswap run` with no account resolves the cwd's directory mapping."""
 
     def _fake_manager(self, calls):
         class FakeSessionManager:
@@ -1604,7 +1604,7 @@ class TestRunAutoResolve:
         return sw
 
     def test_mapped_dir_runs_resolved_account(self, tmp_path, monkeypatch):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
 
         repo = tmp_path / "work" / "client-app"
         repo.mkdir(parents=True)
@@ -1623,16 +1623,16 @@ class TestRunAutoResolve:
         }
         calls = []
         monkeypatch.chdir(repo)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, seq)), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run"]):
+             patch.object(sys, "argv", ["openswap", "run"]):
             cli.main()
         assert ("run", "2", [], True, False) in calls
 
     def test_mapped_subdir_inherits(self, tmp_path, monkeypatch):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
 
         repo = tmp_path / "work"
         sub = repo / "client" / "src"
@@ -1647,11 +1647,11 @@ class TestRunAutoResolve:
         }
         calls = []
         monkeypatch.chdir(sub)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, seq)), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run"]):
+             patch.object(sys, "argv", ["openswap", "run"]):
             cli.main()
         assert ("run", "2", [], True, False) in calls
 
@@ -1662,17 +1662,17 @@ class TestRunAutoResolve:
         scratch.mkdir()
         calls = []
         monkeypatch.chdir(scratch)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run"]):
+             patch.object(sys, "argv", ["openswap", "run"]):
             cli.main()
         assert ("exec_default", []) in calls
         assert "No account mapped" in capsys.readouterr().out
 
     def test_removed_account_falls_back_with_warning(self, tmp_path, monkeypatch, capsys):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -1681,11 +1681,11 @@ class TestRunAutoResolve:
         MappingStore(backup).set(repo, "ghost@co.com", "")
         calls = []
         monkeypatch.chdir(repo)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run"]):
+             patch.object(sys, "argv", ["openswap", "run"]):
             cli.main()
         assert ("exec_default", []) in calls
         assert "no longer exists" in capsys.readouterr().out
@@ -1696,16 +1696,16 @@ class TestRunAutoResolve:
         backup.mkdir()
         calls = []
         monkeypatch.chdir(tmp_path)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run", "3"]):
+             patch.object(sys, "argv", ["openswap", "run", "3"]):
             cli.main()
         assert ("run", "3", [], True, False) in calls
 
     def test_no_account_forwards_tail(self, tmp_path, monkeypatch):
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -1719,17 +1719,17 @@ class TestRunAutoResolve:
         }
         calls = []
         monkeypatch.chdir(repo)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, seq)), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run", "--", "--resume"]):
+             patch.object(sys, "argv", ["openswap", "run", "--", "--resume"]):
             cli.main()
         assert ("run", "2", ["--resume"], True, False) in calls
 
     def test_no_account_forwards_share_history(self, tmp_path, monkeypatch):
         """--share-history survives the mapped-account resolution path."""
-        from claude_swap.mappings import MappingStore
+        from openswap.mappings import MappingStore
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -1743,24 +1743,24 @@ class TestRunAutoResolve:
         }
         calls = []
         monkeypatch.chdir(repo)
-        with patch("claude_swap.session.SessionManager", self._fake_manager(calls)), \
-             patch("claude_swap.cli.ClaudeAccountSwitcher",
+        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
+             patch("openswap.cli.ClaudeAccountSwitcher",
                    return_value=self._fake_switcher(backup, seq)), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "run", "--share-history"]):
+             patch.object(sys, "argv", ["openswap", "run", "--share-history"]):
             cli.main()
         assert ("run", "2", [], True, True) in calls
 
 
 class TestDisableEnableDispatch:
-    """`cswap disable`/`cswap enable` (and the legacy --disable-account /
+    """`openswap disable`/`openswap enable` (and the legacy --disable-account /
     --enable-account flags) forward to switcher.set_account_disabled."""
 
     def _run(self, argv):
-        with patch("claude_swap.cli.ClaudeAccountSwitcher") as switcher_cls, \
-             patch.object(sys, "argv", ["claude-swap", *argv]), \
+        with patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
+             patch.object(sys, "argv", ["openswap", *argv]), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch("claude_swap.update_check.check_for_update", return_value=None):
+             patch("openswap.update_check.check_for_update", return_value=None):
             cli.main()
         return switcher_cls.return_value
 
@@ -1781,7 +1781,7 @@ class TestDisableEnableDispatch:
         switcher.set_account_disabled.assert_called_once_with("3", False)
 
     def test_disable_without_target_errors(self, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "disable"]):
+        with patch.object(sys, "argv", ["openswap", "disable"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 2

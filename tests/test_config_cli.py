@@ -1,4 +1,4 @@
-"""Tests for the `cswap config` subcommand (get/set/unset/list/path)."""
+"""Tests for the `openswap config` subcommand (get/set/unset/list/path)."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_swap import cli
+from openswap import cli
 
 
 def _run(argv: list[str], capsys) -> tuple[int, str, str]:
-    """Run `cswap config <argv>`; returns (exit_code, stdout, stderr).
+    """Run `openswap config <argv>`; returns (exit_code, stdout, stderr).
 
     Success returns normally from main() (no sys.exit), errors raise
     SystemExit — normalize both to an exit code.
     """
     with patch("os.geteuid", return_value=1000, create=True), \
-         patch.object(sys, "argv", ["claude-swap", "config", *argv]):
+         patch.object(sys, "argv", ["openswap", "config", *argv]):
         code = 0
         try:
             cli.main()
@@ -240,14 +240,14 @@ class TestConfigMisc:
         assert "unset" in out
 
     def test_main_help_mentions_config(self, temp_home, capsys):
-        with patch.object(sys, "argv", ["claude-swap", "--help"]):
+        with patch.object(sys, "argv", ["openswap", "--help"]):
             with pytest.raises(SystemExit) as excinfo:
                 cli.main()
         assert excinfo.value.code == 0
         assert "config" in capsys.readouterr().out
 
     def test_auto_picks_up_configured_threshold(self, temp_home, capsys):
-        """End-to-end: a value set via config drives `cswap auto`."""
+        """End-to-end: a value set via config drives `openswap auto`."""
         _run(["set", "autoswitch.threshold", "77"], capsys)
 
         captured = {}
@@ -258,13 +258,13 @@ class TestConfigMisc:
                 captured["settings"] = settings
 
             def tick(self):
-                from claude_swap.autoswitch import TickOutcome
+                from openswap.autoswitch import TickOutcome
 
                 return TickOutcome.NO_ACTION
 
-        with patch("claude_swap.autoswitch.AutoSwitchEngine", FakeEngine), \
+        with patch("openswap.autoswitch.AutoSwitchEngine", FakeEngine), \
              patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["claude-swap", "auto", "--once"]):
+             patch.object(sys, "argv", ["openswap", "auto", "--once"]):
             with pytest.raises(SystemExit):
                 cli.main()
         assert captured["settings"].threshold == 77.0

@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from claude_swap import appearance
+from openswap import appearance
 
 
 class TestParseOsc11:

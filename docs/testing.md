@@ -26,4 +26,4 @@ Live AppKit probes (status item padding, appearance) are one-off scripts, not CI
 
 ## After UI changes
 
-Restart the extra and exercise the popover (first click on a card, More without dismissing the box, leave-delay close, Dark/Light). Open Settings in the popover (not More) and change strategy, kickoff time from the hourly menu, and the asterisk; Back should return to the cards without expecting More to dismiss the box. Widget: `cswap widget --install`, then Edit Widgets. Right-click the widget and switch layout (all / combined / one account) and windows (5h / 7d / both). Browser tools do not apply.
+Restart the extra and exercise the popover (first click on a card, More without dismissing the box, leave-delay close, Dark/Light). Open Settings in the popover (not More) and change strategy, kickoff time from the hourly menu, and the asterisk; Back should return to the cards without expecting More to dismiss the box. Widget: `openswap widget --install`, then Edit Widgets. Right-click the widget and switch layout (all / combined / one account) and windows (5h / 7d / both). Browser tools do not apply.

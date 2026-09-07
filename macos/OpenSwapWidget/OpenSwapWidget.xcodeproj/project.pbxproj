@@ -1,0 +1,475 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		326E82E0B0334C92D5967939 /* OpenSwapWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5DF5673563504B55F67F048 /* OpenSwapWidget.swift */; };
+		33E81616023CCFEC7061222F /* SwitchAccountIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66011BDBD3C337C99C45D6CC /* SwitchAccountIntent.swift */; };
+		35A1862213BCB7EC9FE3E3DF /* OpenSwapWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBC8696FB698C18C92EFF27 /* OpenSwapWidgetIntent.swift */; };
+		7E306D52DAB972E2C13DFC26 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825D66A41D3651C7C2BFC94C /* main.swift */; };
+		C2FE40AF4FA2F9380F6DB9D0 /* OpenSwapWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C4E69EC707B8344C41FD59BB /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D2E0B5985112579495B7E2E /* WidgetKit.framework */; };
+		D30FBB312526426C65B90819 /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0953BA2D0CD5C01ECFA61624 /* Snapshot.swift */; };
+		E52903635B54BCEC703C08B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FFBCB82C286FBDD20FEDD06B /* Assets.xcassets */; };
+		F9C53AD3AEE7A726A6420859 /* OpenSwapWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1ABC0B06A9209702B8DBD8 /* OpenSwapWidgetView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		EA1541482D75F1BA9E44E093 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 54BFB0D0CCB56D9CE6FCE237 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8F3555D2DAF0F7F5E5252517;
+			remoteInfo = OpenSwapWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E99C42C71E479EC6222B3767 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C2FE40AF4FA2F9380F6DB9D0 /* OpenSwapWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0953BA2D0CD5C01ECFA61624 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
+		0D2E0B5985112579495B7E2E /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		66011BDBD3C337C99C45D6CC /* SwitchAccountIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchAccountIntent.swift; sourceTree = "<group>"; };
+		6F1ABC0B06A9209702B8DBD8 /* OpenSwapWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidgetView.swift; sourceTree = "<group>"; };
+		825D66A41D3651C7C2BFC94C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenSwapWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DDB9E5B80A043484C87A2355 /* OpenSwapWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenSwapWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5DF5673563504B55F67F048 /* OpenSwapWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidget.swift; sourceTree = "<group>"; };
+		EBBC8696FB698C18C92EFF27 /* OpenSwapWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidgetIntent.swift; sourceTree = "<group>"; };
+		FFBCB82C286FBDD20FEDD06B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3D75EDD45FA2098E3E85A7D6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C4E69EC707B8344C41FD59BB /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0F0614A6ECDACC33358EC816 /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				E5DF5673563504B55F67F048 /* OpenSwapWidget.swift */,
+				EBBC8696FB698C18C92EFF27 /* OpenSwapWidgetIntent.swift */,
+				6F1ABC0B06A9209702B8DBD8 /* OpenSwapWidgetView.swift */,
+				0953BA2D0CD5C01ECFA61624 /* Snapshot.swift */,
+				66011BDBD3C337C99C45D6CC /* SwitchAccountIntent.swift */,
+			);
+			path = Widget;
+			sourceTree = "<group>";
+		};
+		61D6F6C0E7C81467B3870C18 = {
+			isa = PBXGroup;
+			children = (
+				B4E7F4C3E4819A0D33DAFD38 /* Host */,
+				0F0614A6ECDACC33358EC816 /* Widget */,
+				A8682ED090403835B2A3E778 /* Frameworks */,
+				6332347962CF5E80B9121D5E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6332347962CF5E80B9121D5E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DDB9E5B80A043484C87A2355 /* OpenSwapWidget.app */,
+				8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A8682ED090403835B2A3E778 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0D2E0B5985112579495B7E2E /* WidgetKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B4E7F4C3E4819A0D33DAFD38 /* Host */ = {
+			isa = PBXGroup;
+			children = (
+				FFBCB82C286FBDD20FEDD06B /* Assets.xcassets */,
+				825D66A41D3651C7C2BFC94C /* main.swift */,
+			);
+			path = Host;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		792BAAD0CEEF490707EF43BE /* OpenSwapWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DDC61D7DFCA40623882097EC /* Build configuration list for PBXNativeTarget "OpenSwapWidget" */;
+			buildPhases = (
+				09618F7E8D282D98B3C92221 /* Sources */,
+				9DDB656C3EF4C8A90A4D8ACE /* Resources */,
+				3D75EDD45FA2098E3E85A7D6 /* Frameworks */,
+				E99C42C71E479EC6222B3767 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4F3B46FE54AB42652AFC7FFB /* PBXTargetDependency */,
+			);
+			name = OpenSwapWidget;
+			packageProductDependencies = (
+			);
+			productName = OpenSwapWidget;
+			productReference = DDB9E5B80A043484C87A2355 /* OpenSwapWidget.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8F3555D2DAF0F7F5E5252517 /* OpenSwapWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B9E2E4557DCC13F2BF5BE0B /* Build configuration list for PBXNativeTarget "OpenSwapWidgetExtension" */;
+			buildPhases = (
+				7DACD3DA88822B5033FDF599 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenSwapWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = OpenSwapWidgetExtension;
+			productReference = 8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		54BFB0D0CCB56D9CE6FCE237 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					792BAAD0CEEF490707EF43BE = {
+						ProvisioningStyle = Automatic;
+					};
+					8F3555D2DAF0F7F5E5252517 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 04118424BA6B78A9C0922400 /* Build configuration list for PBXProject "OpenSwapWidget" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 61D6F6C0E7C81467B3870C18;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6332347962CF5E80B9121D5E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				792BAAD0CEEF490707EF43BE /* OpenSwapWidget */,
+				8F3555D2DAF0F7F5E5252517 /* OpenSwapWidgetExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9DDB656C3EF4C8A90A4D8ACE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E52903635B54BCEC703C08B1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		09618F7E8D282D98B3C92221 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E306D52DAB972E2C13DFC26 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7DACD3DA88822B5033FDF599 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				326E82E0B0334C92D5967939 /* OpenSwapWidget.swift in Sources */,
+				35A1862213BCB7EC9FE3E3DF /* OpenSwapWidgetIntent.swift in Sources */,
+				F9C53AD3AEE7A726A6420859 /* OpenSwapWidgetView.swift in Sources */,
+				D30FBB312526426C65B90819 /* Snapshot.swift in Sources */,
+				33E81616023CCFEC7061222F /* SwitchAccountIntent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4F3B46FE54AB42652AFC7FFB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8F3555D2DAF0F7F5E5252517 /* OpenSwapWidgetExtension */;
+			targetProxy = EA1541482D75F1BA9E44E093 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		31D0204965C3D3E4E40028F4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Widget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenSwap;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.opensoft.openswap.widget.extension;
+				PRODUCT_NAME = OpenSwapWidgetExtension;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		95AC428777657DBD515CF25A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Host/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Host/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenSwap;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.opensoft.openswap.widget;
+				PRODUCT_NAME = OpenSwap;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		9E7C52E7F958C4B4F351C735 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		A1523DABFE6D2FFA4C060356 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/Widget.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Widget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenSwap;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.opensoft.openswap.widget.extension;
+				PRODUCT_NAME = OpenSwapWidgetExtension;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		BFEE1CBB9473AA0984305C8D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		E2491F23E52B0462E765F371 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Host/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Host/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenSwap;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.opensoft.openswap.widget;
+				PRODUCT_NAME = OpenSwap;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		04118424BA6B78A9C0922400 /* Build configuration list for PBXProject "OpenSwapWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E7C52E7F958C4B4F351C735 /* Debug */,
+				BFEE1CBB9473AA0984305C8D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9B9E2E4557DCC13F2BF5BE0B /* Build configuration list for PBXNativeTarget "OpenSwapWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1523DABFE6D2FFA4C060356 /* Debug */,
+				31D0204965C3D3E4E40028F4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DDC61D7DFCA40623882097EC /* Build configuration list for PBXNativeTarget "OpenSwapWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				95AC428777657DBD515CF25A /* Debug */,
+				E2491F23E52B0462E765F371 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 54BFB0D0CCB56D9CE6FCE237 /* Project object */;
+}

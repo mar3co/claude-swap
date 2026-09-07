@@ -2,7 +2,7 @@
 
 These tests never import or run rumps/AppKit. They exercise the pure helpers
 (settings store, title/label formatting, usage/snapshot adapters, log parsing)
-only — the auto-switch engine itself lives in ``claude_swap.autoswitch`` and is
+only — the auto-switch engine itself lives in ``openswap.autoswitch`` and is
 tested there.
 """
 
@@ -17,8 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from claude_swap import menubar
-from claude_swap.autoswitch import (
+from openswap import menubar
+from openswap.autoswitch import (
     AllExhaustedEvent,
     ConfigWarningEvent,
     NoSwitchEvent,
@@ -27,8 +27,8 @@ from claude_swap.autoswitch import (
     SleepEvent,
     SwitchEvent,
 )
-from claude_swap.exceptions import ClaudeSwitchError
-from claude_swap.switcher import (
+from openswap.exceptions import ClaudeSwitchError
+from openswap.switcher import (
     USAGE_API_KEY,
     USAGE_FOREIGN_CREDENTIAL,
     USAGE_RELOGIN_REQUIRED,
@@ -47,8 +47,8 @@ def test_notification_identity_creates_and_preserves_info_plist(tmp_path: Path):
 
     assert result == info
     data = plistlib.loads(info.read_bytes())
-    assert data["CFBundleIdentifier"] == "com.claude-swap.menubar"
-    assert data["CFBundleName"] == "claude-swap"
+    assert data["CFBundleIdentifier"] == "com.opensoft.openswap.menubar"
+    assert data["CFBundleName"] == "openswap"
     assert data["ExistingKey"] == "kept"
 
 
@@ -66,8 +66,8 @@ def test_notification_identity_heals_corrupt_info_plist(tmp_path: Path):
 
     assert result == info
     data = plistlib.loads(info.read_bytes())
-    assert data["CFBundleIdentifier"] == "com.claude-swap.menubar"
-    assert data["CFBundleName"] == "claude-swap"
+    assert data["CFBundleIdentifier"] == "com.opensoft.openswap.menubar"
+    assert data["CFBundleName"] == "openswap"
     assert not (executable.parent / "Info.plist.tmp").exists()
 
 
@@ -126,7 +126,7 @@ def test_settings_ignores_unknown_and_bad_types(tmp_path: Path):
 
 
 def test_auto_strategy_choices_match_core_settings():
-    from claude_swap.settings import SETTING_SPECS
+    from openswap.settings import SETTING_SPECS
 
     spec = SETTING_SPECS["autoswitch.strategy"]
     values = tuple(value for value, _label in menubar.AUTO_STRATEGY_CHOICES)
@@ -139,7 +139,7 @@ def test_settings_page_constants():
 
 
 def test_settings_page_rows_include_required_ids_and_values():
-    from claude_swap.kickoff import kickoff_time_options, kickoff_time_value
+    from openswap.kickoff import kickoff_time_options, kickoff_time_value
 
     s = menubar.MenuBarSettings(
         show_account_name=False,
@@ -1282,7 +1282,7 @@ def test_switch_notification_uses_alias_not_account_n_or_trigger_jargon():
     assert "Account-1 (" not in text
     assert "proactive" not in text.lower()
     assert "at-limit" not in text.lower()
-    assert "cswap" not in text.lower()
+    assert "openswap" not in text.lower()
 
 
 def test_switch_notification_falls_back_to_email_local_part():
@@ -1314,7 +1314,7 @@ def test_manual_switch_notification_names_destination():
     copy = menubar.notification_copy_for_manual_switch("adsonline")
     assert copy.title == "Switched to adsonline"
     assert "Account-" not in _combined(copy)
-    assert "cswap --add-account" not in copy.body
+    assert "openswap --add-account" not in copy.body
 
 
 def test_format_running_line_empty_is_none():
@@ -1399,8 +1399,8 @@ def test_quarantine_notification_has_no_cli_recovery_command():
     text = _combined(copy)
     assert "adsonline" in copy.title
     assert "Account-2 (" not in text
-    assert "cswap --add-account" not in text
-    assert "cswap --add-account --slot" not in text
+    assert "openswap --add-account" not in text
+    assert "openswap --add-account --slot" not in text
 
 
 def test_all_exhausted_notification_uses_local_clock_not_iso_z():
@@ -1412,7 +1412,7 @@ def test_all_exhausted_notification_uses_local_clock_not_iso_z():
     formatted = menubar.format_local_reset(iso)
     assert formatted is not None
     assert formatted in copy.body
-    assert "cswap --add-account" not in copy.body
+    assert "openswap --add-account" not in copy.body
 
 
 def test_config_warning_notification_is_glanceable():
@@ -1422,7 +1422,7 @@ def test_config_warning_notification_is_glanceable():
     assert copy.title == "Settings need a look"
     assert "Fabel" in copy.body
     assert "Account-N (" not in _combined(copy)
-    assert "cswap --add-account" not in copy.body
+    assert "openswap --add-account" not in copy.body
 
 
 def test_poll_no_switch_sleep_do_not_notify():
@@ -1451,7 +1451,7 @@ def test_kickoff_notification_names_accounts_not_slots():
     assert "personal" in text
     assert "adsonline" in text
     assert "Account-" not in text
-    assert "cswap --add-account" not in text
+    assert "openswap --add-account" not in text
 
 
 # --- signed-out repair (extra) ------------------------------------------------
@@ -1475,7 +1475,7 @@ def test_panel_accounts_relogin_keeps_windows_and_uses_extra_copy():
     cards = menubar.panel_accounts(snap)
     assert cards[0]["needs_relogin"] is True
     assert cards[0]["note"] == menubar.RELOGIN_CARD_NOTE
-    assert "cswap" not in cards[0]["note"]
+    assert "openswap" not in cards[0]["note"]
     assert [w["label"] for w in cards[0]["windows"]] == ["5h", "7d"]
     assert cards[0]["windows"][0]["pct"] == 42.0
 
@@ -1585,11 +1585,11 @@ def test_slot_identity_from_sequence_uses_org_uuid():
 def test_notification_copy_for_relogin_has_no_cli():
     copy = menubar.notification_copy_for_relogin("personal")
     assert copy.title == "personal signed out"
-    assert "cswap" not in copy.body.lower()
+    assert "openswap" not in copy.body.lower()
     assert "click" in copy.body.lower()
     captured = menubar.notification_copy_for_relogin_captured("personal")
     assert "personal" in captured.title
-    assert "cswap" not in captured.body.lower()
+    assert "openswap" not in captured.body.lower()
 
 
 def test_build_terminal_login_script_quotes_email():
@@ -1632,11 +1632,11 @@ def test_run_without_rumps_raises_clean_error(monkeypatch):
     """A missing menubar extra surfaces as ClaudeSwitchError, not a traceback.
 
     The module is import-safe without rumps, so the CLI's ImportError guard
-    around ``from claude_swap.menubar import run`` can never fire — the import
+    around ``from openswap.menubar import run`` can never fire — the import
     failure happens inside ``run()``. Blocking the import (a ``None`` entry in
     ``sys.modules`` makes ``import rumps`` raise) checks that ``run()`` turns
     it into the error type the CLI renders with the install hint.
     """
     monkeypatch.setitem(sys.modules, "rumps", None)
-    with pytest.raises(ClaudeSwitchError, match=r"claude-swap\[menubar\]"):
+    with pytest.raises(ClaudeSwitchError, match=r"openswap\[menubar\]"):
         menubar.run(switcher=None)

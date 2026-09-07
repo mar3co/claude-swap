@@ -13,7 +13,7 @@ wheels/
 docs/superpowers/
 
 # Xcode
-macos/CSwapWidget/DerivedData/
-macos/CSwapWidget/*.xcodeproj/xcuserdata/
-macos/CSwapWidget/*.xcodeproj/project.xcworkspace/xcuserdata/
-macos/CSwapWidget/*.xcworkspace/xcuserdata/
+macos/OpenSwapWidget/DerivedData/
+macos/OpenSwapWidget/*.xcodeproj/xcuserdata/
+macos/OpenSwapWidget/*.xcodeproj/project.xcworkspace/xcuserdata/
+macos/OpenSwapWidget/*.xcworkspace/xcuserdata/

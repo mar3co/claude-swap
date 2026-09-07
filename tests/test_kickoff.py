@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_swap.exceptions import SessionError
-from claude_swap.kickoff import (
+from openswap.exceptions import SessionError
+from openswap.kickoff import (
     KICKOFF_PROMPT,
     build_kickoff_argv,
     build_kickoff_env,
@@ -25,7 +25,7 @@ from claude_swap.kickoff import (
     kickoff_uses_default_login,
     parse_kickoff_time,
 )
-from claude_swap.session import AUTH_OVERRIDE_ENV_VARS
+from openswap.session import AUTH_OVERRIDE_ENV_VARS
 
 
 # --- due-once-per-local-day ----------------------------------------------------

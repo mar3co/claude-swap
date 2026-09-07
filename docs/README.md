@@ -1,6 +1,6 @@
 # Developer docs
 
-How this checkout is put together. **Users** (install, switch, extra, widget, kickoff) belong on the [wiki](https://github.com/mar3co/claude-swap/wiki), not here.
+How this checkout is put together. **Users** (install, switch, extra, widget, kickoff) belong on the [wiki](https://github.com/mar3co/openswap/wiki), not here.
 
 | Topic | Page |
 | --- | --- |
@@ -10,4 +10,4 @@ How this checkout is put together. **Users** (install, switch, extra, widget, ki
 | Snapshot JSON, host `.app`, signing | [Widget](widget.md) |
 | pytest rules and what not to import | [Testing](testing.md) |
 
-Upstream is [realiti4/claude-swap](https://github.com/realiti4/claude-swap). This fork’s remote is `origin` (`mar3co/claude-swap`). Do not push to `upstream` unless that is the intent.
+Standalone MIT descendant of [realiti4/claude-swap](https://github.com/realiti4/claude-swap). Remote is `origin` (`mar3co/openswap`).

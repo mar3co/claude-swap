@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_swap.process_detection import (
+from openswap.process_detection import (
     ClaudeSession,
     IdeInstance,
     get_claude_dir,
@@ -19,7 +19,7 @@ from claude_swap.process_detection import (
     list_ide_instances,
     list_sessions,
 )
-from claude_swap.printer import abbreviate_path, entrypoint_label, format_age
+from openswap.printer import abbreviate_path, entrypoint_label, format_age
 
 
 # --- get_claude_dir ---
@@ -45,27 +45,27 @@ class TestIsPidAlive:
     # is_pid_alive() dispatches to _is_pid_alive_windows() and never calls
     # os.kill. Pin the platform so these exercise the intended path on any host.
     def test_alive_pid(self):
-        with patch("claude_swap.process_detection.sys.platform", "linux"), \
+        with patch("openswap.process_detection.sys.platform", "linux"), \
              patch("os.kill") as mock_kill:
             mock_kill.return_value = None
             assert is_pid_alive(12345) is True
             mock_kill.assert_called_once_with(12345, 0)
 
     def test_dead_pid(self):
-        with patch("claude_swap.process_detection.sys.platform", "linux"), \
+        with patch("openswap.process_detection.sys.platform", "linux"), \
              patch("os.kill", side_effect=OSError("No such process")):
             assert is_pid_alive(12345) is False
 
     def test_permission_error_means_alive(self):
-        with patch("claude_swap.process_detection.sys.platform", "linux"), \
+        with patch("openswap.process_detection.sys.platform", "linux"), \
              patch("os.kill", side_effect=PermissionError("Operation not permitted")):
             assert is_pid_alive(12345) is True
 
     def test_windows_dispatches_to_ctypes_impl(self):
         """On win32, is_pid_alive() delegates to the ctypes-based helper."""
-        with patch("claude_swap.process_detection.sys.platform", "win32"), \
+        with patch("openswap.process_detection.sys.platform", "win32"), \
              patch(
-                 "claude_swap.process_detection._is_pid_alive_windows",
+                 "openswap.process_detection._is_pid_alive_windows",
                  return_value=True,
              ) as mock_win:
             assert is_pid_alive(12345) is True
@@ -111,7 +111,7 @@ class TestListSessions:
         _write_session(sessions_dir, 1001, entrypoint="cli", cwd="/home/user/app")
         _write_session(sessions_dir, 1002, entrypoint="claude-vscode", cwd="/home/user/web")
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_sessions(tmp_path)
 
         assert len(result) == 2
@@ -127,7 +127,7 @@ class TestListSessions:
         def alive(pid):
             return pid == 1001
 
-        with patch("claude_swap.process_detection.is_pid_alive", side_effect=alive):
+        with patch("openswap.process_detection.is_pid_alive", side_effect=alive):
             result = list_sessions(tmp_path)
 
         assert len(result) == 1
@@ -171,7 +171,7 @@ class TestListSessions:
         sessions_dir.mkdir()
         _write_session(sessions_dir, 1001, status="busy")
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_sessions(tmp_path)
 
         assert result[0].status == "busy"
@@ -181,7 +181,7 @@ class TestListSessions:
         sessions_dir.mkdir()
         _write_session(sessions_dir, 1001)
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_sessions(tmp_path)
 
         assert result[0].status is None
@@ -198,7 +198,7 @@ class TestListSessions:
             entrypoint="claude-desktop",
         )
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_sessions(tmp_path)
 
         s = result[0]
@@ -234,7 +234,7 @@ class TestListIdeInstances:
         _write_ide_lock(ide_dir, 45000, ideName="Visual Studio Code")
         _write_ide_lock(ide_dir, 45001, ideName="Cursor")
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_ide_instances(tmp_path)
 
         assert len(result) == 2
@@ -247,7 +247,7 @@ class TestListIdeInstances:
         _write_ide_lock(ide_dir, 45000, pid=2001)
         _write_ide_lock(ide_dir, 45001, pid=2002)
 
-        with patch("claude_swap.process_detection.is_pid_alive", side_effect=lambda p: p == 2001):
+        with patch("openswap.process_detection.is_pid_alive", side_effect=lambda p: p == 2001):
             result = list_ide_instances(tmp_path)
 
         assert len(result) == 1
@@ -288,7 +288,7 @@ class TestListIdeInstances:
         ide_dir.mkdir()
         _write_ide_lock(ide_dir, 12345)
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_ide_instances(tmp_path)
 
         assert result[0].port == 12345
@@ -298,7 +298,7 @@ class TestListIdeInstances:
         ide_dir.mkdir()
         _write_ide_lock(ide_dir, 45000, workspaceFolders=["/a", "/b"])
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             result = list_ide_instances(tmp_path)
 
         assert result[0].workspace_folders == ["/a", "/b"]
@@ -317,7 +317,7 @@ class TestGetRunningInstances:
         ide_dir.mkdir()
         _write_ide_lock(ide_dir, 45000)
 
-        with patch("claude_swap.process_detection.is_pid_alive", return_value=True):
+        with patch("openswap.process_detection.is_pid_alive", return_value=True):
             sessions, ides = get_running_instances(tmp_path)
 
         assert len(sessions) == 1
