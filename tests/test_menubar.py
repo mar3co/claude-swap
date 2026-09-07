@@ -1521,10 +1521,14 @@ def test_plan_relogin_click_captures_only_on_email_and_org_match():
     assert wrong_org is not None
     assert wrong_org.kind == "confirm_open_login"
     assert wrong_org.kind != "capture"
+    title = menubar.relogin_wrong_account_title(wrong_org)
+    assert title == "Sign in as personal?"
     msg = menubar.relogin_wrong_account_message(wrong_org)
-    assert "adsonline" in msg
-    assert "personal" in msg
-    assert "sign out" in msg.lower()
+    assert msg == (
+        "Claude Code is using adsonline right now. "
+        "Your saved adsonline account is not removed. "
+        "Continue to sign in as personal?"
+    )
 
     signed_out = menubar.plan_relogin_click(
         live=None,
@@ -1592,18 +1596,20 @@ def test_notification_copy_for_relogin_has_no_cli():
     assert "openswap" not in captured.body.lower()
 
 
-def test_build_terminal_login_script_quotes_email():
-    script = menubar.build_terminal_login_script(
+def test_build_login_command_text_quotes_email():
+    text = menubar.build_login_command_text(
         "/opt/homebrew/bin/claude", "a@x.com"
     )
-    assert 'tell application "Terminal"' in script
-    assert "auth login" in script
-    assert "--claudeai" in script
-    assert "a@x.com" in script
+    assert text.startswith("#!/bin/bash\n")
+    assert "tell application" not in text
+    assert "auth login" in text
+    assert "--claudeai" in text
+    assert "a@x.com" in text
 
 
-def test_launch_claude_login_uses_osascript():
+def test_launch_claude_login_opens_command_file(tmp_path):
     calls = []
+    dest = tmp_path / "login.command"
 
     def run(argv, **_kwargs):
         calls.append(argv)
@@ -1613,10 +1619,15 @@ def test_launch_claude_login_uses_osascript():
         "a@x.com",
         which=lambda name: "/opt/homebrew/bin/claude" if name == "claude" else None,
         run=run,
+        command_path=dest,
     )
-    assert calls[0][0] == "osascript"
-    assert "-e" in calls[0]
-    assert "a@x.com" in calls[0][2]
+    assert dest.is_file()
+    assert dest.stat().st_mode & 0o111
+    body = dest.read_text(encoding="utf-8")
+    assert body.startswith("#!/bin/bash\n")
+    assert "a@x.com" in body
+    assert calls[0][0] == "open"
+    assert calls[0][1] == str(dest)
 
 
 def test_launch_claude_login_missing_claude():

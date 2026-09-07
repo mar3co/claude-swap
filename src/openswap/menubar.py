@@ -46,6 +46,7 @@ from openswap.kickoff import (
     parse_kickoff_time,
 )
 from openswap.autoswitch import record_manual_switch
+from openswap.paths import get_backup_root
 from openswap.switcher import SENTINEL_NOTES, USAGE_API_KEY, USAGE_RELOGIN_REQUIRED
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
@@ -613,11 +614,18 @@ def plan_relogin_click(
     return ReloginClickPlan("confirm_open_login", slot_name, email, live_name)
 
 
+def relogin_wrong_account_title(plan: ReloginClickPlan) -> str:
+    """Alert title: name the slot they clicked, not the live login."""
+    return f"Sign in as {plan.slot_name}?"
+
+
 def relogin_wrong_account_message(plan: ReloginClickPlan) -> str:
+    """Alert body: Claude Code's current login changes; the saved slot stays."""
     live_name = plan.live_name or "another account"
     return (
-        f"Claude Code is signed in as {live_name}, not {plan.slot_name}. "
-        f"Opening login will sign out of {live_name}. Continue?"
+        f"Claude Code is using {live_name} right now. "
+        f"Your saved {live_name} account is not removed. "
+        f"Continue to sign in as {plan.slot_name}?"
     )
 
 
@@ -643,12 +651,23 @@ def resolve_claude_bin(
     return None
 
 
-def build_terminal_login_script(claude_bin: str, email: str) -> str:
-    """AppleScript that opens Terminal on ``claude auth login`` for ``email``."""
+LOGIN_COMMAND_NAME = "login.command"
+
+
+def build_login_command_text(claude_bin: str, email: str) -> str:
+    """Shell body for a ``.command`` file that runs ``claude auth login``."""
     cmd = (
         f"{shlex.quote(claude_bin)} auth login --claudeai --email {shlex.quote(email)}"
     )
-    return f'tell application "Terminal" to do script {json.dumps(cmd)}'
+    return f"#!/bin/bash\nexec {cmd}\n"
+
+
+def write_login_command(claude_bin: str, email: str, path: Path) -> Path:
+    """Write an executable login ``.command`` at ``path`` and return it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(build_login_command_text(claude_bin, email), encoding="utf-8")
+    path.chmod(0o700)
+    return path
 
 
 def launch_claude_login(
@@ -656,10 +675,13 @@ def launch_claude_login(
     *,
     which=None,
     run=None,
+    command_path: Path | None = None,
 ) -> str:
     """Open Terminal on ``claude auth login --email``. Returns the shell command.
 
     The extra has no TTY, so the OAuth flow cannot run inside this process.
+    Launch Services opens a ``.command`` file (Terminal's document type) instead
+    of Apple Events, so macOS does not ask to let Python control Terminal.
     """
     run_fn = subprocess.run if run is None else run
     claude_bin = resolve_claude_bin(which=which)
@@ -667,9 +689,10 @@ def launch_claude_login(
         raise ClaudeSwitchError(
             "'claude' was not found. Install Claude Code, then try again."
         )
-    script = build_terminal_login_script(claude_bin, email)
+    dest = command_path or (get_backup_root() / LOGIN_COMMAND_NAME)
+    write_login_command(claude_bin, email, dest)
     result = run_fn(
-        ["osascript", "-e", script],
+        ["open", str(dest)],
         capture_output=True,
         text=True,
         check=False,
@@ -1861,7 +1884,7 @@ def run(switcher) -> int:
                 import AppKit
                 AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
                 if rumps.alert(
-                    title="Wrong account signed in",
+                    title=relogin_wrong_account_title(plan),
                     message=relogin_wrong_account_message(plan),
                     ok="Open login",
                     cancel="Cancel",
