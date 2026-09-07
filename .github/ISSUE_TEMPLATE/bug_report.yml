@@ -22,12 +22,12 @@ body:
     id: os
     attributes:
       label: Operating system
-      description: Credentials are stored differently per platform, so this matters a lot.
+      description: OpenSwap ships for macOS. Other OS values are CLI-only / test-farm reports.
       options:
         - macOS
-        - Linux
-        - Windows
-        - WSL
+        - Linux (CLI only, unsupported)
+        - Windows (CLI only, unsupported)
+        - WSL (CLI only, unsupported)
     validations:
       required: true
   - type: dropdown

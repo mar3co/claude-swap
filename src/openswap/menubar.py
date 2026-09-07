@@ -1688,7 +1688,7 @@ def run(switcher) -> int:
             menu = rumps.MenuItem("Add account")
             menu.add(rumps.MenuItem("From current login", callback=self.on_add_login))
             if hasattr(self.switcher, "add_account_from_token"):
-                menu.add(rumps.MenuItem("From setup-token…", callback=self.on_add_token))
+                menu.add(rumps.MenuItem("From API key or setup token…", callback=self.on_add_token))
             return menu
 
         def _remove_menu(self, rumps):
@@ -1998,23 +1998,24 @@ def run(switcher) -> int:
             import AppKit
             AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
             email_win = rumps.Window(
-                title="Add account from setup-token",
-                message="Email for this token:",
+                title="Add account from token",
+                message="Email label (optional; leave blank to auto-name):",
                 ok="Next", cancel="Cancel", dimensions=(320, 24),
             )
             email_resp = email_win.run()
-            if email_resp.clicked != 1 or not email_resp.text.strip():
+            if email_resp.clicked != 1:
                 return
+            email = email_resp.text.strip() or None
             token_win = rumps.Window(
-                title="Add account from setup-token",
-                message="Setup token (sk-ant-oat01-…):",
+                title="Add account from token",
+                message="API key (sk-ant-api…) or setup token (sk-ant-oat01-…):",
                 ok="Add", cancel="Cancel", dimensions=(320, 24),
             )
             token_resp = token_win.run()
             if token_resp.clicked != 1 or not token_resp.text.strip():
                 return
             if self._guard(lambda: self.switcher.add_account_from_token(
-                token=token_resp.text.strip(), email=email_resp.text.strip(), slot=None,
+                token=token_resp.text.strip(), email=email, slot=None,
             )):
                 self.refresh_async()
 

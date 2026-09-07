@@ -54,6 +54,10 @@ The extra is a thin shell. It must not re-implement quota math, ranking, or cred
 
 Credentials on macOS are Keychain, not files in the backup dir.
 
+## Product surface
+
+OpenSwap ships for macOS (extra, widget, kickoff, Keychain). The engine still has Windows/Linux branches from upstream; we do not promise those platforms. API-key slots (`openswap add-token`, extra → Add account) are first-class to switch to. They have no 5h/7d quota, so kickoff and autoswitch skip them unless `autoswitch.includeApiKeyAccounts` is on. `openswap run` is OAuth-only.
+
 ## Constraints we keep
 
 - Do not change the user’s default `~/.claude` login except via `switcher` (kickoff pings the live login **in place**).

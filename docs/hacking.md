@@ -19,7 +19,7 @@ OpenSwap is not on PyPI. `openswap upgrade` refuses PyPI when running from this 
 uv run pytest
 ```
 
-CI is `.github/workflows/ci.yml` (Ubuntu, Windows, macOS). See [Testing](testing.md).
+CI is `.github/workflows/ci.yml` (macOS, plus Ubuntu/Windows as a test farm). We ship macOS. See [Testing](testing.md).
 
 ## Restart the extra after a Python change
 

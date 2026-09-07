@@ -4,7 +4,7 @@
 uv run pytest
 ```
 
-`pyproject.toml` sets `-n auto`. About 2200 tests; CI runs the same command on Ubuntu, Windows, and macOS.
+`pyproject.toml` sets `-n auto`. About 2300 tests. CI runs on macOS, and still on Ubuntu and Windows as a test farm (we do not ship those platforms).
 
 ## Boundaries
 

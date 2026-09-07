@@ -1113,7 +1113,7 @@ Commands:
   %(prog)s switch                     rotate to the next account
   %(prog)s switch <num|email>         switch to a specific account
   %(prog)s add                        add the current account
-  %(prog)s add-token [TOKEN|-]        register a setup-token or API key
+  %(prog)s add-token [TOKEN|-]        register an API key or setup-token
   %(prog)s remove <num|email>         remove an account
   %(prog)s disable <num|email>        hold an account out of auto-rotation
   %(prog)s enable <num|email>         return a disabled account to rotation
@@ -1149,6 +1149,7 @@ Aliases: ls=list  rm=remove  update=upgrade""",
   %(prog)s list --token-status
   %(prog)s list --json
   %(prog)s add --slot 3                      # add to a specific slot
+  %(prog)s add-token sk-ant-api03-... --email me@example.com
   %(prog)s add-token sk-ant-oat01-... --email me@example.com
   %(prog)s run 2 -- --resume                 # forward args after '--' to claude
   %(prog)s auto --once                       # single auto-switch tick (cron-friendly)

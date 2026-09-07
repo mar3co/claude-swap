@@ -1,6 +1,6 @@
 # OpenSwap
 
-OpenSoft menu bar app for rotating AI coding accounts. Track 5-hour and 7-day usage, auto-rotate before you hit a limit, and run two accounts at once.
+OpenSoft macOS menu bar app for rotating AI coding accounts. Track 5-hour and 7-day usage, auto-rotate before you hit a limit, and run two accounts at once. The extra, widget, and kickoff are macOS. We do not ship Windows or Linux.
 
 OpenSwap is a standalone MIT descendant of [claude-swap](https://github.com/realiti4/claude-swap) (copyright Onur Cetinkol). It is not the PyPI `claude-swap` package.
 
@@ -9,7 +9,7 @@ OpenSwap is a standalone MIT descendant of [claude-swap](https://github.com/real
 
 ## Install
 
-Needs Python 3.12+, [uv](https://docs.astral.sh/uv/), and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already logged in. Homebrew cask comes later.
+Needs macOS, Python 3.12+, [uv](https://docs.astral.sh/uv/), and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already logged in. Homebrew cask comes later.
 
 ```bash
 git clone https://github.com/mar3co/openswap.git
@@ -22,9 +22,10 @@ Update with `git pull`, then `uv tool install --editable '.[menubar]'`. `openswa
 ## Quick start
 
 ```bash
-openswap add              # save the account you are logged into
+openswap add              # save the OAuth account you are logged into
 # log into another Claude account, then:
 openswap add
+openswap add-token sk-ant-api03-...   # API key slot (switch only, no usage bars)
 openswap list             # 5h / 7d usage for every account
 openswap switch           # rotate
 openswap switch 2         # jump to a slot, email, or alias
@@ -56,6 +57,7 @@ The `cswap` command still works as an alias during the rename.
 | `openswap watch` | Dashboard, live monitor |
 | `openswap list` | Accounts with 5h / 7d usage |
 | `openswap switch` / `openswap switch 2` | Rotate, or jump to a slot |
+| `openswap add-token` | Save an API key or setup token |
 | `openswap auto` | Background rotation near rate limits |
 | `openswap run 2` | Claude Code as that account, this terminal only |
 | `openswap config` | Shared settings (`autoswitch.*`) |
