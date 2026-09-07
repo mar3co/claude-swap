@@ -37,6 +37,11 @@ def test_build_payload_stringifies_num_and_keeps_windows():
     assert payload["accounts"][1]["subtitle"] == "b@x.com"
     assert payload["accounts"][1]["note"] == "no credentials"
     assert payload["accounts"][1]["windows"] == []
+    # Disabled slot 2 is not in the pool; slot 1 is 42% / 18%.
+    assert payload["combined"]["five_hour"]["remaining"] == 0.58
+    assert payload["combined"]["five_hour"]["total"] == 1
+    assert payload["combined"]["five_hour"]["switch_num"] == "1"
+    assert payload["combined"]["seven_day"]["remaining"] == 0.82
 
 
 def test_panel_windows_exposes_resets_at_ts_for_the_widget():
@@ -133,3 +138,121 @@ def test_consume_switch_command_op_not_switch(tmp_path: Path):
     path.write_text('{"op":"reload","num":"1"}', encoding="utf-8")
     assert ws.consume_switch_command(path) is None
     assert not path.exists()
+
+
+def _card(num, title, pct_5h, pct_7d=None, **kwargs):
+    windows = [
+        {
+            "label": "5h",
+            "pct": pct_5h,
+            "countdown": kwargs.get("countdown_5h"),
+            "resets_at_ts": kwargs.get("ts_5h"),
+            "ahead": False,
+            "maxed": False,
+        }
+    ]
+    if pct_7d is not None:
+        windows.append(
+            {
+                "label": "7d",
+                "pct": pct_7d,
+                "countdown": kwargs.get("countdown_7d"),
+                "resets_at_ts": kwargs.get("ts_7d"),
+                "ahead": False,
+                "maxed": False,
+            }
+        )
+    return {
+        "num": num,
+        "title": title,
+        "subtitle": "",
+        "active": kwargs.get("active", False),
+        "disabled": kwargs.get("disabled", False),
+        "note": kwargs.get("note"),
+        "needs_relogin": kwargs.get("needs_relogin", False),
+        "windows": windows,
+    }
+
+
+def test_remaining_fraction_clamps():
+    assert ws.remaining_fraction(20) == 0.8
+    assert ws.remaining_fraction(0) == 1.0
+    assert ws.remaining_fraction(100) == 0.0
+    assert ws.remaining_fraction(150) == 0.0
+    assert ws.remaining_fraction(-10) == 1.0
+
+
+def test_combined_window_does_not_average_percentages():
+    accounts = [
+        _card(1, "personal", 20, 10, ts_5h=_NOW + 7_800),
+        _card(2, "Ads Online", 80, 40, ts_5h=_NOW + 14_400),
+    ]
+    five = ws.combined_window(accounts, "5h", _NOW)
+    assert five is not None
+    assert five["remaining"] == 1.0
+    assert five["total"] == 2
+    assert five["switch_num"] == "1"
+    assert five["hottest_num"] == "2"
+    assert five["hottest_title"] == "Ads Online"
+    assert five["next_num"] == "1"
+    assert five["next_resets_at_ts"] == _NOW + 7_800
+    seven = ws.combined_window(accounts, "7d", _NOW)
+    assert seven is not None
+    assert seven["remaining"] == 1.5
+    assert seven["switch_num"] == "1"
+    assert seven["hottest_num"] == "2"
+
+
+def test_combined_window_skips_disabled_and_relogin():
+    accounts = [
+        _card(1, "personal", 20, ts_5h=_NOW + 100),
+        _card(2, "off", 0, disabled=True, ts_5h=_NOW + 100),
+        _card(3, "dead", 0, needs_relogin=True, ts_5h=_NOW + 100),
+    ]
+    five = ws.combined_window(accounts, "5h", _NOW)
+    assert five is not None
+    assert five["total"] == 1
+    assert five["remaining"] == 0.8
+    assert five["switch_num"] == "1"
+    assert [s["num"] for s in five["slices"]] == ["1"]
+
+
+def test_combined_window_empty_when_no_live_slots():
+    accounts = [
+        _card(1, "off", 10, disabled=True),
+        _card(2, "dead", 10, needs_relogin=True),
+        {"num": "3", "title": "empty", "disabled": False, "needs_relogin": False, "windows": []},
+    ]
+    assert ws.combined_window(accounts, "5h", _NOW) is None
+    assert ws.build_combined(accounts, _NOW) == {}
+
+
+def test_combined_window_ignores_passed_resets():
+    accounts = [_card(1, "personal", 50, ts_5h=_NOW - 60)]
+    five = ws.combined_window(accounts, "5h", _NOW)
+    assert five is not None
+    assert five["next_num"] is None
+    assert five["next_resets_at_ts"] is None
+
+
+def test_build_combined_two_healthy_accounts():
+    usage_a = {
+        "five_hour": {"pct": 20.0, "resets_at": "2001-09-09T03:10:00+00:00"},
+        "seven_day": {"pct": 10.0},
+    }
+    usage_b = {
+        "five_hour": {"pct": 80.0, "resets_at": "2001-09-09T05:00:00+00:00"},
+        "seven_day": {"pct": 40.0},
+    }
+    snap = {
+        "accounts": [
+            (1, "a@x.com", True, usage_a, usage_a, "personal", "", False, None),
+            (2, "b@x.com", False, usage_b, usage_b, "Ads Online", "Ads Online", False, None),
+        ]
+    }
+    payload = ws.build_widget_payload(snap, now=_NOW)
+    five = payload["combined"]["five_hour"]
+    assert five["remaining"] == 1.0
+    assert five["total"] == 2
+    assert five["switch_num"] == "1"
+    assert five["hottest_title"] == "Ads Online"

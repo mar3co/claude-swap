@@ -95,6 +95,84 @@ def widget_app_path(home: Path | None = None) -> Path:
     return root / "Applications" / WIDGET_APP_NAME
 
 
+def _window_with_label(card: dict, label: str) -> dict | None:
+    for window in card.get("windows") or []:
+        if isinstance(window, dict) and window.get("label") == label:
+            return window
+    return None
+
+
+def remaining_fraction(pct: float) -> float:
+    """One account is one slot. 20% used → 0.8 remaining."""
+    return round(min(1.0, max(0.0, (100.0 - float(pct)) / 100.0)), 4)
+
+
+def combined_window(accounts: list[dict], label: str, now: float) -> dict | None:
+    """Remaining capacity for one window across healthy accounts.
+
+    Disabled and signed-out cards are excluded: their last-good bars are
+    not live capacity. Percentages are not averaged and 5h is not mixed
+    with 7d. ``switch_num`` is the slot with the most remaining.
+    """
+    slices: list[dict] = []
+    for card in accounts:
+        if card.get("disabled") or card.get("needs_relogin"):
+            continue
+        window = _window_with_label(card, label)
+        if not isinstance(window, dict) or not isinstance(window.get("pct"), (int, float)):
+            continue
+        pct = float(window["pct"])
+        ts = window.get("resets_at_ts")
+        if not isinstance(ts, (int, float)):
+            ts = None
+        slices.append(
+            {
+                "num": str(card["num"]),
+                "title": card.get("title") or f"account {card['num']}",
+                "pct": pct,
+                "remaining": remaining_fraction(pct),
+                "resets_at_ts": ts,
+                "countdown": window.get("countdown"),
+            }
+        )
+    if not slices:
+        return None
+    remaining_sum = round(sum(item["remaining"] for item in slices), 4)
+    # max() keeps the earlier slice on a tie; accounts stay in slot order.
+    hottest = max(slices, key=lambda item: item["pct"])
+    switcher = max(slices, key=lambda item: item["remaining"])
+    upcoming = [
+        item
+        for item in slices
+        if isinstance(item.get("resets_at_ts"), (int, float)) and item["resets_at_ts"] > now
+    ]
+    nxt = min(upcoming, key=lambda item: item["resets_at_ts"]) if upcoming else None
+    return {
+        "label": label,
+        "remaining": remaining_sum,
+        "total": len(slices),
+        "hottest_title": hottest["title"],
+        "hottest_num": hottest["num"],
+        "switch_num": switcher["num"],
+        "next_num": None if nxt is None else nxt["num"],
+        "next_resets_at_ts": None if nxt is None else nxt["resets_at_ts"],
+        "next_countdown": None if nxt is None else nxt.get("countdown"),
+        "slices": slices,
+    }
+
+
+def build_combined(accounts: list[dict], now: float) -> dict:
+    """``five_hour`` / ``seven_day`` combined blocks; omit a key when empty."""
+    out: dict = {}
+    five = combined_window(accounts, "5h", now)
+    if five is not None:
+        out["five_hour"] = five
+    seven = combined_window(accounts, "7d", now)
+    if seven is not None:
+        out["seven_day"] = seven
+    return out
+
+
 def build_widget_payload(snapshot: dict, now: float | None = None) -> dict:
     """JSON-friendly cards from a menubar snapshot dict."""
     if now is None:
@@ -108,6 +186,7 @@ def build_widget_payload(snapshot: dict, now: float | None = None) -> dict:
         "schema": SCHEMA_VERSION,
         "updated_at": now,
         "accounts": accounts,
+        "combined": build_combined(accounts, now),
     }
 
 

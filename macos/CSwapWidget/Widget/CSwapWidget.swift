@@ -1,28 +1,40 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
 struct CSwapEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
+    let configuration: CSwapWidgetIntent
 }
 
-struct CSwapProvider: TimelineProvider {
+struct CSwapProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> CSwapEntry {
-        CSwapEntry(date: Date(), snapshot: .sample)
+        CSwapEntry(date: Date(), snapshot: .sample, configuration: CSwapWidgetIntent())
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (CSwapEntry) -> Void) {
-        completion(CSwapEntry(date: Date(), snapshot: SnapshotStore.load() ?? .sample))
+    func snapshot(for configuration: CSwapWidgetIntent, in context: Context) async -> CSwapEntry {
+        CSwapEntry(
+            date: Date(),
+            snapshot: SnapshotStore.load() ?? .sample,
+            configuration: configuration
+        )
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<CSwapEntry>) -> Void) {
+    func timeline(
+        for configuration: CSwapWidgetIntent,
+        in context: Context
+    ) async -> Timeline<CSwapEntry> {
         let snapshot = SnapshotStore.load()
         let now = Date()
         let entries = (0 ..< 30).map { offset in
-            CSwapEntry(date: now.addingTimeInterval(Double(offset) * 60), snapshot: snapshot)
+            CSwapEntry(
+                date: now.addingTimeInterval(Double(offset) * 60),
+                snapshot: snapshot,
+                configuration: configuration
+            )
         }
-        let refresh = now.addingTimeInterval(30 * 60)
-        completion(Timeline(entries: entries, policy: .after(refresh)))
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60)))
     }
 }
 
@@ -30,12 +42,21 @@ struct CSwapUsageWidget: Widget {
     let kind = "CSwapUsage"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: CSwapProvider()) { entry in
+        AppIntentConfiguration(
+            kind: kind,
+            intent: CSwapWidgetIntent.self,
+            provider: CSwapProvider()
+        ) { entry in
             CSwapWidgetView(entry: entry)
         }
         .configurationDisplayName("cswap")
-        .description("Claude Code usage for your cswap accounts.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .description("Usage for your cswap accounts. Right-click to change the layout.")
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .systemLarge,
+            .systemExtraLarge,
+        ])
     }
 }
 

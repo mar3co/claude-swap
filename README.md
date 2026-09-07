@@ -56,7 +56,7 @@ cswap menubar --install-service    # extra at login
 cswap widget --install             # Desktop / Notification Center (this checkout + Xcode)
 ```
 
-Click the extra for usage bars, then a card to switch. Auto-switch waits five minutes before it can move you again. More → Settings: auto-switch, consume-first (soonest weekly reset), Soonest 5-hour reset, 5-hour kickoff. Add the widget from Edit Widgets (search **cswap**).
+Click the extra for usage bars, then a card to switch. Auto-switch waits five minutes before it can move you again. More → Settings: auto-switch, consume-first (soonest weekly reset), Soonest 5-hour reset, 5-hour kickoff. Add the widget from Edit Widgets (search **cswap**). Right-click it to choose all accounts, combined remaining, or one account.
 
 [Menu bar](https://github.com/mar3co/claude-swap/wiki/Menu-Bar) · [Widget](https://github.com/mar3co/claude-swap/wiki/Desktop-Widget) · [Kickoff](https://github.com/mar3co/claude-swap/wiki/Five-Hour-Kickoff)
 

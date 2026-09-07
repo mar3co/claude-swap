@@ -48,23 +48,74 @@ struct CSwapWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let accounts = visibleAccounts
-        Group {
-            if accounts.isEmpty {
-                emptyState()
-            } else {
-                VStack(alignment: .leading, spacing: family == .systemSmall ? 6 : 8) {
-                    ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
-                        if index > 0 {
-                            Divider().opacity(0.35)
-                        }
-                        accountBlock(for: account)
-                    }
-                }
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 6 : 8) {
+            content
+            if let footer = staleFooter {
+                Spacer(minLength: 0)
+                Text(footer)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.muted)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .containerBackground(.background, for: .widget)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if entry.snapshot == nil {
+            emptyState()
+        } else if entry.configuration.layout == .combined {
+            combinedContent
+        } else {
+            accountList(visibleAccounts)
+        }
+    }
+
+    @ViewBuilder
+    private var combinedContent: some View {
+        let windows = combinedWindows
+        let rows = visibleAccounts
+        if windows.isEmpty && rows.isEmpty {
+            emptyState()
+        } else {
+            VStack(alignment: .leading, spacing: family == .systemSmall ? 6 : 8) {
+                if !windows.isEmpty {
+                    CombinedBlock(
+                        windows: windows,
+                        now: entry.date,
+                        compact: family == .systemSmall,
+                        switchNum: windows.first?.switchNum
+                    )
+                }
+                if !rows.isEmpty {
+                    if !windows.isEmpty {
+                        Divider().opacity(0.35)
+                    }
+                    accountList(rows)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func accountList(_ accounts: [AccountCard]) -> some View {
+        if accounts.isEmpty {
+            if entry.configuration.layout == .one, entry.configuration.account != nil {
+                missingAccountState()
+            } else {
+                emptyState()
+            }
+        } else {
+            VStack(alignment: .leading, spacing: family == .systemSmall ? 6 : 8) {
+                ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
+                    if index > 0 {
+                        Divider().opacity(0.35)
+                    }
+                    accountBlock(for: account)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -73,7 +124,7 @@ struct CSwapWidgetView: View {
             account: account,
             now: entry.date,
             compact: family == .systemSmall,
-            maxWindows: family == .systemSmall ? 3 : (family == .systemMedium ? 3 : 6)
+            maxWindows: maxWindows
         )
         if account.disabled {
             block
@@ -85,14 +136,99 @@ struct CSwapWidgetView: View {
         }
     }
 
+    private var isSmall: Bool { family == .systemSmall }
+
+    private var primaryLabel: String {
+        entry.configuration.windows == .sevenDay ? "7d" : "5h"
+    }
+
+    private var accountCap: Int {
+        switch family {
+        case .systemSmall: return 2
+        case .systemMedium: return 3
+        case .systemLarge: return 6
+        case .systemExtraLarge: return 10
+        default: return 3
+        }
+    }
+
+    private var maxWindows: Int {
+        if isSmall {
+            return entry.configuration.windows == .both ? 2 : 1
+        }
+        if family == .systemMedium { return 3 }
+        return 6
+    }
+
     private var visibleAccounts: [AccountCard] {
         let all = entry.snapshot?.accounts ?? []
-        if family == .systemSmall {
-            if let active = all.first(where: { $0.active }) { return [active] }
-            return Array(all.prefix(1))
+        switch entry.configuration.layout {
+        case .one:
+            if let id = entry.configuration.account?.id,
+               let match = all.first(where: { $0.num == id }) {
+                return [withFilteredWindows(match)]
+            }
+            return pickByRemaining(all, limit: 1).map(withFilteredWindows)
+        case .combined:
+            if isSmall { return [] }
+            return Array(all.filter { !$0.disabled }.prefix(accountCap)).map(withFilteredWindows)
+        case .all:
+            if isSmall {
+                return pickByRemaining(all, limit: 2).map(withFilteredWindows)
+            }
+            return Array(all.prefix(accountCap)).map(withFilteredWindows)
         }
-        let cap = family == .systemLarge ? 6 : 3
-        return Array(all.prefix(cap))
+    }
+
+    private var combinedWindows: [CombinedWindow] {
+        guard let snapshot = entry.snapshot else { return [] }
+        let maps = snapshot.combinedMaps(now: entry.date)
+        switch entry.configuration.windows {
+        case .fiveHour:
+            return [maps.fiveHour].compactMap { $0 }
+        case .sevenDay:
+            return [maps.sevenDay].compactMap { $0 }
+        case .both:
+            return [maps.fiveHour, maps.sevenDay].compactMap { $0 }
+        }
+    }
+
+    private var staleFooter: String? {
+        guard let snapshot = entry.snapshot else { return nil }
+        return updatedFooter(updatedAt: snapshot.updatedAt, now: entry.date)
+    }
+
+    private func filterWindows(_ windows: [UsageWindow]) -> [UsageWindow] {
+        switch entry.configuration.windows {
+        case .fiveHour:
+            return windows.filter { $0.label == "5h" }
+        case .sevenDay:
+            return windows.filter { $0.label == "7d" }
+        case .both:
+            if family == .systemLarge || family == .systemExtraLarge {
+                return windows
+            }
+            return windows.filter { $0.label == "5h" || $0.label == "7d" }
+        }
+    }
+
+    private func withFilteredWindows(_ account: AccountCard) -> AccountCard {
+        var copy = account
+        copy.windows = filterWindows(account.windows)
+        return copy
+    }
+
+    private func pickByRemaining(_ accounts: [AccountCard], limit: Int) -> [AccountCard] {
+        let enabled = accounts.filter { !$0.disabled }
+        let pool = enabled.isEmpty ? accounts : enabled
+        func score(_ card: AccountCard) -> Double {
+            if card.needsRelogin == true { return -1 }
+            guard let window = card.windows.first(where: { $0.label == primaryLabel }) else {
+                return -2
+            }
+            return 100 - window.pct
+        }
+        return Array(pool.sorted { score($0) > score($1) }.prefix(limit))
     }
 
     private func emptyState() -> some View {
@@ -104,6 +240,107 @@ struct CSwapWidgetView: View {
                 .font(.caption)
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func missingAccountState() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("cswap")
+                .font(.headline)
+                .foregroundStyle(Palette.fg)
+            Text("That account is not in cswap anymore. Right-click the widget to pick another.")
+                .font(.caption)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct CombinedBlock: View {
+    var windows: [CombinedWindow]
+    var now: Date
+    var compact: Bool
+    var switchNum: String?
+
+    var body: some View {
+        let content = VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+            ForEach(windows, id: \.label) { window in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(window.label) left")
+                        .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                        .foregroundStyle(Palette.fg)
+                    Spacer(minLength: 4)
+                    Text(String(format: "%.1f / %d", window.remaining, window.total))
+                        .font(.system(size: compact ? 13 : 15, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Palette.fg)
+                }
+            }
+            if let primary = windows.first {
+                RemainingStack(slices: primary.slices, total: max(primary.total, 1))
+                    .frame(height: compact ? 6 : 8)
+                if let line = combinedSubline(primary, now: now) {
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                }
+            }
+        }
+        if let num = switchNum, !num.isEmpty {
+            Button(intent: SwitchAccountIntent(num: num)) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+}
+
+private func combinedSubline(_ window: CombinedWindow, now: Date) -> String? {
+    var parts: [String] = []
+    if let title = window.hottestTitle {
+        if let slice = window.slices.first(where: { $0.num == window.hottestNum }) {
+            parts.append("\(title) \(Int(slice.pct.rounded()))%")
+        } else {
+            parts.append(title)
+        }
+    }
+    if let text = liveCountdown(
+        resetsAtTs: window.nextResetsAtTs,
+        now: now,
+        fallback: window.nextCountdown
+    ) {
+        if window.nextNum != nil, window.nextNum != window.hottestNum {
+            parts.append("next \(text)")
+        } else {
+            parts.append(text)
+        }
+    }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
+}
+
+private struct RemainingStack: View {
+    var slices: [CombinedSlice]
+    var total: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            let unit = geo.size.width / CGFloat(max(total, 1))
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.track)
+                HStack(spacing: 1) {
+                    ForEach(slices) { slice in
+                        if slice.remaining > 0 {
+                            Capsule()
+                                .fill(Palette.severity(slice.pct))
+                                .frame(width: max(2, unit * CGFloat(slice.remaining)))
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .clipShape(Capsule())
         }
     }
 }

@@ -35,7 +35,7 @@
 | Popover UI | `menubar_panel.py` | AppKit, imported after rumps |
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
 | Session `cswap run` | `session.py` | Must not POSIX-`exec` the extra |
-| Widget JSON | `widget_snapshot.py` | Extra writes; extension reads |
+| Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; extension reads |
 | Widget build | `widget_install.py` | `xcodebuild` + LaunchAgent |
 
 The extra is a thin shell. It must not re-implement quota math, ranking, or credential writes.
