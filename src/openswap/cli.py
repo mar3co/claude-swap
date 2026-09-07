@@ -935,7 +935,7 @@ def _widget_command(argv: list[str]) -> int:
 After install, add the widget:
   Notification Center: click the date in the menu bar, Edit Widgets
   Desktop: right-click the desktop, Edit Widgets
-  Look for "openswap"
+  Look for "OpenSwap"
 
 The menu bar extra must be running so the widget has live usage numbers.
 """,
@@ -970,7 +970,7 @@ The menu bar extra must be running so the widget has live usage numbers.
             print(
                 dimmed(
                     "Add it from Notification Center, or right-click the "
-                    "desktop and choose Edit Widgets. Look for openswap."
+                    "desktop and choose Edit Widgets. Look for OpenSwap."
                 )
             )
             print(dimmed("The menu bar extra must be running for live numbers."))
