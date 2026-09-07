@@ -21,6 +21,9 @@ import math
 import os
 import plistlib
 import re
+import shlex
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -43,7 +46,7 @@ from claude_swap.kickoff import (
     parse_kickoff_time,
 )
 from claude_swap.autoswitch import record_manual_switch
-from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY
+from claude_swap.switcher import SENTINEL_NOTES, USAGE_API_KEY, USAGE_RELOGIN_REQUIRED
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
@@ -77,6 +80,8 @@ SETTINGS_PAGE = "settings"
 MAIN_PAGE = "main"
 SWITCH_HISTORY_LIMIT = 10
 NOTIFICATION_BUNDLE_ID = "com.claude-swap.menubar"
+RELOGIN_CARD_NOTE = "Signed out. Log in with Claude Code, then click this card."
+_CLAUDE_PATH_DIRS = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
 
 
 def ensure_notification_identity(
@@ -460,7 +465,7 @@ def notification_copy_for_event(
         )
         return NotificationCopy(
             title=f"{name} was paused",
-            body="Sign in with this account in Claude Code, then add it back in claude-swap.",
+            body="Sign in with this account in Claude Code, then click it in the extra.",
         )
     if kind == "all-exhausted":
         reset = format_local_reset(getattr(event, "earliest_reset_at", None))
@@ -513,6 +518,173 @@ def notification_copy_for_kickoff(
             f"{name}: {err}" if err else name for name, err in bad
         )[:240]
     return NotificationCopy(title=title, body=body)
+
+
+def notification_copy_for_relogin(name: str) -> NotificationCopy:
+    return NotificationCopy(
+        title=f"{name} signed out",
+        body="Log in with Claude Code, then click that account in the extra.",
+    )
+
+
+def notification_copy_for_relogin_captured(name: str) -> NotificationCopy:
+    return NotificationCopy(
+        title=f"{name} is signed in again",
+        body="Credentials updated.",
+    )
+
+
+@dataclass(frozen=True)
+class ReloginClickPlan:
+    """What a signed-out card click should do. Never captures the wrong org."""
+
+    kind: str  # capture | open_login | confirm_open_login
+    slot_name: str
+    login_email: str
+    live_name: str | None = None
+
+
+def display_needs_relogin(display) -> bool:
+    return display == SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED]
+
+
+def extra_note_for_display(display) -> str | None:
+    """Popover note: extra copy for signed-out, otherwise the sentinel string."""
+    if display_needs_relogin(display):
+        return RELOGIN_CARD_NOTE
+    if isinstance(display, str):
+        return display
+    return None
+
+
+def relogin_slot_nums(snapshot: dict) -> set[str]:
+    return {
+        str(row[0])
+        for row in snapshot.get("accounts") or []
+        if display_needs_relogin(row[3])
+    }
+
+
+def newly_relogin_slots(prev: set[str], curr: set[str]) -> set[str]:
+    return set(curr) - set(prev)
+
+
+def slot_identity_from_sequence(sequence: dict | None, num) -> tuple[str, str] | None:
+    """``(email, organizationUuid)`` for a managed slot, or None."""
+    acc = ((sequence or {}).get("accounts") or {}).get(str(num)) or {}
+    email = acc.get("email") or ""
+    if not email:
+        return None
+    return email, acc.get("organizationUuid") or ""
+
+
+def matching_relogin_slot(
+    live: tuple[str, str] | None,
+    identities: dict[str, tuple[str, str]],
+    relogin_nums: set[str],
+) -> str | None:
+    """Slot whose identity equals the live login and is currently signed out.
+
+    Email is not enough: two orgs can share an address.
+    """
+    if live is None:
+        return None
+    for num in relogin_nums:
+        if identities.get(str(num)) == live:
+            return str(num)
+    return None
+
+
+def plan_relogin_click(
+    *,
+    live: tuple[str, str] | None,
+    slot: tuple[str, str] | None,
+    slot_name: str,
+    live_name: str | None,
+) -> ReloginClickPlan | None:
+    """Decide capture vs open-login. Capture only when email and org both match."""
+    if slot is None:
+        return None
+    email = slot[0]
+    if live is not None and live == slot:
+        return ReloginClickPlan("capture", slot_name, email, live_name)
+    if live is None:
+        return ReloginClickPlan("open_login", slot_name, email, None)
+    return ReloginClickPlan("confirm_open_login", slot_name, email, live_name)
+
+
+def relogin_wrong_account_message(plan: ReloginClickPlan) -> str:
+    live_name = plan.live_name or "another account"
+    return (
+        f"Claude Code is signed in as {live_name}, not {plan.slot_name}. "
+        f"Opening login will sign out of {live_name}. Continue?"
+    )
+
+
+def relogin_login_opened_message(slot_name: str) -> str:
+    return (
+        f"Sign in as {slot_name} in the Terminal window. After that, click this "
+        "card again, or wait and the extra will capture it."
+    )
+
+
+def resolve_claude_bin(
+    which=None,
+    extra_dirs: tuple[str, ...] = _CLAUDE_PATH_DIRS,
+) -> str | None:
+    which_fn = shutil.which if which is None else which
+    found = which_fn("claude")
+    if found:
+        return found
+    for folder in extra_dirs:
+        candidate = Path(os.path.expanduser(folder)) / "claude"
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def build_terminal_login_script(claude_bin: str, email: str) -> str:
+    """AppleScript that opens Terminal on ``claude auth login`` for ``email``."""
+    cmd = (
+        f"{shlex.quote(claude_bin)} auth login --claudeai --email {shlex.quote(email)}"
+    )
+    return f'tell application "Terminal" to do script {json.dumps(cmd)}'
+
+
+def launch_claude_login(
+    email: str,
+    *,
+    which=None,
+    run=None,
+) -> str:
+    """Open Terminal on ``claude auth login --email``. Returns the shell command.
+
+    The extra has no TTY, so the OAuth flow cannot run inside this process.
+    """
+    run_fn = subprocess.run if run is None else run
+    claude_bin = resolve_claude_bin(which=which)
+    if not claude_bin:
+        raise ClaudeSwitchError(
+            "'claude' was not found. Install Claude Code, then try again."
+        )
+    script = build_terminal_login_script(claude_bin, email)
+    result = run_fn(
+        ["osascript", "-e", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if getattr(result, "returncode", 1) != 0:
+        cmd = (
+            f"{shlex.quote(claude_bin)} auth login --claudeai --email "
+            f"{shlex.quote(email)}"
+        )
+        err = (getattr(result, "stderr", None) or "").strip()
+        extra = f" ({err})" if err else ""
+        raise ClaudeSwitchError(
+            f"Couldn't open Terminal{extra}. Run this yourself: {cmd}"
+        )
+    return f"{claude_bin} auth login --claudeai --email {email}"
 
 
 # ---- pure display helpers (operate on the usage-window dict shape produced by
@@ -768,7 +940,8 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
     cards = []
     for row in snapshot.get("accounts") or []:
         num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at = row
-        note = display if isinstance(display, str) else None
+        needs_relogin = display_needs_relogin(display)
+        note = extra_note_for_display(display)
         usage = display if isinstance(display, dict) else last_good
         title, subtitle = account_card_names(email, alias, org_name)
         cards.append(
@@ -779,6 +952,7 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
                 "active": bool(is_active),
                 "disabled": bool(disabled),
                 "note": note,
+                "needs_relogin": needs_relogin,
                 "windows": panel_windows(
                     usage if isinstance(usage, dict) else None, now, fetched_at
                 ),
@@ -1148,6 +1322,11 @@ def run(switcher) -> int:
             self._kickoff_retry_after: float | None = None
             self._kickoff_succeeded_nums: set[str] = set()
             self._kickoff_success_date = ""
+            self._relogin_notified: set[str] = set()
+            self._pending_relogin_notifies: set[str] = set()
+            self._auto_capturing = False
+            self._auto_captured_nums: set[str] = set()
+            self._auto_capture_failed_for: tuple[str, str] | None = None
             self.rebuild_menu()
             # Background display refresh on the user's interval, plus a fast
             # UI-sync tick that applies snapshots + engine events on the main thread.
@@ -1205,6 +1384,13 @@ def run(switcher) -> int:
                 self.snapshot = snap
                 self._snapshot_at = now
                 self._dirty = True  # picked up by on_sync_tick on the main thread
+                curr_relogin = relogin_slot_nums(snap)
+                with self._event_lock:
+                    if self._engine is None:
+                        self._pending_relogin_notifies |= newly_relogin_slots(
+                            self._relogin_notified, curr_relogin
+                        )
+                    self._relogin_notified = curr_relogin
                 from claude_swap.widget_snapshot import publish_widget_snapshot
                 publish_widget_snapshot(snap, now=self._snapshot_at)
             finally:
@@ -1239,6 +1425,8 @@ def run(switcher) -> int:
                 # swallows the account-row mouseUp.
             self._detect_active_change()
             self._drain_engine_events()
+            self._drain_relogin_notifies()
+            self._maybe_auto_capture_relogin()
             self._drain_kickoff_results()
             self._maybe_kickoff()
 
@@ -1363,7 +1551,7 @@ def run(switcher) -> int:
             except Exception:
                 self.switcher._logger.debug("status item fit failed", exc_info=True)
             self._panel = MenuBarPanel(
-                on_switch=self._switch_from_panel,
+                on_switch=lambda num: self._on_account_click(num, close_panel=True),
                 on_rotate=lambda *_a: self._switch(None)(None),
                 on_best=lambda *_a: self._switch("best")(None),
                 on_toggle_auto=lambda *_a: self.on_toggle_autoswitch(None),
@@ -1604,6 +1792,15 @@ def run(switcher) -> int:
                     return account_short_name(row[1], row[5] or None, num)
             return account_short_name(None, None, num)
 
+        def _name_for_identity(self, identity: tuple[str, str] | None) -> str | None:
+            if identity is None:
+                return None
+            email, _org = identity
+            for row in self.snapshot.get("accounts") or []:
+                if row[1] == email and self._slot_identity(row[0]) == identity:
+                    return account_short_name(email, row[5] or None, row[0])
+            return account_short_name(email, None)
+
         def _current_dest_name(self) -> str:
             current = self.switcher._get_current_account()
             email = current[0] if current else None
@@ -1619,21 +1816,144 @@ def run(switcher) -> int:
             running = bool(self.snapshot.get("claude_running", True))
             self._notify(notification_copy_for_manual_switch(dest_name, running=running))
 
-        def _switch_from_panel(self, num):
+        def _switch_from_widget(self, num):
+            self._on_account_click(num, close_panel=False)
+
+        def _slot_needs_relogin(self, num) -> bool:
+            for row in self.snapshot.get("accounts") or []:
+                if str(row[0]) == str(num):
+                    return display_needs_relogin(row[3])
+            return False
+
+        def _slot_identity(self, num) -> tuple[str, str] | None:
+            try:
+                seq = self.switcher._get_sequence_data()
+            except Exception:
+                return None
+            return slot_identity_from_sequence(seq, num)
+
+        def _on_account_click(self, num, *, close_panel):
+            if self._slot_needs_relogin(num):
+                self._repair_relogin(num, close_panel=close_panel)
+                return
             result = self._run_switch(
                 lambda: self.switcher.switch_to(str(num), json_output=True)
             )
             self._finish_manual_switch(
-                result, self._name_for_num(num), close_panel=True
+                result, self._name_for_num(num), close_panel=close_panel
             )
 
-        def _switch_from_widget(self, num):
-            result = self._run_switch(
-                lambda: self.switcher.switch_to(str(num), json_output=True)
+        def _repair_relogin(self, num, *, close_panel):
+            slot = self._slot_identity(num)
+            slot_name = self._name_for_num(num)
+            live = self.switcher._get_current_account()
+            live_name = self._name_for_identity(live)
+            plan = plan_relogin_click(
+                live=live, slot=slot, slot_name=slot_name, live_name=live_name
             )
-            self._finish_manual_switch(
-                result, self._name_for_num(num), close_panel=False
+            if plan is None:
+                self._show_error(f"Couldn't find {slot_name} in the account list.")
+                return
+            if plan.kind == "capture":
+                self._capture_relogin(num, close_panel=close_panel)
+                return
+            if plan.kind == "confirm_open_login":
+                import AppKit
+                AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+                if rumps.alert(
+                    title="Wrong account signed in",
+                    message=relogin_wrong_account_message(plan),
+                    ok="Open login",
+                    cancel="Cancel",
+                ) != 1:
+                    return
+            self._open_claude_login(plan)
+
+        def _capture_relogin(self, num, *, close_panel):
+            slot = self._slot_identity(num)
+            live = self.switcher._get_current_account()
+            if slot is None or live is None or live != slot:
+                self._show_error(
+                    f"Claude Code is not signed in as {self._name_for_num(num)}. "
+                    "Not capturing."
+                )
+                return
+            try:
+                self.switcher.add_account(slot=None)
+            except CredentialReadError:
+                rumps.alert(
+                    title="claude-swap",
+                    message="Couldn't read the active credential. If the menu bar is running "
+                            "as a background/login agent, macOS blocks its Keychain access — "
+                            "quit and relaunch it from a Terminal with: cswap --menubar",
+                )
+                return
+            except ClaudeSwitchError as e:
+                self._show_error(str(e))
+                return
+            name = self._name_for_num(num)
+            self._notify(notification_copy_for_relogin_captured(name))
+            self.refresh_async()
+            if close_panel and self._panel is not None:
+                self._panel.close()
+
+        def _open_claude_login(self, plan: ReloginClickPlan):
+            try:
+                launch_claude_login(plan.login_email)
+            except ClaudeSwitchError as e:
+                self._show_error(str(e))
+                return
+            self._notify(
+                NotificationCopy(
+                    title=f"Sign in as {plan.slot_name}",
+                    body=relogin_login_opened_message(plan.slot_name),
+                )
             )
+
+        def _drain_relogin_notifies(self):
+            with self._event_lock:
+                pending, self._pending_relogin_notifies = self._pending_relogin_notifies, set()
+            for num in sorted(pending):
+                self._notify(notification_copy_for_relogin(self._name_for_num(num)))
+
+        def _maybe_auto_capture_relogin(self):
+            if self._refreshing or self._auto_capturing:
+                return
+            nums = relogin_slot_nums(self.snapshot)
+            self._auto_captured_nums &= nums
+            if not nums:
+                self._auto_capture_failed_for = None
+                return
+            live = self.switcher._get_current_account()
+            if live is None or live == self._auto_capture_failed_for:
+                return
+            identities = {}
+            for num in nums:
+                ident = self._slot_identity(num)
+                if ident is not None:
+                    identities[str(num)] = ident
+            match = matching_relogin_slot(live, identities, nums)
+            if match is None or match in self._auto_captured_nums:
+                return
+            self._auto_capturing = True
+            try:
+                live_now = self.switcher._get_current_account()
+                ident = self._slot_identity(match)
+                if live_now is None or ident is None or live_now != ident:
+                    return
+                self.switcher.add_account(slot=None)
+            except Exception:
+                self._auto_capture_failed_for = live
+                self.switcher._logger.debug(
+                    "auto-capture of signed-out account failed", exc_info=True
+                )
+                return
+            finally:
+                self._auto_capturing = False
+            self._auto_captured_nums.add(match)
+            self._auto_capture_failed_for = None
+            self._notify(notification_copy_for_relogin_captured(self._name_for_num(match)))
+            self.refresh_async()
 
         def _switch(self, strategy):
             def cb(_sender):

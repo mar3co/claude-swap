@@ -14,6 +14,7 @@ struct AccountCard: Codable, Identifiable {
     var active: Bool
     var disabled: Bool
     var note: String?
+    var needsRelogin: Bool?
     var windows: [UsageWindow]
     var id: String { num }
 }
@@ -75,6 +76,7 @@ extension WidgetSnapshot {
                     active: true,
                     disabled: false,
                     note: nil,
+                    needsRelogin: nil,
                     windows: [
                         UsageWindow(
                             label: "5h", pct: 42, countdown: "2h 10m",

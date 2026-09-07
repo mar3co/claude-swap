@@ -143,15 +143,19 @@ private struct AccountBlock: View {
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
             }
-            if let note = account.note, account.windows.isEmpty {
+            ForEach(Array(account.windows.prefix(maxWindows))) { window in
+                WindowRow(
+                    window: window,
+                    now: now,
+                    compact: compact,
+                    stale: account.needsRelogin == true
+                )
+            }
+            if let note = account.note {
                 Text(note)
                     .font(.caption)
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
-            } else {
-                ForEach(Array(account.windows.prefix(maxWindows))) { window in
-                    WindowRow(window: window, now: now, compact: compact)
-                }
             }
         }
         .opacity(account.disabled ? 0.45 : 1)
@@ -162,10 +166,17 @@ private struct WindowRow: View {
     var window: UsageWindow
     var now: Date
     var compact: Bool
+    var stale: Bool = false
 
     var body: some View {
-        let color = Palette.severity(window.pct)
+        let color = stale ? Palette.muted : Palette.severity(window.pct)
         let suffix: String = {
+            if stale {
+                if let text = liveCountdown(resetsAtTs: window.resetsAtTs, now: now, fallback: window.countdown) {
+                    return text
+                }
+                return ""
+            }
             if window.maxed { return "max" }
             if let text = liveCountdown(resetsAtTs: window.resetsAtTs, now: now, fallback: window.countdown) {
                 return text

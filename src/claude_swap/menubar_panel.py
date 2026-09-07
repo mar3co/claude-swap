@@ -166,7 +166,10 @@ COL_GAP = 8.0
 
 
 def _card_height(card) -> float:
-    n = max(len(card["windows"]), 1 if card["note"] else 0, 1)
+    n = len(card.get("windows") or [])
+    if card.get("note"):
+        n += 1
+    n = max(n, 1)
     sub = SUBTITLE_H if card.get("subtitle") else 0.0
     return CARD_PAD * 2 + TITLE_H + sub + 6 + n * ROW_H
 
@@ -355,12 +358,13 @@ class _FillView(NSView):
 
 
 class _BarView(NSView):
-    def initWithPct_threshold_(self, pct, threshold):
+    def initWithPct_threshold_stale_(self, pct, threshold, stale):
         self = objc.super(_BarView, self).initWithFrame_(NSMakeRect(0, 0, 100, BAR_H))
         if self is None:
             return None
         self.pct = max(0.0, min(float(pct), 100.0))
         self.threshold = threshold
+        self.stale = bool(stale)
         return self
 
     def isFlipped(self):
@@ -388,9 +392,12 @@ class _BarView(NSView):
             fill = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
                 fill_rect, radius, radius
             )
-            _sev(self.pct, pal).setFill()
+            if self.stale:
+                pal["muted"].colorWithAlphaComponent_(0.45).setFill()
+            else:
+                _sev(self.pct, pal).setFill()
             fill.fill()
-        if self.threshold:
+        if self.threshold and not self.stale:
             x = bounds.size.width * max(0.0, min(float(self.threshold), 100.0)) / 100.0
             pal["warn"].colorWithAlphaComponent_(0.7).setFill()
             NSBezierPath.bezierPathWithRect_(
@@ -982,16 +989,8 @@ class MenuBarPanel:
                     )
                     row_y += SUBTITLE_H
                 row_y += 6
-                if card.get("note") and not card["windows"]:
-                    card_view.addSubview_(
-                        _label(
-                            card["note"],
-                            font_small,
-                            pal["muted"],
-                            NSMakeRect(CARD_PAD + 6, row_y, inner_w - CARD_PAD * 2 - 8, ROW_H),
-                        )
-                    )
-                else:
+                if card["windows"]:
+                    stale = bool(card.get("needs_relogin"))
                     label_x = CARD_PAD + 6
                     count_x = inner_w - CARD_PAD - COUNT_W
                     pct_x = count_x - COL_GAP - PCT_W
@@ -1006,14 +1005,16 @@ class MenuBarPanel:
                                 NSMakeRect(label_x, row_y - 2, LABEL_W - 4, ROW_H),
                             )
                         )
-                        bar = _BarView.alloc().initWithPct_threshold_(
-                            win["pct"], self._threshold()
+                        bar = _BarView.alloc().initWithPct_threshold_stale_(
+                            win["pct"],
+                            0 if stale else self._threshold(),
+                            stale,
                         )
                         bar.setFrame_(
                             NSMakeRect(bar_x, row_y + (ROW_H - BAR_H) / 2 - 2, bar_w, BAR_H)
                         )
                         card_view.addSubview_(bar)
-                        pct_color = _sev(win["pct"], pal)
+                        pct_color = pal["muted"] if stale else _sev(win["pct"], pal)
                         card_view.addSubview_(
                             _label(
                                 f"{win['pct']:.0f}%",
@@ -1024,10 +1025,11 @@ class MenuBarPanel:
                             )
                         )
                         suffix = win.get("countdown") or ""
-                        if win.get("maxed"):
-                            suffix = "max"
-                        elif win.get("ahead") and not suffix:
-                            suffix = "ahead"
+                        if not stale:
+                            if win.get("maxed"):
+                                suffix = "max"
+                            elif win.get("ahead") and not suffix:
+                                suffix = "ahead"
                         card_view.addSubview_(
                             _label(
                                 suffix,
@@ -1038,6 +1040,17 @@ class MenuBarPanel:
                             )
                         )
                         row_y += ROW_H
+                if card.get("note"):
+                    note_color = pal["warn"] if card.get("needs_relogin") else pal["muted"]
+                    card_view.addSubview_(
+                        _label(
+                            card["note"],
+                            font_small,
+                            note_color,
+                            NSMakeRect(CARD_PAD + 6, row_y, inner_w - CARD_PAD * 2 - 8, ROW_H),
+                        )
+                    )
+                    row_y += ROW_H
 
                 root.addSubview_(card_view)
                 y += card_h + CARD_GAP

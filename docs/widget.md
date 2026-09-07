@@ -6,7 +6,7 @@ Python cannot host WidgetKit. Split:
 2. Extra posts Darwin notification `com.cswap.widget.reload`.
 3. `cswap Widget.app` (LSUIElement) listens and calls `WidgetCenter.shared.reloadAllTimelines()`.
 4. The appex reads the JSON (sandbox: home-relative read-write exception on `Library/Application Support/cswap/` only + `getpwuid` for the real home; container `NSHomeDirectory()` is wrong).
-5. A tap writes `~/Library/Application Support/cswap/widget-command.json` (`{"op":"switch","num":…}`). The extra consumes it on the 1s sync tick and switches like a popover card click. The extra must be running; the widget cannot switch on its own. Disabled cards are not tappable.
+5. A tap writes `~/Library/Application Support/cswap/widget-command.json` (`{"op":"switch","num":…}`). The extra consumes it on the 1s sync tick and handles it like a popover card click (switch, or signed-out repair). The extra must be running; the widget cannot switch on its own. Disabled cards are not tappable. Sentinel notes render even when last-good bars are present.
 
 Sources: `macos/CSwapWidget/`. Install: `cswap widget --install` (`widget_install.py`).
 

@@ -28,7 +28,11 @@ from claude_swap.autoswitch import (
     SwitchEvent,
 )
 from claude_swap.exceptions import ClaudeSwitchError
-from claude_swap.switcher import USAGE_API_KEY, USAGE_FOREIGN_CREDENTIAL
+from claude_swap.switcher import (
+    USAGE_API_KEY,
+    USAGE_FOREIGN_CREDENTIAL,
+    USAGE_RELOGIN_REQUIRED,
+)
 
 
 # --- notification identity -----------------------------------------------------
@@ -913,10 +917,12 @@ def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
     assert "activateIgnoringOtherApps_" in text
     assert "live_slot_changed" in text
     from_panel = text[
-        text.index("def _switch_from_panel") : text.index("def _switch(self")
+        text.index("def _on_account_click") : text.index("def _repair_relogin")
     ]
     assert "json_output=True" in from_panel
-    assert "close_panel=True" in from_panel
+    assert "close_panel=close_panel" in from_panel
+    assert "MenuBarPanel" in text
+    assert "close_panel=True" in text
 
 
 def test_widget_tap_is_consumed_on_sync_tick_without_closing_panel():
@@ -925,10 +931,10 @@ def test_widget_tap_is_consumed_on_sync_tick_without_closing_panel():
     assert "consume_switch_command" in text
     assert "_consume_widget_command" in sync or "consume_switch_command" in sync
     from_widget = text[
-        text.index("def _switch_from_widget") : text.index("def _switch(self")
+        text.index("def _switch_from_widget") : text.index("def _slot_needs_relogin")
     ]
-    assert "json_output=True" in from_widget
     assert "close_panel=False" in from_widget
+    assert "_on_account_click" in from_widget
     assert "record_manual_switch" in text
 
 
@@ -1446,6 +1452,180 @@ def test_kickoff_notification_names_accounts_not_slots():
     assert "adsonline" in text
     assert "Account-" not in text
     assert "cswap --add-account" not in text
+
+
+# --- signed-out repair (extra) ------------------------------------------------
+
+def test_panel_accounts_relogin_keeps_windows_and_uses_extra_copy():
+    snap = {
+        "accounts": [
+            (
+                1,
+                "a@x.com",
+                False,
+                menubar.SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED],
+                _USAGE,
+                "personal",
+                "",
+                False,
+                None,
+            ),
+        ]
+    }
+    cards = menubar.panel_accounts(snap)
+    assert cards[0]["needs_relogin"] is True
+    assert cards[0]["note"] == menubar.RELOGIN_CARD_NOTE
+    assert "cswap" not in cards[0]["note"]
+    assert [w["label"] for w in cards[0]["windows"]] == ["5h", "7d"]
+    assert cards[0]["windows"][0]["pct"] == 42.0
+
+
+def test_panel_accounts_foreign_note_is_not_relogin():
+    snap = {
+        "accounts": [
+            (
+                2,
+                "a@x.com",
+                True,
+                menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL],
+                _USAGE,
+                "adsonline",
+                "Ads Online",
+                False,
+                None,
+            ),
+        ]
+    }
+    cards = menubar.panel_accounts(snap)
+    assert cards[0]["needs_relogin"] is False
+    assert cards[0]["note"] == menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL]
+
+
+def test_plan_relogin_click_captures_only_on_email_and_org_match():
+    slot = ("a@x.com", "org-personal")
+    matched = menubar.plan_relogin_click(
+        live=slot,
+        slot=slot,
+        slot_name="personal",
+        live_name="personal",
+    )
+    assert matched is not None
+    assert matched.kind == "capture"
+
+    wrong_org = menubar.plan_relogin_click(
+        live=("a@x.com", "org-ads"),
+        slot=slot,
+        slot_name="personal",
+        live_name="adsonline",
+    )
+    assert wrong_org is not None
+    assert wrong_org.kind == "confirm_open_login"
+    assert wrong_org.kind != "capture"
+    msg = menubar.relogin_wrong_account_message(wrong_org)
+    assert "adsonline" in msg
+    assert "personal" in msg
+    assert "sign out" in msg.lower()
+
+    signed_out = menubar.plan_relogin_click(
+        live=None,
+        slot=slot,
+        slot_name="personal",
+        live_name=None,
+    )
+    assert signed_out is not None
+    assert signed_out.kind == "open_login"
+
+    assert menubar.plan_relogin_click(
+        live=slot, slot=None, slot_name="personal", live_name="personal"
+    ) is None
+
+
+def test_matching_relogin_slot_requires_org_uuid():
+    live = ("a@x.com", "org-ads")
+    identities = {
+        "1": ("a@x.com", "org-personal"),
+        "2": ("a@x.com", "org-ads"),
+    }
+    assert menubar.matching_relogin_slot(live, identities, {"1"}) is None
+    assert menubar.matching_relogin_slot(live, identities, {"2"}) == "2"
+    assert menubar.matching_relogin_slot(None, identities, {"2"}) is None
+    assert menubar.matching_relogin_slot(live, identities, set()) is None
+
+
+def test_newly_relogin_slots_only_the_new_ones():
+    assert menubar.newly_relogin_slots({"1"}, {"1", "2"}) == {"2"}
+    assert menubar.newly_relogin_slots(set(), {"1"}) == {"1"}
+    assert menubar.newly_relogin_slots({"1"}, {"1"}) == set()
+    assert menubar.newly_relogin_slots({"1"}, set()) == set()
+
+
+def test_relogin_slot_nums_from_snapshot_display():
+    snap = {
+        "accounts": [
+            (1, "a@x.com", False, menubar.SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED], None, "personal", "", False, None),
+            (2, "a@x.com", True, _USAGE, _USAGE, "adsonline", "Ads Online", False, None),
+        ]
+    }
+    assert menubar.relogin_slot_nums(snap) == {"1"}
+
+
+def test_slot_identity_from_sequence_uses_org_uuid():
+    seq = {
+        "accounts": {
+            "1": {"email": "a@x.com", "organizationUuid": "org-personal"},
+            "2": {"email": "a@x.com", "organizationUuid": "org-ads"},
+        }
+    }
+    assert menubar.slot_identity_from_sequence(seq, "1") == ("a@x.com", "org-personal")
+    assert menubar.slot_identity_from_sequence(seq, 2) == ("a@x.com", "org-ads")
+    assert menubar.slot_identity_from_sequence(seq, "9") is None
+    assert menubar.slot_identity_from_sequence(None, "1") is None
+
+
+def test_notification_copy_for_relogin_has_no_cli():
+    copy = menubar.notification_copy_for_relogin("personal")
+    assert copy.title == "personal signed out"
+    assert "cswap" not in copy.body.lower()
+    assert "click" in copy.body.lower()
+    captured = menubar.notification_copy_for_relogin_captured("personal")
+    assert "personal" in captured.title
+    assert "cswap" not in captured.body.lower()
+
+
+def test_build_terminal_login_script_quotes_email():
+    script = menubar.build_terminal_login_script(
+        "/opt/homebrew/bin/claude", "a@x.com"
+    )
+    assert 'tell application "Terminal"' in script
+    assert "auth login" in script
+    assert "--claudeai" in script
+    assert "a@x.com" in script
+
+
+def test_launch_claude_login_uses_osascript():
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    menubar.launch_claude_login(
+        "a@x.com",
+        which=lambda name: "/opt/homebrew/bin/claude" if name == "claude" else None,
+        run=run,
+    )
+    assert calls[0][0] == "osascript"
+    assert "-e" in calls[0]
+    assert "a@x.com" in calls[0][2]
+
+
+def test_launch_claude_login_missing_claude():
+    with pytest.raises(ClaudeSwitchError, match="claude"):
+        menubar.launch_claude_login(
+            "a@x.com",
+            which=lambda _name: None,
+            run=lambda *_a, **_k: SimpleNamespace(returncode=0),
+        )
 
 
 def test_run_without_rumps_raises_clean_error(monkeypatch):
