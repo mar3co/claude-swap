@@ -3,11 +3,8 @@
 Determines whether the terminal has a light or dark background by querying it
 with OSC 11 (``ESC ] 11 ; ? BEL``) followed by DA1 (``ESC [ c``), reading
 through the ordered DA1 reply, and classifying the preceding ``rgb:…`` reply by
-perceived luminance. Cross-cutting: both the CLI printer and the TUI resolve
-their theme through here.
+perceived luminance. The CLI printer resolves ``ui.theme`` through here.
 
-The query MUST happen while this process owns the terminal in cooked mode —
-before Textual's input driver starts — or the reply is reissued as keystrokes.
 Everything fails safe to ``None`` (→ resolved ``dark``): a terminal that doesn't
 answer, a pipe, Windows, or a parse failure never blocks indefinitely and never
 errors.
@@ -148,7 +145,7 @@ def _query_terminal_background() -> bytes | None:
 def detect_terminal_background() -> str | None:
     """'light' | 'dark' from the terminal background, or None if undetectable.
 
-    Cached per process. MUST be first called in cooked mode (before app.run()).
+    Cached per process.
     """
     global _cache
     if _cache is _UNSET:
@@ -191,28 +188,3 @@ def cli_theme(setting: str, *, detect=detect_terminal_background, colors: bool) 
     if setting == "auto" and not colors:
         return "dark"
     return resolve_theme(setting, detect=detect)
-
-
-def drain_stdin() -> None:
-    """Discard any pending terminal input (e.g. a late OSC reply) so it isn't
-    reissued as keystrokes once Textual takes over. Best-effort; POSIX only.
-
-    A reply that arrives after the detection deadline and after this drain
-    can, in principle, still reach the running app as stray keystrokes —
-    inherent to any finite-timeout OSC probe, not fully closeable here.
-    """
-    if os.name == "nt":
-        return
-    try:
-        import termios
-    except ImportError:
-        return
-    try:
-        if not sys.stdin.isatty():
-            return
-    except (ValueError, OSError):
-        return
-    try:
-        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
-    except (termios.error, OSError):
-        pass

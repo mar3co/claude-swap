@@ -430,7 +430,7 @@ def due_candidate(
     perpetually failing account can't monopolize the slot: its backoff
     removes it from the due set between attempts.
 
-    Shared by the auto engine and the TUI watch view so both pick the same
+    Shared by the auto engine and GUI shells so both pick the same
     single alternate to poll per pass. Poll plans
     (``nextPollAt``/``pollIntervalS``) are written by whichever collector
     fetched (see the plan persistence in ``_collect_usage_entries``), so

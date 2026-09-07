@@ -7,8 +7,8 @@
                            │ switcher writes credentials
         ┌──────────────────┼──────────────────┐
         │                  │                  │
-   openswap CLI/TUI     AutoSwitchEngine    rumps extra
-   (cli.py, tui/)    (autoswitch.py)     (menubar.py)
+   openswap CLI         AutoSwitchEngine    rumps extra
+   (cli.py)          (autoswitch.py)     (menubar.py)
         │                  │                  │
         └────────┬─────────┴────────┬─────────┘
                  │                  │

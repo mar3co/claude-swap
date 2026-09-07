@@ -111,9 +111,9 @@ def colors_enabled() -> bool:
 def force_color():
     """Temporarily force colored output on, restoring the prior cache after.
 
-    Used by the TUI when capturing CLI output into a buffer: capture redirects
-    stdout to a non-tty StringIO, which would otherwise disable color — but the
-    TUI re-renders the ANSI itself, so it wants the codes emitted.
+    Capture redirects stdout to a non-tty StringIO, which would otherwise
+    disable color; callers that re-render the ANSI themselves want the codes
+    emitted.
     """
     global _colors_enabled
     saved = _colors_enabled

@@ -160,9 +160,9 @@ def _format_usage_lines(usage: dict, fetched_at: float | None = None) -> list[st
 
 
 # Human notes for sentinel usage states (fallback: the raw sentinel string).
-# Public: the TUI renders the same wording so both surfaces describe a state
-# identically (e.g. owned-and-expired means Claude Code will refresh, not that
-# the user must re-login).
+# Public: the extra and ``openswap list`` render the same wording so both
+# surfaces describe a state identically (e.g. owned-and-expired means Claude
+# Code will refresh, not that the user must re-login).
 # Friendly text for error KINDS that deserve an explanation beyond their
 # identifier (rendered in the "usage unavailable (…)" detail line).
 # Stash reasons that mean the slot was NOT freshened, so `error is None`
@@ -207,7 +207,7 @@ SENTINEL_NOTES = {
 def last_seen_note(entry: UsageEntry) -> str | None:
     """"last seen 53% used · 12m ago" from an entry's last-good measurement.
 
-    Public: the TUI renders the same note under sentinel states (see
+    Public: the extra renders the same note under sentinel states (see
     ``SENTINEL_NOTES``), so both surfaces stay word-for-word identical.
     """
     if entry.last_good is None or entry.fetched_at is None:
@@ -344,9 +344,9 @@ class ClaudeAccountSwitcher:
         # from the active slot's own read; consumed later by the usage
         # sentinel, the rotation resync and the consume gate.
         #
-        # Thread-local: a fact about one READ, and the TUI runs two lanes on
-        # one switcher (`tui/app.py` starts a store refresh while a normal one
-        # is in flight). A build's unconditional reset erased the other lane's
+        # Thread-local: a fact about one READ, and a GUI shell can run two
+        # lanes on one switcher (store refresh while a normal one is in
+        # flight). A build's unconditional reset erased the other lane's
         # verdict — measured against a 4ms window, 60 of 60 lost, after which
         # the consume gate POSTs a possibly-spent grant.
         self._active_verdict_tls = threading.local()
@@ -1733,7 +1733,7 @@ class ClaudeAccountSwitcher:
         )
 
     def accounts_snapshot(self, fetch: set[str] | None = None) -> AccountsSnapshot:
-        """One-pass structured snapshot of every managed account, for the TUI.
+        """One-pass structured snapshot of every managed account, for GUIs.
 
         Metadata, active-slot detection, and usage entries all come from a
         single ``_build_accounts_info`` + ``_collect_usage_entries`` pass, so
@@ -1774,7 +1774,7 @@ class ClaudeAccountSwitcher:
 
     def usage_fetch_stamps(self) -> dict[str, float | None]:
         """Per-slot ``fetchedAt`` snapshot from the usage store — a pure file
-        read (no fetching, no credential access). The TUI watch view diffs
+        read (no fetching, no credential access). Dashboards can diff
         consecutive snapshots to flash rows whose usage just refreshed.
         """
         data = self._get_sequence_data() or {}
@@ -1798,9 +1798,8 @@ class ClaudeAccountSwitcher:
 
     def clear_poll_policy_inputs(self) -> None:
         """Drop the hosted engine's pin so poll planning falls back to the
-        settings file — called when the engine's screen closes, or a TUI
-        session threshold override would keep steering cadence after the
-        engine it belonged to is gone."""
+        settings file — called when a hosted engine stops, so a session
+        threshold override does not keep steering cadence after it is gone."""
         self._poll_inputs_override = None
 
     def _poll_policy_inputs(self) -> tuple[float, tuple[str, ...]]:
@@ -2615,7 +2614,7 @@ class ClaudeAccountSwitcher:
     def _with_active_verdict(self, fn):
         """Wrap `fn` so a worker thread inherits THIS thread's verdict.
 
-        Thread-local keeps two TUI lanes from erasing each other's, but
+        Thread-local keeps two concurrent lanes from erasing each other's, but
         `_fetch_active_usage` always runs on a pool worker that never read —
         measured 30/30 verdicts lost, and the consume gate never fired.
         """
@@ -3117,7 +3116,7 @@ class ClaudeAccountSwitcher:
         same LABELLED-one/CONTAINS-another shape
         ``_reject_foreign_credential_capture`` exists to close, by a different
         door. BOTH write paths need this: ``slot=None`` on a registered account
-        is the branch the menu bar, the TUI and a bare ``--add-account`` take.
+        is the branch the menu bar and a bare ``--add-account`` take.
         """
         now = self._get_current_identity_triple()
         if now == verified:
@@ -3492,7 +3491,7 @@ class ClaudeAccountSwitcher:
                   When specified, prompts for confirmation if the slot
                   is already occupied by a different account.
             assume_yes: Skip that overwrite prompt (callers with their own
-                  confirmation UI, e.g. the TUI, confirm before calling).
+                  confirmation UI, e.g. the extra, confirm before calling).
             alias: Optional short display alias to set on this account.
                   When omitted, an existing alias on the slot is preserved.
         """
@@ -3756,7 +3755,7 @@ class ClaudeAccountSwitcher:
                    carry no real email metadata.
             slot:  Slot number to use; auto-assigned when ``None``.
             assume_yes: Skip the occupied-slot overwrite prompt (callers with
-                   their own confirmation UI, e.g. the TUI, confirm first).
+                   their own confirmation UI, e.g. the extra, confirm first).
         """
         self._refuse_session_shell()
         import getpass
@@ -3944,7 +3943,7 @@ class ClaudeAccountSwitcher:
         """Remove account from managed accounts.
 
         When ``assume_yes`` is True the confirmation prompt is skipped (used by
-        the TUI, which collects confirmation before calling).
+        the extra, which collects confirmation before calling).
         """
         self._refuse_session_shell()
         if not self.sequence_file.exists():
@@ -5384,7 +5383,7 @@ class ClaudeAccountSwitcher:
         report the same account's usage: identical 5h *and* 7d percentages
         with identical reset timestamps — the exact signal the issue's
         reporter had to reverse-engineer by hand, automated here from data
-        ``list``/watch already fetched.
+        ``list`` already fetched.
 
         Heuristic, not proof: it goes quiet once the older generation dies
         and stops producing comparable usage, and only rows where both
@@ -5483,9 +5482,9 @@ class ClaudeAccountSwitcher:
         In ``json_output`` mode, returns the schema-v1 payload (printing nothing)
         for the CLI to serialize; otherwise prints the human view and returns None.
 
-        ``fetch`` restricts which accounts *may* be fetched this pass (the TUI
-        watch view's adaptive set); ``None`` — the CLI default — leaves every
-        stale account eligible.
+        ``fetch`` restricts which accounts *may* be fetched this pass (an
+        adaptive set); ``None`` — the CLI default — leaves every stale
+        account eligible.
         """
         if not self.sequence_file.exists():
             # JSON mode must never prompt — emit an empty list instead of the

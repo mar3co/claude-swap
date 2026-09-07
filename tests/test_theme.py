@@ -1,8 +1,8 @@
-"""Tests for the Palette value object and the light/dark themes."""
+"""Tests for the Palette value object and the light/dark palettes."""
 from __future__ import annotations
 
-from openswap.tui import theme
-from openswap.tui.theme import CSWAP_DARK, CSWAP_LIGHT, Palette
+from openswap import theme
+from openswap.theme import Palette
 
 
 def test_dark_palette_matches_constants():
@@ -18,11 +18,17 @@ def test_dark_palette_matches_constants():
     )
 
 
-def test_from_theme_reads_theme_object_including_track():
-    p = Palette.from_theme(CSWAP_LIGHT)
-    assert p.accent == theme.ACCENT_LIGHT
-    assert p.sev_crit == theme.SEV_CRIT_LIGHT
-    assert p.track == theme.TRACK_LIGHT  # from Theme.variables["track"], not app cache
+def test_light_palette_matches_constants():
+    p = Palette.LIGHT
+    assert (p.accent, p.foreground, p.muted, p.sev_ok, p.sev_warn, p.sev_crit, p.track) == (
+        theme.ACCENT_LIGHT,
+        theme.FOREGROUND_LIGHT,
+        theme.MUTED_LIGHT,
+        theme.SEV_OK_LIGHT,
+        theme.SEV_WARN_LIGHT,
+        theme.SEV_CRIT_LIGHT,
+        theme.TRACK_LIGHT,
+    )
 
 
 def test_severity_ramp_and_none():
@@ -31,12 +37,6 @@ def test_severity_ramp_and_none():
     assert p.severity(95.0) == p.sev_crit
     assert p.severity(75.0) == p.sev_warn
     assert p.severity(10.0) == p.sev_ok
-
-
-def test_both_themes_expose_track_variable():
-    assert CSWAP_DARK.variables["track"] == theme.TRACK
-    assert CSWAP_LIGHT.variables["track"] == theme.TRACK_LIGHT
-    assert CSWAP_LIGHT.dark is False
 
 
 def _contrast(hex_a: str, hex_b: str) -> float:
@@ -52,7 +52,6 @@ def test_light_text_meets_AA_on_all_backgrounds():
     # Accent and severity colors render as PERCENTAGE TEXT on highlighted
     # ($surface) and flash ($panel) rows, not just the base background — so
     # every text color must clear the 4.5:1 text bar against all three.
-    from openswap.tui import theme
     text_colors = (
         theme.FOREGROUND_LIGHT,
         theme.MUTED_LIGHT,

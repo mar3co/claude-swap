@@ -261,15 +261,6 @@ class TestDetectGuards:
         assert appearance.detect_terminal_background() is None
 
 
-class TestDrainStdin:
-    def test_isatty_raising_does_not_raise(self, monkeypatch):
-        def _boom():
-            raise ValueError("I/O operation on closed file")
-        monkeypatch.setattr(sys.stdin, "isatty", _boom, raising=False)
-
-        appearance.drain_stdin()  # must not raise
-
-
 class TestCliThemeResolution:
     def test_resolve_skips_detection_when_colors_disabled(self, monkeypatch):
         # When colors are off, auto must resolve to dark WITHOUT probing.

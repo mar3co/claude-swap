@@ -800,7 +800,7 @@ class TestOurOwnFileModeIsNotAKeychainFailure:
         (`_fetch_active_usage`) and the resync read them later. The in-code
         comment says "main thread writes it here before the fetch pool starts
         -> no data race", which is true of the fetch POOL and false of the
-        TUI: `tui/app.py` starts a STORE lane while a normal lane is in
+        a GUI shell can start a STORE lane while a normal lane is in
         flight — separate guards, two threads, one switcher.
 
         Measured, a sibling doing what a second lane's build does, against a

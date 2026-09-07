@@ -122,7 +122,7 @@ class AccountInfo:
 
 @dataclass(frozen=True)
 class AccountSnapshot:
-    """One managed account as seen by interactive UIs (the TUI).
+    """One managed account as seen by interactive UIs (extra, widget).
 
     ``usage`` is the store-backed :class:`UsageEntry` read model; display
     code reads ``usage.last_good``/``age_s`` directly (may show old data,

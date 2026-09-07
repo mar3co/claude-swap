@@ -58,7 +58,7 @@ def test_the_next_test_is_not_styled_by_it(monkeypatch):
 
 
 def test_a_test_may_latch_the_theme(monkeypatch):
-    """Stands in for `tui/app.py`'s `set_theme("light")`, which nothing restores."""
+    """Stands in for `printer.set_theme("light")`, which nothing restores."""
     monkeypatch.setenv("FORCE_COLOR", "1")
     printer._colors_enabled = None
     printer.set_theme("light")

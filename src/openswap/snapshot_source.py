@@ -87,8 +87,8 @@ def account_identity(acc: AccountSnapshot) -> tuple[str, str, str]:
     """The identity discriminator for a slot across snapshots.
 
     The single definition of "same account": snapshot reconciliation here and
-    the TUI's snapshot merge must agree, or an identity change (e.g. a slot
-    re-used by another login) is detected by one and missed by the other.
+    any GUI merge must agree, or an identity change (e.g. a slot re-used by
+    another login) is detected by one and missed by the other.
     """
     return (acc.email, acc.org_uuid, acc.kind)
 

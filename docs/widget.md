@@ -39,7 +39,7 @@ No App Group: that needs the Developer Portal. The home-relative sandbox excepti
 
 `accessoryCircular` / `accessoryRectangular` are iOS Lock Screen and watchOS complications only (`@available(macOS, unavailable)`). This companion is a macOS widget, so those families are not declared. There are no chrome action buttons; the account block (or combined hero) is the tap target.
 
-Colors match the TUI (`SEV_OK` / `WARN` / `CRIT`, 70 / 90). Use `NSColor` dynamic providers, not a one-shot `@Environment(\.colorScheme)`.
+Colors match `theme.py` (`SEV_OK` / `WARN` / `CRIT`, 70 / 90). Use `NSColor` dynamic providers, not a one-shot `@Environment(\.colorScheme)`.
 
 ## Caches
 

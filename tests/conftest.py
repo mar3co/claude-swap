@@ -492,7 +492,7 @@ def _make_fake_keyring() -> types.ModuleType:
 def _isolate_real_home(request, tmp_path_factory, monkeypatch):
     """Safety net: no test may read or write the developer's real ``$HOME``.
 
-    Some tests (CLI/TUI argument tests that call ``main()``, etc.) construct a real
+    Some tests (CLI argument tests that call ``main()``, etc.) construct a real
     ``ClaudeAccountSwitcher`` without the ``temp_home`` fixture. Without isolation
     that switcher resolves to the real ``~/.claude-swap-backup`` — writing logs,
     running data migrations, and reading the real account list. Redirect ``$HOME``
@@ -800,7 +800,7 @@ def _deterministic_colour(monkeypatch):
     monkeypatch.delenv("FORCE_COLOR", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setattr("openswap.printer._colors_enabled", None)
-    # The OTHER latched global in the same module. `tui/app.py` calls
+    # The OTHER latched global in the same module. A test may call
     # `printer.set_theme("light")`, a plain assignment with nothing restoring
     # it, so with this line removed the tests after it enter with the light
     # palette — spread across several files, not just the one that latched.

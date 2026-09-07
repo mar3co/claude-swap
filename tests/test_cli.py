@@ -102,19 +102,34 @@ class TestCLI:
         # ...and the note that they keep working is still present.
         assert "keep working" in result.stdout
 
-    def test_no_args_shows_error(self):
-        """Test that running without args (non-TTY) shows a clean no-command error."""
+    def test_no_args_prints_help(self):
+        """Bare `openswap` prints help (the terminal dashboard used to take this)."""
         result = subprocess.run(
             [sys.executable, "-m", "openswap"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
         )
-        assert result.returncode == 2
-        assert "no command given" in result.stderr
-        # The now-hidden legacy flags must not leak into the error.
-        assert "--add-account" not in result.stderr
-        assert "one of the arguments" not in result.stderr
+        assert result.returncode == 0
+        assert "Multi-Account Switcher" in result.stdout
+        assert "list " in result.stdout
+        assert " tui" not in result.stdout
+        assert " watch" not in result.stdout
+        # Hidden legacy flags must not leak into help options.
+        options_section = result.stdout.split("Flags combine with subcommands:")[0]
+        assert "--add-account" not in options_section
+
+    def test_tui_and_watch_are_gone(self):
+        for verb in ("tui", "watch"):
+            result = subprocess.run(
+                [sys.executable, "-m", "openswap", verb],
+                capture_output=True,
+                text=True,
+                env=_subprocess_env(),
+            )
+            assert result.returncode == 2
+            assert "terminal dashboard is gone" in result.stderr
+            assert "openswap list" in result.stderr
 
     def test_mutually_exclusive_args(self):
         """Test that mutually exclusive args are enforced."""

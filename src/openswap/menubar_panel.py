@@ -71,7 +71,7 @@ from openswap.menubar import (
     status_item_length,
     trailing_header_frames,
 )
-from openswap.tui.theme import (
+from openswap.theme import (
     ACCENT,
     ACCENT_LIGHT,
     CRIT_PCT,
@@ -200,7 +200,7 @@ def _dynamic(light_hex, dark_hex, light_alpha=1.0, dark_alpha=1.0, *, name=None)
 
 
 def _colors() -> dict:
-    """TUI light/dark tokens that resolve against the drawing appearance."""
+    """Light/dark tokens that resolve against the drawing appearance."""
     global _PALETTE
     if _PALETTE is None:
         _PALETTE = {

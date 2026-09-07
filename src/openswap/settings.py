@@ -61,7 +61,7 @@ class AutoSwitchSettings:
 
 @dataclass(frozen=True)
 class UiSettings:
-    """Appearance preferences (``ui`` section). ``theme`` selects the TUI/CLI
+    """Appearance preferences (``ui`` section). ``theme`` selects the CLI
     color theme; ``auto`` follows terminal-background detection."""
 
     theme: str = "auto"

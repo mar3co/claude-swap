@@ -1141,7 +1141,7 @@ class TestPollPlan:
 
 
 class TestDueCandidate:
-    """Candidate selection shared by the auto engine and the TUI watch view."""
+    """Candidate selection shared by the auto engine and GUI shells."""
 
     NOW = 1_000_000.0
 

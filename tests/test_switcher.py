@@ -1655,8 +1655,8 @@ class TestListAccountsUsage:
     def test_list_fetch_set_restricts_fetches(
         self, temp_home: Path, mock_claude_config: Path, sample_sequence_data: dict, capsys
     ):
-        """``fetch`` caps which accounts may be fetched (the TUI watch view's
-        adaptive set); the default ``None`` keeps every stale account eligible
+        """``fetch`` caps which accounts may be fetched (an adaptive set);
+        the default ``None`` keeps every stale account eligible
         (covered by test_list_refetches_stale_entries)."""
         sample_sequence_data["accounts"]["1"]["email"] = "test@example.com"
         active_creds = json.dumps({"claudeAiOauth": {"accessToken": "sk-active"}})
@@ -5961,7 +5961,7 @@ class TestMacosKeychainFallback:
         assert s._keychain_disabled_until > before  # a re-probe is scheduled
 
     def test_keychain_recovers_after_cooldown(self, temp_home: Path):
-        # A long-running daemon (menu bar / TUI) must re-probe after the cooldown
+        # A long-running daemon (the menu bar extra) must re-probe after the cooldown
         # so a transient `security` timeout doesn't disable the Keychain for the
         # whole process — the stuck-in-file-mode "no credentials" display bug.
         s = self._macos_switcher()

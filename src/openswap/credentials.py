@@ -133,7 +133,7 @@ _ACTIVE_READ_ATTEMPTS = 2
 _ACTIVE_READ_RETRY_DELAY = 0.3  # seconds between attempts
 
 # After a Keychain failure the store drops to file mode so one CLI invocation
-# can't split-brain between backends. A long-running daemon (menu bar / TUI)
+# can't split-brain between backends. A long-running daemon (the menu bar extra)
 # instead re-probes this long after the last failure: far longer than any CLI
 # command runs (so the guarantee holds — a sub-second command never re-probes),
 # short enough that a transient `security` timeout self-heals within a minute
@@ -1297,7 +1297,7 @@ class CredentialStore:
         # test_unreadable_enc_is_not_absent_on_macos` both fail on a single
         # thread. Concurrently it is wrong for the additional reason above
         # (the sentinel calls this seam unlocked while the consume gate holds
-        # a per-slot lock, and the TUI runs three workers on one store) — but
+        # a per-slot lock, and a GUI shell runs workers on one store) — but
         # the single-thread case was never actually safe either.
         return "", bool(failed)
 

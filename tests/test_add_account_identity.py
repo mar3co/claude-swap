@@ -188,7 +188,7 @@ def test_add_refuses_a_foreign_credential_on_refresh_in_place(
 
     Not a corner: the menu bar's "Refresh current credentials"
     (`on_refresh_creds`) and "From current login" (`on_add_login`), and the
-    TUI's "Add current login", all call `add_account` with no slot and take
+    extra's "Add current login", all call `add_account` with no slot and take
     this branch. `openswap`'s auto-add does
     NOT -- it fires only when the active account is unmanaged, and this branch
     requires that it IS managed, the same predicate on the same two arguments.
@@ -643,8 +643,8 @@ def test_the_refresh_in_place_path_also_refuses_a_login_in_the_window(
 ):
     """C1: the recheck must cover BOTH write paths, not just the create one.
 
-    `slot=None` on an already-registered account is the branch the menu bar,
-    the TUI and a bare `openswap --add-account` all take -- the dominant one. It
+    `slot=None` on an already-registered account is the branch the menu bar
+    and a bare `openswap --add-account` all take -- the dominant one. It
     reads `.claude.json` a second time for the blob it stores, and a later
     switch installs that blob's `oauthAccount` as the identity. So a `/login`
     in the guard's window puts account B's identity on slot A's credential:

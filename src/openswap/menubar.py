@@ -339,7 +339,7 @@ def account_short_name(
 def account_card_names(email, alias, org_name) -> tuple[str, str]:
     """(title, subtitle) for extra/widget cards.
 
-    Alias wins as title. Otherwise the TUI display tag (org name or
+    Alias wins as title. Otherwise the display tag (org name or
     'personal'). Email is always the subtitle when it differs from title.
     """
     title = alias or (org_name.strip() if org_name else "personal")

@@ -53,8 +53,6 @@ The `cswap` command still works as an alias during the rename.
 
 | Command | What it does |
 | --- | --- |
-| `openswap` / `openswap tui` | Full-screen dashboard |
-| `openswap watch` | Dashboard, live monitor |
 | `openswap list` | Accounts with 5h / 7d usage |
 | `openswap switch` / `openswap switch 2` | Rotate, or jump to a slot |
 | `openswap add-token` | Save an API key or setup token |

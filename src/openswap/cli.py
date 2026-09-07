@@ -63,8 +63,6 @@ _SUBCOMMAND_FLAGS = {
     "purge": "--purge",
     "upgrade": "--upgrade",
     "update": "--upgrade",
-    "tui": "--tui",
-    "watch": "--watch",
     "menubar": "--menubar",
 }
 
@@ -1090,11 +1088,16 @@ def main() -> None:
         _move_command(argv[1:])
         return
 
-    # Bare `openswap` in an interactive terminal opens the TUI dashboard (like
-    # lazygit/k9s). TTY-gated on both ends so scripts and pipes keep getting
-    # the usage error, and `openswap tui` stays the explicit spelling.
-    if not argv and sys.stdout.isatty() and sys.stdin.isatty():
-        argv = ["--tui"]
+    if argv and argv[0] in ("tui", "watch"):
+        error(
+            "The terminal dashboard is gone. Use the macOS extra "
+            "or `openswap list`."
+        )
+        sys.exit(2)
+
+    # Bare `openswap` prints help (used to open the terminal dashboard).
+    if not argv:
+        argv = ["--help"]
 
     # Memorable subcommands (`openswap switch <email>`, `openswap list`, `openswap help`, ...)
     # are rewritten to the equivalent flags so the original `--flag` interface
@@ -1132,8 +1135,6 @@ Commands:
   %(prog)s unclaimed [--purge ID]     list or drop stashed credential entries
   %(prog)s export <path>              export accounts
   %(prog)s import <path>              import accounts
-  %(prog)s tui                        interactive dashboard (also: bare %(prog)s)
-  %(prog)s watch                      dashboard, opened on the live watch page
   %(prog)s menubar                    macOS menu bar app
   %(prog)s menubar --install-service  keep the menu bar running via launchd
   %(prog)s widget --install           macOS Desktop / Notification Center widget
@@ -1328,16 +1329,6 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         help=argparse.SUPPRESS,
     )
     group.add_argument(
-        "--tui",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    group.add_argument(
-        "--watch",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    group.add_argument(
         "--menubar",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -1367,8 +1358,6 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         or args.switch
         or args.status
         or args.purge
-        or args.tui
-        or args.watch
         or args.menubar
         or args.upgrade
         or args.remove_account is not None
@@ -1513,14 +1502,6 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
             from openswap.transfer import import_accounts
 
             import_accounts(switcher, args.import_, force=args.force)
-        elif args.tui:
-            from openswap.tui import run as tui_run
-
-            sys.exit(tui_run(switcher))
-        elif args.watch:
-            from openswap.tui import run as tui_run
-
-            sys.exit(tui_run(switcher, start="watch"))
         elif args.menubar:
             if sys.platform != "darwin":
                 error("The menu bar is only available on macOS.")

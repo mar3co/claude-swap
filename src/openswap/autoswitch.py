@@ -1,11 +1,10 @@
 """Auto-switch engine: poll usage, switch accounts before they hit rate limits.
 
-``AutoSwitchEngine`` is UI-agnostic — no printing, no argparse, no TUI
-imports. It composes a :class:`ClaudeAccountSwitcher`, evaluates a threshold
-policy each :meth:`~AutoSwitchEngine.tick`, and reports everything through
-typed events handed to an ``on_event`` callback; the CLI renders them as
-human lines or JSONL, and any future frontend (TUI dashboard, menubar) can
-consume the same stream.
+``AutoSwitchEngine`` is UI-agnostic — no printing, no argparse. It composes a
+:class:`ClaudeAccountSwitcher`, evaluates a threshold policy each
+:meth:`~AutoSwitchEngine.tick`, and reports everything through typed events
+handed to an ``on_event`` callback; the CLI renders them as human lines or
+JSONL, and the extra consumes the same stream.
 
 Policy in one paragraph: when the active account's *binding window* (the
 higher of its 5h/7d utilization) crosses ``settings.threshold``, switch to
@@ -696,7 +695,7 @@ class AutoSwitchEngine:
         self.clock = clock
         self._stop = threading.Event()
         # Cuts the current inter-tick sleep short (a session threshold change
-        # from the TUI should show a fresh decision now, not next interval).
+        # should show a fresh decision now, not next interval).
         self._wake = threading.Event()
         self._unhealthy_ticks = 0
         # Both set per tick: a known-reset sleep target, and whether a BLOCKED
@@ -2312,7 +2311,7 @@ class AutoSwitchEngine:
         self._wake.set()
 
     def apply_threshold(self, threshold: float) -> None:
-        """Session override from the TUI: retarget the trigger and poll
+        """Session override: retarget the trigger and poll
         cadence mid-run. Threshold only — the model axes (and their derived
         state) are fixed at construction. The frozen-settings swap is atomic
         and each tick snapshots ``self.settings`` once, so no locking."""
