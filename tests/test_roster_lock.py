@@ -105,7 +105,8 @@ class TestRosterWritersTakeAccountLock:
              patch("openswap.oauth.fetch_oauth_profile", return_value=None):
             switcher.add_account(assume_yes=True)
 
-        assert entered == [switcher.lock_file]
+        assert entered
+        assert all(path == switcher.lock_file for path in entered)
         data = switcher._get_sequence_data()
         assert "1" in data["accounts"]
 
@@ -126,24 +127,24 @@ class TestRosterWritersTakeAccountLock:
         data["sequence"] = [1]
         switcher._write_json(switcher.sequence_file, data)
 
-        held: list[str] = []
+        depth = [0]
 
         class TrackingLock:
             def __init__(self, path, timeout=10.0):
                 self.path = path
 
             def __enter__(self):
-                held.append("enter")
+                depth[0] += 1
                 return self
 
             def __exit__(self, *exc):
-                held.append("exit")
+                depth[0] -= 1
                 return False
 
         patch_engine_filelock(monkeypatch, TrackingLock)
 
         def prompt(*_a, **_k):
-            assert "enter" not in held
+            assert depth[0] == 0
             return "y"
 
         monkeypatch.setattr("builtins.input", prompt)
@@ -151,9 +152,43 @@ class TestRosterWritersTakeAccountLock:
         with patch.object(switcher, "_read_capture_credentials", return_value=creds):
             switcher.add_account(slot=1)
 
-        assert held[:1] == ["enter"]
+        assert depth[0] == 0
         data = switcher._get_sequence_data()
         assert data["accounts"]["1"]["email"] == "test@example.com"
+
+    def test_add_account_inits_roster_under_lock(
+        self, temp_home: Path, mock_claude_config: Path, monkeypatch
+    ):
+        switcher = ClaudeAccountSwitcher()
+        depth = [0]
+        init_under_lock = []
+
+        class TrackingLock:
+            def __init__(self, path, timeout=10.0):
+                self.path = path
+
+            def __enter__(self):
+                depth[0] += 1
+                entered.append(self.path)
+                return self
+
+            def __exit__(self, *exc):
+                depth[0] -= 1
+                return False
+
+        patch_engine_filelock(monkeypatch, TrackingLock)
+        real_init = switcher._init_sequence_file
+
+        def init_while_locked():
+            init_under_lock.append(depth[0] > 0)
+            return real_init()
+
+        monkeypatch.setattr(switcher, "_init_sequence_file", init_while_locked)
+        creds = json.dumps({"claudeAiOauth": {"accessToken": "tok"}})
+        with patch.object(switcher, "_read_capture_credentials", return_value=creds):
+            switcher.add_account(assume_yes=True)
+
+        assert init_under_lock == [True]
 
     def test_add_account_from_token_holds_account_lock(
         self, temp_home: Path, monkeypatch
@@ -168,7 +203,8 @@ class TestRosterWritersTakeAccountLock:
             "sk-ant-api03-test", email="key@example.com", assume_yes=True
         )
 
-        assert entered == [switcher.lock_file]
+        assert entered
+        assert all(path == switcher.lock_file for path in entered)
         data = switcher._get_sequence_data()
         assert data["accounts"]["1"]["email"] == "key@example.com"
 

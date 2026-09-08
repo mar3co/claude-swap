@@ -296,9 +296,10 @@ class SwitchMixin:
         alias: str | None,
     ) -> None:
         """Read live login, prompt if needed, then commit under ``lock_file``."""
-        self._setup_directories()
-        self._init_sequence_file()
-        self._migrate_org_fields()
+        with FileLock(self.lock_file):
+            self._setup_directories()
+            self._init_sequence_file()
+            self._migrate_org_fields()
 
         identity = self._get_current_identity_triple()
         if identity is None:
@@ -648,9 +649,10 @@ class SwitchMixin:
         is_api_key: bool,
     ) -> None:
         """Prompt if needed, then commit the token account under ``lock_file``."""
-        self._setup_directories()
-        self._init_sequence_file()
-        self._migrate_org_fields()
+        with FileLock(self.lock_file):
+            self._setup_directories()
+            self._init_sequence_file()
+            self._migrate_org_fields()
 
         # Synthesize a placeholder email when one isn't provided. These tokens
         # have no real email metadata, so requiring users to invent one is
