@@ -1588,7 +1588,8 @@ def run(switcher) -> int:
                 self.rebuild_menu()
                 # Never reload the popover from this 1s tick. An open Settings
                 # page would lose controls; a main-page reload mid-click
-                # swallows the account-row mouseUp.
+                # swallows the account-row mouseUp. Hold copy is applied
+                # below and reloads the main page only when it changes.
             self._detect_active_change()
             self._drain_engine_events()
             self._apply_hold_line()
@@ -1733,13 +1734,17 @@ def run(switcher) -> int:
         def _apply_hold_line(self):
             # Mutate in place. Rebinding self.snapshot from the UI thread can
             # drop a newer worker snapshot that landed between the copy and
-            # the write-back.
+            # the write-back. Reload the open main page only when copy
+            # actually changed: the 1s tick must not rebuild under a click,
+            # and Settings must keep its controls.
             snap = self.snapshot
             line = self._hold_line_for(snap)
             if snap.get("hold_line") == line:
                 return
-            if self.snapshot is snap:
-                snap["hold_line"] = line
+            if self.snapshot is not snap:
+                return
+            snap["hold_line"] = line
+            self._reload_main_panel_if_shown()
 
         def _drain_engine_events(self):
             with self._event_lock:

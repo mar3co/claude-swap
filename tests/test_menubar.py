@@ -926,6 +926,7 @@ def test_rebuild_menu_does_not_reload_an_open_popover():
     assert "self._panel.reload()" not in rebuild
     sync = text[text.index("def on_sync_tick") : text.index("def _detect_active_change")]
     assert "self._panel.reload()" not in sync
+    assert "_apply_hold_line" in sync
     assert "_settings_menu" not in rebuild
     assert "self._add_menu(rumps)" in rebuild
     assert "self._history_menu(rumps)" in rebuild
@@ -1000,6 +1001,19 @@ def test_panel_settings_page_does_not_set_menu_open():
     assert "on_setting=" in ctor
     assert "settings=" in ctor
     assert "strategy=" in ctor
+
+
+def test_apply_hold_line_reloads_open_main_panel_only_when_copy_changes():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    apply = text[text.index("def _apply_hold_line") : text.index("def _drain_engine_events")]
+    assert "snap[\"hold_line\"] = line" in apply
+    assert "_reload_main_panel_if_shown" in apply
+    reload_fn = text[
+        text.index("def _reload_main_panel_if_shown") : text.index("def _stop_engine")
+    ]
+    assert "MAIN_PAGE" in reload_fn
+    assert "is_shown()" in reload_fn
+    assert "panel.reload()" in reload_fn
 
 
 def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
