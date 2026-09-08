@@ -17,7 +17,7 @@ cd openswap
 uv tool install --editable '.[menubar]'
 ```
 
-Update with `git pull`, then `uv tool install --editable '.[menubar]'`. `openswap upgrade` refuses PyPI.
+Update with `openswap upgrade` (`git pull` plus `uv tool install --force --editable '.[menubar]'`, then refresh LaunchAgents). OpenSwap is not on PyPI.
 
 ## Quick start
 
