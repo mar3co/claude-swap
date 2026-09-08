@@ -63,6 +63,38 @@ def _subprocess_env(**extra: str) -> dict[str, str]:
     return env
 
 
+_CORE_HELP_VERBS = (
+    "list",
+    "switch",
+    "add",
+    "add-token",
+    "remove",
+    "menubar",
+    "widget",
+    "auto",
+)
+
+
+def _assert_advertised_help(stdout: str) -> None:
+    """Advertised help is the OpenSwap macOS CLI keep-list, not upstream/Windows/PyPI."""
+    assert "OpenSwap" in stdout
+    assert "Multi-Account Switcher" not in stdout
+    assert "Windows" not in stdout
+    commands = stdout.split("Flags combine with subcommands:")[0]
+    for verb in _CORE_HELP_VERBS:
+        assert f" {verb} " in commands or f" {verb}\n" in commands, verb
+    # Trailing space so "running" in "keep the menu bar running" does not match.
+    assert " tui" not in stdout
+    assert " watch" not in stdout
+    assert " run " not in stdout
+    assert " map " not in stdout
+    assert " unmap " not in stdout
+    # Do not pitch a PyPI / uv-tool self-upgrade. Hidden --upgrade may still exist.
+    assert "self-upgrade" not in stdout.lower()
+    assert "uv tool upgrade openswap" not in stdout
+    assert "upgrade " not in commands
+
+
 class TestCLI:
     """Test CLI argument parsing and execution."""
 
@@ -86,11 +118,8 @@ class TestCLI:
             env=_subprocess_env(),
         )
         assert result.returncode == 0
-        assert "Multi-Account Switcher" in result.stdout
-        # Bare subcommands are the documented interface and lead the help.
-        assert "openswap add" in result.stdout or "add " in result.stdout
+        _assert_advertised_help(result.stdout)
         assert "switch <num|email>" in result.stdout
-        assert "list " in result.stdout
         assert "status " in result.stdout
         # The legacy `--flag` spellings still work but are hidden from the
         # options section; only the "keep working" note may mention them.
@@ -111,14 +140,7 @@ class TestCLI:
             env=_subprocess_env(),
         )
         assert result.returncode == 0
-        assert "Multi-Account Switcher" in result.stdout
-        assert "list " in result.stdout
-        assert " tui" not in result.stdout
-        assert " watch" not in result.stdout
-        # Trailing space so "running" in "keep the menu bar running" does not match.
-        assert " run " not in result.stdout
-        assert " map " not in result.stdout
-        assert " unmap " not in result.stdout
+        _assert_advertised_help(result.stdout)
         # Hidden legacy flags must not leak into help options.
         options_section = result.stdout.split("Flags combine with subcommands:")[0]
         assert "--add-account" not in options_section
@@ -453,14 +475,15 @@ class TestCLI:
         )
 
     def test_upgrade_in_help(self):
-        """The upgrade subcommand should appear in help output."""
+        """Help must not advertise upgrade as a PyPI / uv-tool self-upgrade."""
         result = subprocess.run(
             [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
         )
-        assert "upgrade " in result.stdout
+        assert result.returncode == 0
+        _assert_advertised_help(result.stdout)
 
     def test_upgrade_dispatches_without_constructing_switcher(self):
         """--upgrade should call run_self_upgrade and skip switcher init."""
@@ -873,7 +896,7 @@ class TestSubcommandAliases:
             env=_subprocess_env(),
         )
         assert result.returncode == 0
-        assert "Multi-Account Switcher" in result.stdout
+        _assert_advertised_help(result.stdout)
         assert "Commands:" in result.stdout
         assert "keep working" in result.stdout
 

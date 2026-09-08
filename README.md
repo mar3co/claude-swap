@@ -55,7 +55,9 @@ The `cswap` command still works as an alias during the rename.
 | --- | --- |
 | `openswap list` | Accounts with 5h / 7d usage |
 | `openswap switch` / `openswap switch 2` | Rotate, or jump to a slot |
+| `openswap add` | Save the current OAuth login |
 | `openswap add-token` | Save an API key or setup token |
+| `openswap remove` | Remove a stored account |
 | `openswap auto` | Background rotation near rate limits |
 | `openswap config` | Shared settings (`autoswitch.*`) |
 | `openswap menubar` | macOS extra |
