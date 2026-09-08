@@ -12267,8 +12267,10 @@ class TestSessionShellGuardCoversEveryMutator:
         sample_sequence_data: dict, monkeypatch,
     ):
         s = self._switcher(sample_sequence_data, monkeypatch)
-        with pytest.raises(SwitchError):
+        with pytest.raises(SwitchError) as exc:
             s.remove_account("2", assume_yes=True)
+        assert "openswap run" not in str(exc.value)
+        assert "leftover session profile" in str(exc.value)
         assert s._get_sequence_data()["sequence"] == [1, 2], (
             "the roster was mutated from inside a session shell"
         )
@@ -12314,3 +12316,31 @@ class TestSessionShellGuardCoversEveryMutator:
         s = self._switcher(sample_sequence_data, monkeypatch)
         with pytest.raises(SwitchError):
             s.unset_alias("2")
+
+
+class TestLiveSessionSwitchWarning:
+    """Leftover session-mode Claude must not be recovered via `openswap run`."""
+
+    def test_warning_points_at_switch_or_extra(
+        self, temp_home: Path, mock_claude_config: Path,
+        sample_sequence_data: dict, capsys,
+    ):
+        s = ClaudeAccountSwitcher()
+        s._setup_directories()
+        s._write_json(s.sequence_file, sample_sequence_data)
+        email = sample_sequence_data["accounts"]["2"]["email"]
+        session_dir = s._session_dir("2", email)
+        pid_dir = session_dir / "sessions"
+        pid_dir.mkdir(parents=True)
+        (pid_dir / f"{os.getpid()}.json").write_text(
+            json.dumps({"pid": os.getpid()})
+        )
+        try:
+            s._perform_switch("2", emit_output=True)
+        except Exception:
+            pass
+        cap = capsys.readouterr()
+        text = cap.err + cap.out
+        assert "openswap run" not in text
+        assert "live" in text.lower()
+        assert "openswap switch" in text or "extra" in text

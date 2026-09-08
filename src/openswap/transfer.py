@@ -516,16 +516,15 @@ def import_accounts(
                 continue
             target_num = existing_slot
             # The credential write below invalidates the slot's non-live
-            # session profile (chokepoint in _write_account_credentials), so
-            # the next `openswap run` re-bootstraps from the imported creds. A
-            # live session keeps running on its own copy — warn about it.
+            # session profile (chokepoint in _write_account_credentials). A
+            # leftover live session keeps running on its own copy — warn.
             live_pids = switcher._live_session_pids(target_num, entry["email"])
             if live_pids:
                 _eprint(
                     f"Warning: {entry['email']} (slot {target_num}) has a live "
                     f"session-mode instance (PID {', '.join(map(str, live_pids))}); "
                     "its session profile keeps the pre-import credentials until "
-                    "it is restarted via 'openswap run'."
+                    "you exit that Claude process."
                 )
         else:
             if entry["exported_num"] not in data.get("accounts", {}):

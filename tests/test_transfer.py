@@ -1496,6 +1496,8 @@ class TestImportSessionInvalidation:
 
         captured = capsys.readouterr()
         assert "live" in captured.err
+        assert "openswap run" not in captured.err
+        assert "exit that Claude process" in captured.err
         # Live session untouched; import itself still completed.
         assert (session_dir / ".credentials.json").read_text() == "pre-import creds"
         alice = s._read_account_credentials("1", "alice@example.com")
@@ -1851,8 +1853,8 @@ class TestImportClearsDeadTokenQuarantine:
         self, temp_home: Path, capsys
     ):
         """The heal path rewrites stored creds like --force does, so it must
-        hit the same live-session warning: a running session-mode instance
-        keeps its own credential copy until restarted via `openswap run`."""
+        hit the same live-session warning: a leftover session-mode instance
+        keeps its own credential copy until that Claude process exits."""
         import os as _os
 
         from openswap.session import session_dir_for
@@ -1877,6 +1879,8 @@ class TestImportClearsDeadTokenQuarantine:
 
         err = capsys.readouterr().err
         assert "live" in err
+        assert "openswap run" not in err
+        assert "exit that Claude process" in err
         assert "Replaced bob@example.com" in err
         # Live session untouched; the heal itself still completed.
         assert (session_dir / ".credentials.json").read_text() == "pre-import creds"

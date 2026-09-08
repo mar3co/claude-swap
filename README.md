@@ -1,6 +1,6 @@
 # OpenSwap
 
-OpenSoft macOS menu bar app for rotating AI coding accounts. Track 5-hour and 7-day usage, auto-rotate before you hit a limit, and run two accounts at once. The extra, widget, and kickoff are macOS. We do not ship Windows or Linux.
+OpenSoft macOS menu bar app for rotating AI coding accounts. Track 5-hour and 7-day usage, and auto-rotate before you hit a limit. The extra, widget, and kickoff are macOS. We do not ship Windows or Linux.
 
 OpenSwap is a standalone MIT descendant of [claude-swap](https://github.com/realiti4/claude-swap) (copyright Onur Cetinkol). It is not the PyPI `claude-swap` package.
 
@@ -57,7 +57,6 @@ The `cswap` command still works as an alias during the rename.
 | `openswap switch` / `openswap switch 2` | Rotate, or jump to a slot |
 | `openswap add-token` | Save an API key or setup token |
 | `openswap auto` | Background rotation near rate limits |
-| `openswap run 2` | Claude Code as that account, this terminal only |
 | `openswap config` | Shared settings (`autoswitch.*`) |
 | `openswap menubar` | macOS extra |
 | `openswap widget --install` | macOS widget |
