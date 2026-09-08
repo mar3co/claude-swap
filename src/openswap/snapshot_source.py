@@ -20,7 +20,7 @@ from dataclasses import replace
 
 from openswap.json_output import USAGE_TOKEN_EXPIRED
 from openswap.models import AccountSnapshot, AccountsSnapshot
-from openswap.switcher import ClaudeAccountSwitcher
+from openswap.engine import Engine
 from openswap.usage_store import UsageEntry
 
 
@@ -33,7 +33,7 @@ class SnapshotSource:
     reads the store without any network eligibility.
     """
 
-    def __init__(self, switcher: ClaudeAccountSwitcher) -> None:
+    def __init__(self, switcher: Engine) -> None:
         self.switcher = switcher
         self._last: AccountsSnapshot | None = None
         self._lock = threading.Lock()

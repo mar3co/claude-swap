@@ -35,10 +35,11 @@ from openswap import macos_keychain
 from openswap.exceptions import MigrationIncomplete
 from openswap.fsutil import replace_with_retry
 from openswap.models import Platform, get_timestamp
-from openswap.switcher import KEYRING_SERVICE, SECURITY_SERVICE
+from openswap.credentials import LEGACY_BACKUP_SECURITY_SERVICE, SECURITY_SERVICE
+from openswap.engine.notes import KEYRING_SERVICE
 
 if TYPE_CHECKING:
-    from openswap.switcher import ClaudeAccountSwitcher
+    from openswap.engine import Engine as ClaudeAccountSwitcher
 
 STATE_FILENAME = ".migrations.json"
 STATE_VERSION = 1
@@ -494,9 +495,59 @@ def migrate_macos_keyring_to_security(switcher: "ClaudeAccountSwitcher") -> bool
 
 
 # Registry of (id, fn). Order matters if migrations ever depend on each other.
+def migrate_claude_swap_backup_items(switcher: "ClaudeAccountSwitcher") -> bool:
+    """Copy leftover ``claude-swap`` backup Keychain items into ``openswap``.
+
+    The product rename changed ``SECURITY_SERVICE`` from ``claude-swap`` to
+    ``openswap``. Idle slots whose items stayed on the old service painted as
+    "no credentials". Copy once when the destination is empty. Off macOS and
+    a missing/unreadable roster return False so the runner does not mark
+    applied; a later restore still migrates. A locked Keychain also returns
+    False so the next Engine construct retries.
+    """
+    if switcher.platform != Platform.MACOS:
+        return False
+    if not switcher.sequence_file.exists():
+        return False  # No managed accounts yet — let a later restore migrate.
+    data = switcher._get_sequence_data()
+    if data is None:
+        return False
+    accounts = data.get("accounts") or {}
+    if not accounts:
+        return True
+    for num, info in accounts.items():
+        email = (info or {}).get("email") or ""
+        if not email:
+            continue
+        username = f"account-{num}-{email}"
+        try:
+            dest = macos_keychain.get_password(SECURITY_SERVICE, username)
+        except macos_keychain.KEYCHAIN_ERRORS:
+            return False
+        if dest:
+            continue
+        try:
+            leftover = macos_keychain.get_password(
+                LEGACY_BACKUP_SECURITY_SERVICE, username
+            )
+        except macos_keychain.KEYCHAIN_ERRORS:
+            return False
+        if not leftover:
+            continue
+        try:
+            macos_keychain.set_password(SECURITY_SERVICE, username, leftover)
+        except macos_keychain.KEYCHAIN_ERRORS:
+            return False
+        switcher._logger.info(
+            "Copied leftover claude-swap backup for %s into openswap", username
+        )
+    return True
+
+
 MIGRATIONS: list[tuple[str, Callable[["ClaudeAccountSwitcher"], bool]]] = [
     ("windows_keyring_to_files", migrate_windows_keyring_to_files),
     ("macos_keyring_to_security", migrate_macos_keyring_to_security),
+    ("claude_swap_backup_to_openswap", migrate_claude_swap_backup_items),
 ]
 
 

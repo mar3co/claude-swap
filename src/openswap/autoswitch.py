@@ -51,7 +51,7 @@ from openswap.poll_policy import (
     binding_pct,
 )
 from openswap.settings import AutoSwitchSettings, atomic_write_json, parse_model_names
-from openswap.switcher import ClaudeAccountSwitcher
+from openswap.engine import Engine
 from openswap.usage_store import due_candidate, plan_oversleeps_interval
 
 STATE_FILENAME = "autoswitch_state.json"
@@ -660,7 +660,7 @@ def _headroom_by_account(
 
 
 class AutoSwitchEngine:
-    """Threshold-policy auto-switcher over a :class:`ClaudeAccountSwitcher`.
+    """Threshold-policy auto-switcher over a :class:`Engine`.
 
     ``on_event`` receives every :class:`AutoSwitchEvent`; exceptions it raises
     are not caught (a broken frontend should fail loudly in tests). ``clock``
@@ -669,7 +669,7 @@ class AutoSwitchEngine:
 
     def __init__(
         self,
-        switcher: ClaudeAccountSwitcher,
+        switcher: Engine,
         settings: AutoSwitchSettings,
         on_event: Callable[[AutoSwitchEvent], None],
         *,

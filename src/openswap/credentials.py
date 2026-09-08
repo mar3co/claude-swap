@@ -112,6 +112,10 @@ def _active_oauth_keychain_services() -> list[str]:
 # new security items coexist during migration (safe write → verify → delete).
 SECURITY_SERVICE = "openswap"
 
+# Pre-rename backup Keychain service. Leftover items are copied once into
+# SECURITY_SERVICE (see migrations.migrate_claude_swap_backup_items).
+LEGACY_BACKUP_SECURITY_SERVICE = "claude-swap"
+
 # Service name of Claude Code's *active* OAuth credential in the macOS Keychain
 # (read by Claude Code itself; we read/write it when switching accounts).
 CLAUDE_CODE_KEYCHAIN_SERVICE = "Claude Code-credentials"
@@ -1042,12 +1046,16 @@ class CredentialStore:
 
         Linux/WSL/Windows always use base64 ``.enc`` files under ``credentials_dir``
         (Windows moved off the Credential Manager because it rejects entries over
-        ~2,500 bytes, #45). macOS uses the Keychain while it's usable and falls back
-        to ``.enc`` files when it isn't (headless/SSH/locked); UNKNOWN platforms have
-        no Keychain, so they use files too. Backup *reads* are ``.enc``-wins
-        regardless (see ``_read_account_credentials``).
+        ~2,500 bytes, #45). Windows Credential Manager is not on the macOS hot
+        path — that one-time move lives in migrations only. macOS uses the
+        Keychain while it's usable and falls back to ``.enc`` files when it
+        isn't (headless/SSH/locked); UNKNOWN platforms have no Keychain, so
+        they use files too. Backup *reads* are ``.enc``-wins regardless
+        (see ``_read_account_credentials``).
         """
-        return not self._use_keychain()
+        if self._host.platform == Platform.MACOS:
+            return not self._use_keychain()
+        return True
 
     # -- backup credential backends ---------------------------------------
     #

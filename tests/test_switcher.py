@@ -36,6 +36,7 @@ from openswap.switcher import (
     SETUP_TOKEN_SCOPES,
     _format_usage_lines,
 )
+from tests.conftest import patch_engine_filelock_cm
 
 
 def _raise_locked(*args, **kwargs):
@@ -2007,7 +2008,7 @@ class TestActiveAccountRefresh:
              patch.object(
                  switcher, "_read_account_credentials", return_value=self._EXPIRED
              ), \
-             patch("openswap.switcher.FileLock",
+             patch_engine_filelock_cm(
                    side_effect=LockError("held elsewhere")), \
              patch("openswap.oauth.try_refresh_oauth_credentials") as mock_refresh, \
              patch("openswap.oauth.try_fetch_usage_for_account") as mock_fetch:
@@ -5181,14 +5182,16 @@ class TestPurge:
 
         mock_keyring = MagicMock()
         with patch("builtins.input", return_value="y"), \
-             patch("openswap.switcher.macos_keychain") as mock_kc, \
+             patch("openswap.engine.engine.macos_keychain") as mock_kc, \
              patch.dict(sys.modules, {"keyring": mock_keyring}):
             switcher.purge()
 
-        # New security service: account + legacy account-None both cleaned.
+        # Current service plus leftover claude-swap copies: account + account-None.
         mock_kc.delete_password.assert_has_calls([
             call("openswap", "account-1-user@example.com"),
+            call("claude-swap", "account-1-user@example.com"),
             call("openswap", "account-None-user@example.com"),
+            call("claude-swap", "account-None-user@example.com"),
         ])
         # Best-effort legacy keyring cleanup of the old claude-code service.
         mock_keyring.delete_password.assert_has_calls([
@@ -10164,7 +10167,9 @@ class TestConsumeGateLockFailures:
             def __enter__(self): raise LE("held elsewhere")
             def __exit__(self, *a): return False
 
-        monkeypatch.setattr("openswap.switcher.FileLock", FailingLock)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, FailingLock)
         with patch("openswap.oauth.try_refresh_oauth_credentials") as post:
             out = s.consume_backup_grant("1", "test@example.com", self._OLD)
         post.assert_not_called()          # nothing consumed
@@ -10196,7 +10201,9 @@ class TestConsumeGateLockFailures:
             def __exit__(self, *a):
                 return self._inner.__exit__(*a)
 
-        monkeypatch.setattr("openswap.switcher.FileLock", SecondLockFails)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, SecondLockFails)
         with patch("openswap.oauth.try_refresh_oauth_credentials",
                    return_value=oauth.RefreshOutcome(self._NEW, None)):
             out = s.consume_backup_grant("1", "test@example.com", self._OLD)
@@ -10240,7 +10247,9 @@ class TestConsumeGateLockFailures:
             def __exit__(self, *a):
                 return self._inner.__exit__(*a)
 
-        monkeypatch.setattr("openswap.switcher.FileLock", SecondLockFails)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, SecondLockFails)
         with patch("openswap.oauth.try_refresh_oauth_credentials",
                    return_value=oauth.RefreshOutcome(self._NEW, None)):
             out = s.consume_backup_grant("1", "test@example.com", self._OLD)
@@ -10532,7 +10541,9 @@ class TestGateUltraReviewFixes:
             def __exit__(self, *a):
                 return self._inner.__exit__(*a)
 
-        monkeypatch.setattr("openswap.switcher.FileLock", WatchedLock)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, WatchedLock)
         with patch.object(s, "_read_account_credentials", side_effect=watched_read), \
              patch("openswap.oauth.try_refresh_oauth_credentials",
                    return_value=oauth.RefreshOutcome(self._NEW, None)):
@@ -10574,7 +10585,9 @@ class TestGateUltraReviewFixes:
             def __exit__(self, *a):
                 return self._inner.__exit__(*a)
 
-        monkeypatch.setattr("openswap.switcher.FileLock", ConsumeLockBusy)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, ConsumeLockBusy)
         out = s.consume_backup_grant("1", "test@example.com", self._OLD)
 
         assert out.error == "consume-busy", (

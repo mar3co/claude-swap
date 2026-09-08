@@ -1,6 +1,6 @@
 """macOS menu bar app for openswap (``openswap --menubar``).
 
-A thin GUI shell over ``ClaudeAccountSwitcher`` and the core auto-switch engine
+A thin GUI shell over ``openswap.engine.Engine`` and the core auto-switch engine
 (``openswap.autoswitch``) — it never re-implements account, usage, or
 auto-switch logic. Usage for display comes from ``switcher.accounts_snapshot()``
 (backed by the shared usage store); auto-switching, when enabled, runs the same
@@ -47,7 +47,7 @@ from openswap.kickoff import (
 )
 from openswap.autoswitch import record_manual_switch
 from openswap.paths import get_backup_root
-from openswap.switcher import SENTINEL_NOTES, USAGE_API_KEY, USAGE_RELOGIN_REQUIRED
+from openswap.engine import SENTINEL_NOTES, USAGE_API_KEY, USAGE_RELOGIN_REQUIRED
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
@@ -1204,6 +1204,8 @@ EMPTY_SNAPSHOT: dict = {
     "active_last_good": None,
     "active_alias": None,
     "active_org": None,
+    "identities": {},
+    "kinds": {},
 }
 
 
@@ -1225,6 +1227,8 @@ def _adapt_snapshot(snap) -> dict:
     active_last_good = None
     active_alias = None
     active_org = None
+    identities: dict[str, tuple[str, str]] = {}
+    kinds: dict[str, str] = {}
     for acc in snap.accounts:
         display = _account_display_usage(acc.usage)
         org_name = getattr(acc, "org_name", "") or ""
@@ -1234,6 +1238,10 @@ def _adapt_snapshot(snap) -> dict:
                 acc.alias, org_name, acc.disabled, acc.usage.fetched_at,
             )
         )
+        identities[str(acc.number)] = (
+            acc.email, getattr(acc, "org_uuid", "") or "",
+        )
+        kinds[str(acc.number)] = getattr(acc, "kind", "oauth")
         if acc.is_active:
             active_email, active_usage, active_alias = acc.email, display, acc.alias
             active_org = org_name
@@ -1247,6 +1255,8 @@ def _adapt_snapshot(snap) -> dict:
         "active_last_good": active_last_good,
         "active_alias": active_alias,
         "active_org": active_org,
+        "identities": identities,
+        "kinds": kinds,
     }
 
 
@@ -1825,7 +1835,7 @@ def run(switcher) -> int:
             return account_short_name(email, None)
 
         def _current_dest_name(self) -> str:
-            current = self.switcher._get_current_account()
+            current = self.switcher.live_identity()
             email = current[0] if current else None
             alias = None
             if email:
@@ -1849,11 +1859,13 @@ def run(switcher) -> int:
             return False
 
         def _slot_identity(self, num) -> tuple[str, str] | None:
+            ident = (self.snapshot.get("identities") or {}).get(str(num))
+            if ident is not None:
+                return ident
             try:
-                seq = self.switcher._get_sequence_data()
+                return self.switcher.slot_identity(num)
             except Exception:
                 return None
-            return slot_identity_from_sequence(seq, num)
 
         def _on_account_click(self, num, *, close_panel):
             if self._slot_needs_relogin(num):
@@ -1869,7 +1881,7 @@ def run(switcher) -> int:
         def _repair_relogin(self, num, *, close_panel):
             slot = self._slot_identity(num)
             slot_name = self._name_for_num(num)
-            live = self.switcher._get_current_account()
+            live = self.switcher.live_identity()
             live_name = self._name_for_identity(live)
             plan = plan_relogin_click(
                 live=live, slot=slot, slot_name=slot_name, live_name=live_name
@@ -1894,7 +1906,7 @@ def run(switcher) -> int:
 
         def _capture_relogin(self, num, *, close_panel):
             slot = self._slot_identity(num)
-            live = self.switcher._get_current_account()
+            live = self.switcher.live_identity()
             if slot is None or live is None or live != slot:
                 self._show_error(
                     f"Claude Code is not signed in as {self._name_for_num(num)}. "
@@ -1947,7 +1959,7 @@ def run(switcher) -> int:
             if not nums:
                 self._auto_capture_failed_for = None
                 return
-            live = self.switcher._get_current_account()
+            live = self.switcher.live_identity()
             if live is None or live == self._auto_capture_failed_for:
                 return
             identities = {}
@@ -1960,7 +1972,7 @@ def run(switcher) -> int:
                 return
             self._auto_capturing = True
             try:
-                live_now = self.switcher._get_current_account()
+                live_now = self.switcher.live_identity()
                 ident = self._slot_identity(match)
                 if live_now is None or ident is None or live_now != ident:
                     return
@@ -2049,7 +2061,7 @@ def run(switcher) -> int:
             subprocess.run(["open", "-R", str(target)], check=False)
 
         def on_refresh_creds(self, _sender):
-            if self.switcher._get_current_account() is None:
+            if self.switcher.live_identity() is None:
                 rumps.alert(title="openswap",
                             message="No active Claude Code login detected. Log in first.")
                 return
@@ -2182,7 +2194,10 @@ def run(switcher) -> int:
                     if str(num) in self._kickoff_succeeded_nums:
                         continue
                     try:
-                        is_api = self.switcher._account_kind(str(num)) == "api_key"
+                        is_api = (
+                            (self.snapshot.get("kinds") or {}).get(str(num))
+                            == "api_key"
+                        )
                     except Exception:
                         is_api = display in (
                             SENTINEL_NOTES.get(USAGE_API_KEY),

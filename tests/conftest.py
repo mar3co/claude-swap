@@ -8,10 +8,39 @@ import shutil
 import sys
 import tempfile
 import types
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# Mixins bind FileLock at import. Tests that historically patched
+# ``openswap.switcher.FileLock`` must replace it on every mixin that
+# constructs a lock, plus the shim.
+ENGINE_FILELOCK_MODULES = (
+    "openswap.engine.consume",
+    "openswap.engine.switch",
+    "openswap.engine.slots",
+    "openswap.engine.snapshot",
+    "openswap.engine.session_profile",
+    "openswap.engine.engine",
+    "openswap.switcher",
+)
+
+
+def patch_engine_filelock(monkeypatch, replacement) -> None:
+    for mod in ENGINE_FILELOCK_MODULES:
+        monkeypatch.setattr(f"{mod}.FileLock", replacement)
+
+
+@contextmanager
+def patch_engine_filelock_cm(*args, **kwargs):
+    with ExitStack() as stack:
+        mocks = [
+            stack.enter_context(patch(f"{mod}.FileLock", *args, **kwargs))
+            for mod in ENGINE_FILELOCK_MODULES
+        ]
+        yield mocks[0]
 
 from openswap import macos_keychain as _macos_keychain
 from openswap import paths as _paths

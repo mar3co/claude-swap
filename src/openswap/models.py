@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from openswap.usage_store import UsageEntry
 
 if TYPE_CHECKING:
-    from openswap.switcher import ClaudeAccountSwitcher
+    from openswap.engine import Engine
 
 
 #: Alias validation: letters/digits/-/_/., non-empty, not purely digits (so an
@@ -151,7 +151,7 @@ class AccountSnapshot:
 class AccountsSnapshot:
     """Coherent one-pass view of every managed account.
 
-    Produced by ``ClaudeAccountSwitcher.accounts_snapshot``: metadata, active
+    Produced by ``Engine.accounts_snapshot``: metadata, active
     detection, and usage entries all come from the same collect pass, so a
     consumer never sees an account list and usage table that disagree.
     """
@@ -176,7 +176,7 @@ class SwitchTransaction:
         """Record a completed step."""
         self.completed_steps.append(step)
 
-    def rollback(self, switcher: ClaudeAccountSwitcher) -> bool:
+    def rollback(self, switcher: Engine) -> bool:
         """Rollback all completed steps in reverse order.
 
         Returns:

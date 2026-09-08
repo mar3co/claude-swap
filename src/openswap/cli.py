@@ -20,7 +20,11 @@ from openswap.printer import (
     warning,
 )
 from openswap.settings import load_ui_settings
-from openswap.switcher import ClaudeAccountSwitcher
+from openswap.engine import Engine
+
+# Same object as Engine. Tests patch ``openswap.cli.ClaudeAccountSwitcher``;
+# constructions still instantiate the public façade.
+ClaudeAccountSwitcher = Engine
 
 
 def _prog_name() -> str:
@@ -227,7 +231,7 @@ Examples:
         sys.exit(130)
 
 
-def _guard_root(switcher: ClaudeAccountSwitcher) -> None:
+def _guard_root(switcher: Engine) -> None:  # Engine ≡ ClaudeAccountSwitcher
     """Refuse to run as root outside a container (shared by run/map/unmap)."""
     if sys.platform != "win32":
         if os.geteuid() == 0 and not switcher._is_running_in_container():
@@ -430,7 +434,7 @@ Examples:
         _guard_root(switcher)
         num_a, num_b = switcher.swap_accounts(args.first, args.second)
         print(f"{accent('Swapped')} Account {num_a} and Account {num_b}:")
-        data = switcher._get_sequence_data() or {}
+        data = switcher.sequence_data() or {}
         accounts = data.get("accounts", {})
         for num in sorted((num_a, num_b), key=int):
             email = accounts.get(num, {}).get("email", "")
@@ -475,7 +479,7 @@ Examples:
         switcher = ClaudeAccountSwitcher(debug=args.debug)
         _guard_root(switcher)
         num_src, num_target, swapped = switcher.move_account(args.account, args.slot)
-        data = switcher._get_sequence_data() or {}
+        data = switcher.sequence_data() or {}
         accounts = data.get("accounts", {})
         if num_src == num_target:
             email = accounts.get(num_target, {}).get("email", "")

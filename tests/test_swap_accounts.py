@@ -419,7 +419,9 @@ class TestSwapAccounts:
             def __exit__(self, *exc):
                 return False
 
-        monkeypatch.setattr("openswap.switcher.FileLock", SpyLock)
+        from tests.conftest import patch_engine_filelock
+
+        patch_engine_filelock(monkeypatch, SpyLock)
         switcher.swap_accounts("1", "2")
 
         assert entered == [switcher.lock_file]

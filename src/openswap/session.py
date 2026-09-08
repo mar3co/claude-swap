@@ -548,7 +548,7 @@ class SessionManager:
             # for the account that is already the active default login —
             # two copies of one account can drift if the server rotates the
             # refresh token.
-            current = self.switcher._get_current_account()
+            current = self.switcher.live_identity()
             if current is not None and current == (email, org_uuid):
                 if require_session:
                     raise SessionError(
@@ -629,7 +629,7 @@ class SessionManager:
         ``_is_session_valid`` requires ``authMethod == "claude.ai"`` — so an API-key
         account would otherwise fail validation opaquely. Raise early with guidance.
         """
-        if self.switcher._account_kind(account_num) == "api_key":
+        if self.switcher.account_kind_for(account_num) == "api_key":
             raise SessionError(
                 f"Account-{account_num} ({email}) is an API-key account; "
                 "'openswap run' (session mode) does not support API-key accounts yet. "
@@ -731,7 +731,7 @@ class SessionManager:
             # Re-evaluate the marker under the lock, then re-check validity:
             # another `openswap run` may have bootstrapped while we waited.
             if is_session_stale(session_dir) and profile_is_quiescent(session_dir):
-                self.switcher._invalidate_session_credentials(account_num, email)
+                self.switcher.invalidate_session_credentials(account_num, email)
                 clear_session_stale(session_dir)
             if self._is_session_valid(session_dir, email, org_uuid):
                 # Valid, but possibly not on the generation WE just paid for.
@@ -830,7 +830,7 @@ class SessionManager:
         # entry from an earlier profile at this path would shadow the seed.
         delete_macos_keychain_entry(session_dir)
 
-        creds, unreadable = self.switcher._read_account_credentials_ex(
+        creds, unreadable = self.switcher.read_backup_credentials(
             account_num, email
         )
         if not creds:
