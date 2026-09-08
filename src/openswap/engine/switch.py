@@ -597,6 +597,8 @@ class SwitchMixin:
             data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
             for stale_num, stale_email in stale_files:
+                if stale_num == account_num and stale_email == current_email:
+                    continue
                 self._delete_account_files(stale_num, stale_email)
 
         if prune_identity:
@@ -862,6 +864,8 @@ class SwitchMixin:
             data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
             for stale_num, stale_email in stale_files:
+                if stale_num == account_num and stale_email == email:
+                    continue
                 self._delete_account_files(stale_num, stale_email)
 
         if prune_identity:

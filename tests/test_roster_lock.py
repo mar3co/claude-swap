@@ -213,6 +213,44 @@ class TestRosterWritersTakeAccountLock:
         assert "5" not in data["accounts"]
         assert switcher._read_account_credentials("1", "test@example.com")
 
+    def test_add_account_displace_same_email_keeps_dest_files(
+        self, temp_home: Path, monkeypatch
+    ):
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        switcher._init_sequence_file()
+        data = switcher._get_sequence_data()
+        data["accounts"]["1"] = {
+            "email": "test@example.com",
+            "uuid": "u-org-a",
+            "organizationUuid": "org-a",
+            "organizationName": "A",
+            "added": "2024-01-01T00:00:00Z",
+        }
+        data["sequence"] = [1]
+        switcher._write_json(switcher.sequence_file, data)
+        switcher._write_account_credentials(
+            "1", "test@example.com", json.dumps({"old": True})
+        )
+        cfg = {
+            "oauthAccount": {
+                "emailAddress": "test@example.com",
+                "accountUuid": "u-org-b",
+                "organizationUuid": "org-b",
+                "organizationName": "B",
+            }
+        }
+        (temp_home / ".claude.json").write_text(json.dumps(cfg))
+        creds = json.dumps({"claudeAiOauth": {"accessToken": "new-tok"}})
+        with patch.object(switcher, "_read_capture_credentials", return_value=creds):
+            switcher.add_account(slot=1, assume_yes=True)
+
+        stored = switcher._read_account_credentials("1", "test@example.com")
+        assert stored
+        assert "new-tok" in stored
+        data = switcher._get_sequence_data()
+        assert data["accounts"]["1"]["organizationUuid"] == "org-b"
+
     def test_add_account_from_token_holds_account_lock(
         self, temp_home: Path, monkeypatch
     ):
