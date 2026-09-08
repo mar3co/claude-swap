@@ -1299,6 +1299,7 @@ class SlotsMixin:
             raise AccountNotFoundError(f"Account-{account_num} does not exist")
 
         email = account_info.get("email")
+        confirmed_org = account_info.get("organizationUuid", "") or ""
         active_account = data.get("activeAccountNumber")
 
         # Check before the confirmation prompt (better UX); the chokepoint in
@@ -1322,7 +1323,14 @@ class SlotsMixin:
             account_info = (data or {}).get("accounts", {}).get(account_num)
             if not account_info:
                 raise AccountNotFoundError(f"Account-{account_num} does not exist")
-            email = account_info.get("email")
+            live_email = account_info.get("email")
+            live_org = account_info.get("organizationUuid", "") or ""
+            if live_email != email or live_org != confirmed_org:
+                raise AccountNotFoundError(
+                    f"Account-{account_num} is no longer {email}; "
+                    "it moved or was replaced. Nothing was removed."
+                )
+            email = live_email
             self._delete_account_files(account_num, email)
             del data["accounts"][account_num]
             data["sequence"] = [n for n in data["sequence"] if n != int(account_num)]

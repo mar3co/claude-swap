@@ -281,15 +281,25 @@ class SwitchMixin:
                   When omitted, an existing alias on the slot is preserved.
         """
         self._refuse_session_shell()
-        self._setup_directories()
-        self._init_sequence_file()
-        self._migrate_org_fields()
-
         if alias is not None:
             try:
                 alias = normalize_alias(alias)
             except ValueError as e:
                 raise ValidationError(str(e)) from e
+
+        with FileLock(self.lock_file):
+            self._add_account_locked(slot, assume_yes, alias)
+
+    def _add_account_locked(
+        self,
+        slot: int | None,
+        assume_yes: bool,
+        alias: str | None,
+    ) -> None:
+        """Body of :meth:`add_account`; the caller holds ``self.lock_file``."""
+        self._setup_directories()
+        self._init_sequence_file()
+        self._migrate_org_fields()
 
         identity = self._get_current_identity_triple()
         if identity is None:
@@ -559,6 +569,18 @@ class SwitchMixin:
         if email and not self._validate_email(email):
             raise ValidationError(f"Invalid email format: {email}")
 
+        with FileLock(self.lock_file):
+            self._add_account_from_token_locked(token, email, slot, assume_yes, is_api_key)
+
+    def _add_account_from_token_locked(
+        self,
+        token: str,
+        email: str | None,
+        slot: int | None,
+        assume_yes: bool,
+        is_api_key: bool,
+    ) -> None:
+        """Body of :meth:`add_account_from_token`; the caller holds ``self.lock_file``."""
         self._setup_directories()
         self._init_sequence_file()
         self._migrate_org_fields()

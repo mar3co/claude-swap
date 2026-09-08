@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
+
+from openswap.exceptions import AccountNotFoundError
 from openswap.switcher import ClaudeAccountSwitcher
 
 from tests.conftest import patch_engine_filelock
@@ -85,3 +90,56 @@ class TestRosterWritersTakeAccountLock:
         assert entered == [switcher.lock_file]
         data = switcher._get_sequence_data()
         assert data["accounts"]["2"]["disabled"] is True
+
+    def test_add_account_holds_account_lock(
+        self, temp_home: Path, mock_claude_config: Path, monkeypatch
+    ):
+        entered.clear()
+        patch_engine_filelock(monkeypatch, SpyLock)
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        switcher._init_sequence_file()
+        creds = json.dumps({"claudeAiOauth": {"accessToken": "tok"}})
+
+        with patch.object(switcher, "_read_capture_credentials", return_value=creds), \
+             patch("openswap.oauth.fetch_oauth_profile", return_value=None):
+            switcher.add_account(assume_yes=True)
+
+        assert entered == [switcher.lock_file]
+        data = switcher._get_sequence_data()
+        assert "1" in data["accounts"]
+
+    def test_add_account_from_token_holds_account_lock(
+        self, temp_home: Path, monkeypatch
+    ):
+        entered.clear()
+        patch_engine_filelock(monkeypatch, SpyLock)
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        switcher._init_sequence_file()
+
+        switcher.add_account_from_token(
+            "sk-ant-api03-test", email="key@example.com", assume_yes=True
+        )
+
+        assert entered == [switcher.lock_file]
+        data = switcher._get_sequence_data()
+        assert data["accounts"]["1"]["email"] == "key@example.com"
+
+    def test_remove_account_refuses_if_slot_identity_changed(
+        self, temp_home: Path, sample_sequence_data: dict, monkeypatch
+    ):
+        switcher = _switcher_with_roster(temp_home, sample_sequence_data)
+
+        def confirm_after_hijack(*_a, **_k):
+            data = switcher._get_sequence_data()
+            data["accounts"]["2"]["email"] = "hijacked@example.com"
+            switcher._write_json(switcher.sequence_file, data)
+            return "y"
+
+        monkeypatch.setattr("builtins.input", confirm_after_hijack)
+        with pytest.raises(AccountNotFoundError, match="no longer"):
+            switcher.remove_account("2")
+
+        data = switcher._get_sequence_data()
+        assert data["accounts"]["2"]["email"] == "hijacked@example.com"
