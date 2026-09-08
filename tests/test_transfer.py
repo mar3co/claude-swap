@@ -221,6 +221,39 @@ class TestImportSequenceCommit:
                 seq_writes = [p for p in writes if Path(p) == dst.sequence_file]
                 assert len(seq_writes) == 1
 
+    def test_import_holds_account_lock_for_sequence_commit(
+        self, temp_home: Path, monkeypatch
+    ):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        entered: list[Path] = []
+
+        class SpyLock:
+            def __init__(self, path, timeout=10.0):
+                self.path = path
+
+            def __enter__(self):
+                entered.append(self.path)
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr("openswap.transfer.FileLock", SpyLock)
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                import_accounts(dst, str(out))
+                assert entered == [dst.lock_file]
+                seq = dst._get_sequence_data()
+                assert set(seq["accounts"].keys()) == {"1", "2"}
+
 
 class TestAliasTransfer:
     """Alias round-trips through export/import, and collisions are handled."""
