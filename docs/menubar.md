@@ -34,7 +34,7 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 `MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `openswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
-Settings-page strategies: **Most quota left** (`best`), **Soonest weekly reset** (`consume-first`, ranks 7d `resets_at`), **Soonest 5-hour reset** (`soonest-5h`, ranks 5h `resets_at`). See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header says whether the extra is holding on the soonest account or would pick another (`auto_hold_line`). When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
+Settings-page strategies: **Most quota left** (`best`), **Burn weekly first** (`consume-first`, ranks 7d `resets_at`), **Burn 5-hour first** (`soonest-5h`, ranks 5h `resets_at`). A muted hint under the picker names the window. See `autoswitch._window_reset_ts`. Event trigger string stays `consume-first` for both consume strategies. A muted hold-reason line under the popover header repeats the engine's last no-switch or exhausted reason (`hold_line_from_event`); the extra does not re-rank cards. When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
 ## Kickoff
 

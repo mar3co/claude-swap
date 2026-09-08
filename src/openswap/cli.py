@@ -670,9 +670,9 @@ Defaults live in settings.json in the backup root; flags override them.
         default=None,
         help=(
             "Target selection: 'best' (most quota left; default), "
-            "'consume-first' (proactively use the account whose weekly window "
-            "resets soonest), or 'soonest-5h' (proactively use the account "
-            "whose 5-hour session resets soonest)"
+            "'consume-first' (burn weekly first: the account whose 7-day "
+            "window resets soonest), or 'soonest-5h' (burn 5-hour first: "
+            "the account whose 5-hour session resets soonest)"
         ),
     )
     parser.add_argument(

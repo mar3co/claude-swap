@@ -123,8 +123,8 @@ SETTING_SPECS: dict[str, SettingSpec] = {
             choices=("best", "consume-first", "soonest-5h"),
             help=(
                 "How auto-switch picks the target: best (most quota left), "
-                "consume-first (soonest weekly reset), soonest-5h "
-                "(soonest 5-hour session reset)"
+                "consume-first (burn weekly first: soonest 7-day reset), "
+                "soonest-5h (burn 5-hour first: soonest session reset)"
             ),
         ),
         SettingSpec(
