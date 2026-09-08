@@ -190,6 +190,29 @@ class TestRosterWritersTakeAccountLock:
 
         assert init_under_lock == [True]
 
+    def test_add_account_slot_move_keeps_source_if_dest_write_fails(
+        self, temp_home: Path, mock_claude_config: Path, monkeypatch
+    ):
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        switcher._init_sequence_file()
+        creds = json.dumps({"claudeAiOauth": {"accessToken": "tok"}})
+
+        with patch.object(switcher, "_read_capture_credentials", return_value=creds):
+            switcher.add_account(assume_yes=True)
+
+            def write_fails(account_num, email, credentials):
+                raise OSError("disk full")
+
+            monkeypatch.setattr(switcher, "_write_account_credentials", write_fails)
+            with pytest.raises(OSError, match="disk full"):
+                switcher.add_account(slot=5)
+
+        data = switcher._get_sequence_data()
+        assert "1" in data["accounts"]
+        assert "5" not in data["accounts"]
+        assert switcher._read_account_credentials("1", "test@example.com")
+
     def test_add_account_from_token_holds_account_lock(
         self, temp_home: Path, monkeypatch
     ):

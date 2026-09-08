@@ -548,8 +548,26 @@ class SwitchMixin:
                 )
 
             if displace_slot:
+                self._ensure_no_live_session(
+                    displace_slot[0], displace_slot[1], "the operation"
+                )
+            if migrate_from:
+                self._ensure_no_live_session(
+                    migrate_from,
+                    data["accounts"][migrate_from].get("email", ""),
+                    "the operation",
+                )
+
+            self._write_account_credentials(account_num, current_email, current_creds)
+            self._write_account_config(account_num, current_email, current_config)
+            self._usage_store.clear_dead_token(
+                [account_num], {account_num: (current_email, organization_uuid)}
+            )
+
+            stale_files: list[tuple[str, str]] = []
+            if displace_slot:
                 d_num, d_email, d_org = displace_slot
-                self._delete_account_files(d_num, d_email)
+                stale_files.append((d_num, d_email))
                 if int(d_num) in data["sequence"]:
                     data["sequence"].remove(int(d_num))
                 del data["accounts"][d_num]
@@ -557,16 +575,10 @@ class SwitchMixin:
 
             if migrate_from:
                 old_email = data["accounts"][migrate_from].get("email", "")
-                self._delete_account_files(migrate_from, old_email)
+                stale_files.append((migrate_from, old_email))
                 if int(migrate_from) in data["sequence"]:
                     data["sequence"].remove(int(migrate_from))
                 del data["accounts"][migrate_from]
-
-            self._write_account_credentials(account_num, current_email, current_creds)
-            self._write_account_config(account_num, current_email, current_config)
-            self._usage_store.clear_dead_token(
-                [account_num], {account_num: (current_email, organization_uuid)}
-            )
 
             data["accounts"][account_num] = {
                 "email": current_email,
@@ -584,6 +596,8 @@ class SwitchMixin:
             data["activeAccountNumber"] = int(account_num)
             data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
+            for stale_num, stale_email in stale_files:
+                self._delete_account_files(stale_num, stale_email)
 
         if prune_identity:
             self._prune_mappings(*prune_identity)
@@ -800,8 +814,26 @@ class SwitchMixin:
                 migrate_from = old_num
 
             if displace_slot:
+                self._ensure_no_live_session(
+                    displace_slot[0], displace_slot[1], "the operation"
+                )
+            if migrate_from:
+                self._ensure_no_live_session(
+                    migrate_from,
+                    data["accounts"][migrate_from].get("email", ""),
+                    "the operation",
+                )
+
+            self._write_account_credentials(account_num, email, credentials)
+            self._write_account_config(account_num, email, config)
+            self._usage_store.clear_dead_token(
+                [account_num], {account_num: (email, "")}
+            )
+
+            stale_files: list[tuple[str, str]] = []
+            if displace_slot:
                 d_num, d_email, d_org = displace_slot
-                self._delete_account_files(d_num, d_email)
+                stale_files.append((d_num, d_email))
                 if int(d_num) in data["sequence"]:
                     data["sequence"].remove(int(d_num))
                 del data["accounts"][d_num]
@@ -809,16 +841,10 @@ class SwitchMixin:
 
             if migrate_from:
                 old_email = data["accounts"][migrate_from].get("email", "")
-                self._delete_account_files(migrate_from, old_email)
+                stale_files.append((migrate_from, old_email))
                 if int(migrate_from) in data["sequence"]:
                     data["sequence"].remove(int(migrate_from))
                 del data["accounts"][migrate_from]
-
-            self._write_account_credentials(account_num, email, credentials)
-            self._write_account_config(account_num, email, config)
-            self._usage_store.clear_dead_token(
-                [account_num], {account_num: (email, "")}
-            )
 
             record = {
                 "email": email,
@@ -835,6 +861,8 @@ class SwitchMixin:
                 data["sequence"].sort()
             data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
+            for stale_num, stale_email in stale_files:
+                self._delete_account_files(stale_num, stale_email)
 
         if prune_identity:
             self._prune_mappings(*prune_identity)
