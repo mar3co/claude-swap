@@ -287,16 +287,15 @@ class SwitchMixin:
             except ValueError as e:
                 raise ValidationError(str(e)) from e
 
-        with FileLock(self.lock_file):
-            self._add_account_locked(slot, assume_yes, alias)
+        self._commit_add_account(slot, assume_yes, alias)
 
-    def _add_account_locked(
+    def _commit_add_account(
         self,
         slot: int | None,
         assume_yes: bool,
         alias: str | None,
     ) -> None:
-        """Body of :meth:`add_account`; the caller holds ``self.lock_file``."""
+        """Read live login, prompt if needed, then commit under ``lock_file``."""
         self._setup_directories()
         self._init_sequence_file()
         self._migrate_org_fields()
@@ -352,18 +351,38 @@ class SwitchMixin:
             # on a race.
             self._reject_identity_drift_since_verify(identity)
 
-            self._write_account_credentials(account_num, current_email, current_creds)
-            self._write_account_config(account_num, current_email, current_config)
-            self._usage_store.clear_dead_token(
-                [account_num], {account_num: (current_email, current_org_uuid)}
-            )
-
-            if alias is not None:
-                seq["accounts"][account_num]["alias"] = alias
-
-            seq["activeAccountNumber"] = int(account_num)
-            seq["lastUpdated"] = get_timestamp()
-            self._write_json(self.sequence_file, seq)
+            with FileLock(self.lock_file):
+                seq = self._get_sequence_data() or {}
+                account_num = self._find_account_slot(
+                    seq, current_email, current_org_uuid
+                )
+                if not account_num:
+                    raise AccountNotFoundError(
+                        f"No account found with identifier: {current_email}"
+                    )
+                if alias is not None:
+                    conflict = self._alias_in_use(alias, exclude_num=account_num)
+                    if conflict is not None:
+                        raise ValidationError(
+                            f"Alias '{alias}' is already used by account {conflict}"
+                        )
+                matched_org_name = seq["accounts"][account_num].get(
+                    "organizationName", ""
+                )
+                self._write_account_credentials(
+                    account_num, current_email, current_creds
+                )
+                self._write_account_config(
+                    account_num, current_email, current_config
+                )
+                self._usage_store.clear_dead_token(
+                    [account_num], {account_num: (current_email, current_org_uuid)}
+                )
+                if alias is not None:
+                    seq["accounts"][account_num]["alias"] = alias
+                seq["activeAccountNumber"] = int(account_num)
+                seq["lastUpdated"] = get_timestamp()
+                self._write_json(self.sequence_file, seq)
 
             tag = self._get_display_tag(current_email, matched_org_name, current_org_uuid)
             self._logger.info(f"Updated credentials for account {account_num}: {current_email}")
@@ -474,52 +493,99 @@ class SwitchMixin:
 
         self._reject_identity_drift_since_verify(identity)
 
-        # Now safe to perform destructive cleanup (new account data is in memory)
-        if displace_slot:
-            d_num, d_email, d_org = displace_slot
-            self._delete_account_files(d_num, d_email)
-            data = self._get_sequence_data()
-            if int(d_num) in data["sequence"]:
-                data["sequence"].remove(int(d_num))
-            del data["accounts"][d_num]
+        prune_identity = None
+        with FileLock(self.lock_file):
+            data = self._get_sequence_data() or {
+                "activeAccountNumber": None,
+                "lastUpdated": "",
+                "sequence": [],
+                "accounts": {},
+            }
+            if slot is None:
+                account_num = str(self._get_next_account_number())
+            else:
+                account_num = str(slot)
+                existing = data.get("accounts", {}).get(account_num)
+                if existing:
+                    is_same = (
+                        existing.get("email") == current_email
+                        and existing.get("organizationUuid", "") == current_org_uuid
+                    )
+                    if not is_same:
+                        if displace_slot is None:
+                            raise ConfigError(
+                                f"Slot {slot} is occupied; nothing was added. Retry."
+                            )
+                        d_num, d_email, d_org = displace_slot
+                        if (
+                            existing.get("email") != d_email
+                            or (existing.get("organizationUuid", "") or "") != d_org
+                        ):
+                            raise ConfigError(
+                                f"Slot {slot} occupant changed; nothing was added. Retry."
+                            )
+            migrate_from = None
+            old_num = self._find_account_slot(data, current_email, current_org_uuid)
+            if old_num and old_num != account_num:
+                migrate_from = old_num
+            if alias is not None:
+                conflict = self._alias_in_use(alias, exclude_num=account_num)
+                if conflict is not None:
+                    raise ValidationError(
+                        f"Alias '{alias}' is already used by account {conflict}"
+                    )
+            existing_alias = None
+            prior = data.get("accounts", {}).get(account_num) or {}
+            if (
+                prior.get("email") == current_email
+                and prior.get("organizationUuid", "") == current_org_uuid
+            ):
+                existing_alias = prior.get("alias")
+            if migrate_from:
+                existing_alias = (
+                    data["accounts"][migrate_from].get("alias") or existing_alias
+                )
+
+            if displace_slot:
+                d_num, d_email, d_org = displace_slot
+                self._delete_account_files(d_num, d_email)
+                if int(d_num) in data["sequence"]:
+                    data["sequence"].remove(int(d_num))
+                del data["accounts"][d_num]
+                prune_identity = (d_email, d_org)
+
+            if migrate_from:
+                old_email = data["accounts"][migrate_from].get("email", "")
+                self._delete_account_files(migrate_from, old_email)
+                if int(migrate_from) in data["sequence"]:
+                    data["sequence"].remove(int(migrate_from))
+                del data["accounts"][migrate_from]
+
+            self._write_account_credentials(account_num, current_email, current_creds)
+            self._write_account_config(account_num, current_email, current_config)
+            self._usage_store.clear_dead_token(
+                [account_num], {account_num: (current_email, organization_uuid)}
+            )
+
+            data["accounts"][account_num] = {
+                "email": current_email,
+                "uuid": account_uuid,
+                "organizationUuid": organization_uuid,
+                "organizationName": organization_name,
+                "added": get_timestamp(),
+            }
+            carried_alias = alias if alias is not None else existing_alias
+            if carried_alias:
+                data["accounts"][account_num]["alias"] = carried_alias
+            if int(account_num) not in data["sequence"]:
+                data["sequence"].append(int(account_num))
+                data["sequence"].sort()
+            data["activeAccountNumber"] = int(account_num)
+            data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
-            self._prune_mappings(d_email, d_org)
 
-        if migrate_from:
-            data = self._get_sequence_data()
-            old_email = data["accounts"][migrate_from].get("email", "")
-            self._delete_account_files(migrate_from, old_email)
-            if int(migrate_from) in data["sequence"]:
-                data["sequence"].remove(int(migrate_from))
-            del data["accounts"][migrate_from]
-            self._write_json(self.sequence_file, data)
-
-        # Store backups
-        self._write_account_credentials(account_num, current_email, current_creds)
-        self._write_account_config(account_num, current_email, current_config)
-        self._usage_store.clear_dead_token(
-            [account_num], {account_num: (current_email, organization_uuid)}
-        )
-
-        # Update sequence.json
-        data = self._get_sequence_data()
-        data["accounts"][account_num] = {
-            "email": current_email,
-            "uuid": account_uuid,
-            "organizationUuid": organization_uuid,
-            "organizationName": organization_name,
-            "added": get_timestamp(),
-        }
-        carried_alias = alias if alias is not None else existing_alias
-        if carried_alias:
-            data["accounts"][account_num]["alias"] = carried_alias
-        if int(account_num) not in data["sequence"]:
-            data["sequence"].append(int(account_num))
-            data["sequence"].sort()
-        data["activeAccountNumber"] = int(account_num)
-        data["lastUpdated"] = get_timestamp()
-
-        self._write_json(self.sequence_file, data)
+        if prune_identity:
+            self._prune_mappings(*prune_identity)
         tag = self._get_display_tag(current_email, organization_name, organization_uuid)
         self._logger.info(f"Added account {account_num}: {current_email} (org: {organization_uuid or 'personal'})")
         if migrate_from:
@@ -569,10 +635,11 @@ class SwitchMixin:
         if email and not self._validate_email(email):
             raise ValidationError(f"Invalid email format: {email}")
 
-        with FileLock(self.lock_file):
-            self._add_account_from_token_locked(token, email, slot, assume_yes, is_api_key)
+        self._commit_add_account_from_token(
+            token, email, slot, assume_yes, is_api_key
+        )
 
-    def _add_account_from_token_locked(
+    def _commit_add_account_from_token(
         self,
         token: str,
         email: str | None,
@@ -580,7 +647,7 @@ class SwitchMixin:
         assume_yes: bool,
         is_api_key: bool,
     ) -> None:
-        """Body of :meth:`add_account_from_token`; the caller holds ``self.lock_file``."""
+        """Prompt if needed, then commit the token account under ``lock_file``."""
         self._setup_directories()
         self._init_sequence_file()
         self._migrate_org_fields()
@@ -622,23 +689,24 @@ class SwitchMixin:
 
         # If the account already exists (same email, personal), refresh in place.
         if slot is None and self._account_exists(email, ""):
-            seq = self._get_sequence_data()
-            account_num = self._find_account_slot(seq, email, "")
-            if account_num is None:
-                raise ConfigError(
-                    f"Existing account metadata for {email} is inconsistent"
+            with FileLock(self.lock_file):
+                seq = self._get_sequence_data() or {}
+                account_num = self._find_account_slot(seq, email, "")
+                if account_num is None:
+                    raise ConfigError(
+                        f"Existing account metadata for {email} is inconsistent"
+                    )
+                self._write_account_credentials(account_num, email, credentials)
+                self._write_account_config(account_num, email, config)
+                # A refreshed credential invalidates any dead-token quarantine on this
+                # slot (mirrors ``add_account``); otherwise the stale strike row keeps
+                # the account stuck at "re-login needed" and it never fetches the new
+                # token. Token accounts are always personal, so org is "".
+                self._usage_store.clear_dead_token(
+                    [account_num], {account_num: (email, "")}
                 )
-            self._write_account_credentials(account_num, email, credentials)
-            self._write_account_config(account_num, email, config)
-            # A refreshed credential invalidates any dead-token quarantine on this
-            # slot (mirrors ``add_account``); otherwise the stale strike row keeps
-            # the account stuck at "re-login needed" and it never fetches the new
-            # token. Token accounts are always personal, so org is "".
-            self._usage_store.clear_dead_token(
-                [account_num], {account_num: (email, "")}
-            )
-            seq["lastUpdated"] = get_timestamp()
-            self._write_json(self.sequence_file, seq)
+                seq["lastUpdated"] = get_timestamp()
+                self._write_json(self.sequence_file, seq)
             kind_label = "API key" if is_api_key else "token"
             self._logger.info(f"Updated {kind_label} for account {account_num}: {email}")
             print(
@@ -693,50 +761,81 @@ class SwitchMixin:
         else:
             account_num = str(self._get_next_account_number())
 
-        if displace_slot:
-            d_num, d_email, d_org = displace_slot
-            self._delete_account_files(d_num, d_email)
-            data = self._get_sequence_data()
-            if int(d_num) in data["sequence"]:
-                data["sequence"].remove(int(d_num))
-            del data["accounts"][d_num]
+        prune_identity = None
+        with FileLock(self.lock_file):
+            data = self._get_sequence_data() or {
+                "activeAccountNumber": None,
+                "lastUpdated": "",
+                "sequence": [],
+                "accounts": {},
+            }
+            if slot is None:
+                account_num = str(self._get_next_account_number())
+            else:
+                account_num = str(slot)
+                existing = data.get("accounts", {}).get(account_num)
+                if existing:
+                    is_same = (
+                        existing.get("email") == email
+                        and existing.get("organizationUuid", "") == ""
+                    )
+                    if not is_same:
+                        if displace_slot is None:
+                            raise ConfigError(
+                                f"Slot {slot} is occupied; nothing was added. Retry."
+                            )
+                        d_num, d_email, d_org = displace_slot
+                        if (
+                            existing.get("email") != d_email
+                            or (existing.get("organizationUuid", "") or "") != d_org
+                        ):
+                            raise ConfigError(
+                                f"Slot {slot} occupant changed; nothing was added. Retry."
+                            )
+            migrate_from = None
+            old_num = self._find_account_slot(data, email, "")
+            if old_num and old_num != account_num:
+                migrate_from = old_num
+
+            if displace_slot:
+                d_num, d_email, d_org = displace_slot
+                self._delete_account_files(d_num, d_email)
+                if int(d_num) in data["sequence"]:
+                    data["sequence"].remove(int(d_num))
+                del data["accounts"][d_num]
+                prune_identity = (d_email, d_org)
+
+            if migrate_from:
+                old_email = data["accounts"][migrate_from].get("email", "")
+                self._delete_account_files(migrate_from, old_email)
+                if int(migrate_from) in data["sequence"]:
+                    data["sequence"].remove(int(migrate_from))
+                del data["accounts"][migrate_from]
+
+            self._write_account_credentials(account_num, email, credentials)
+            self._write_account_config(account_num, email, config)
+            self._usage_store.clear_dead_token(
+                [account_num], {account_num: (email, "")}
+            )
+
+            record = {
+                "email": email,
+                "uuid": "",
+                "organizationUuid": "",
+                "organizationName": "",
+                "added": get_timestamp(),
+            }
+            if is_api_key:
+                record["kind"] = "api_key"
+            data["accounts"][account_num] = record
+            if int(account_num) not in data["sequence"]:
+                data["sequence"].append(int(account_num))
+                data["sequence"].sort()
+            data["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, data)
-            self._prune_mappings(d_email, d_org)
 
-        if migrate_from:
-            data = self._get_sequence_data()
-            old_email = data["accounts"][migrate_from].get("email", "")
-            self._delete_account_files(migrate_from, old_email)
-            if int(migrate_from) in data["sequence"]:
-                data["sequence"].remove(int(migrate_from))
-            del data["accounts"][migrate_from]
-            self._write_json(self.sequence_file, data)
-
-        self._write_account_credentials(account_num, email, credentials)
-        self._write_account_config(account_num, email, config)
-        # Reusing/overwriting a slot with a fresh credential lifts any dead-token
-        # quarantine carried by that slot's prior lineage (mirrors ``add_account``).
-        self._usage_store.clear_dead_token(
-            [account_num], {account_num: (email, "")}
-        )
-
-        data = self._get_sequence_data()
-        record = {
-            "email": email,
-            "uuid": "",
-            "organizationUuid": "",
-            "organizationName": "",
-            "added": get_timestamp(),
-        }
-        if is_api_key:
-            record["kind"] = "api_key"
-        data["accounts"][account_num] = record
-        if int(account_num) not in data["sequence"]:
-            data["sequence"].append(int(account_num))
-            data["sequence"].sort()
-        data["lastUpdated"] = get_timestamp()
-
-        self._write_json(self.sequence_file, data)
+        if prune_identity:
+            self._prune_mappings(*prune_identity)
         source_label = "API key" if is_api_key else "token"
         self._logger.info(f"Added account {account_num} from {source_label}: {email}")
         if migrate_from:

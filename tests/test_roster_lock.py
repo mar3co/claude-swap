@@ -109,6 +109,52 @@ class TestRosterWritersTakeAccountLock:
         data = switcher._get_sequence_data()
         assert "1" in data["accounts"]
 
+    def test_add_account_does_not_hold_lock_during_overwrite_prompt(
+        self, temp_home: Path, mock_claude_config: Path, monkeypatch
+    ):
+        switcher = ClaudeAccountSwitcher()
+        switcher._setup_directories()
+        switcher._init_sequence_file()
+        data = switcher._get_sequence_data()
+        data["accounts"]["1"] = {
+            "email": "other@example.com",
+            "uuid": "u-other",
+            "organizationUuid": "",
+            "organizationName": "",
+            "added": "2024-01-01T00:00:00Z",
+        }
+        data["sequence"] = [1]
+        switcher._write_json(switcher.sequence_file, data)
+
+        held: list[str] = []
+
+        class TrackingLock:
+            def __init__(self, path, timeout=10.0):
+                self.path = path
+
+            def __enter__(self):
+                held.append("enter")
+                return self
+
+            def __exit__(self, *exc):
+                held.append("exit")
+                return False
+
+        patch_engine_filelock(monkeypatch, TrackingLock)
+
+        def prompt(*_a, **_k):
+            assert "enter" not in held
+            return "y"
+
+        monkeypatch.setattr("builtins.input", prompt)
+        creds = json.dumps({"claudeAiOauth": {"accessToken": "tok"}})
+        with patch.object(switcher, "_read_capture_credentials", return_value=creds):
+            switcher.add_account(slot=1)
+
+        assert held[:1] == ["enter"]
+        data = switcher._get_sequence_data()
+        assert data["accounts"]["1"]["email"] == "test@example.com"
+
     def test_add_account_from_token_holds_account_lock(
         self, temp_home: Path, monkeypatch
     ):
