@@ -28,7 +28,18 @@ def _checkout_root(package_file: Path | None = None) -> Path | None:
     for candidate in (path, *path.parents):
         if (candidate / ".git").exists() and _looks_like_openswap_checkout(candidate):
             return candidate
-    return _checkout_from_direct_url(path)
+    return _accepted_checkout(_checkout_from_direct_url(path))
+
+
+def _accepted_checkout(root: Path | None) -> Path | None:
+    """Keep a missing path (moved clone) or an OpenSwap git checkout. Drop the rest."""
+    if root is None:
+        return None
+    if not root.exists():
+        return root
+    if _looks_like_openswap_checkout(root) and (root / ".git").exists():
+        return root
+    return None
 
 
 def _checkout_from_direct_url(package_file: Path | None) -> Path | None:
@@ -136,14 +147,23 @@ def run_self_upgrade() -> int:
         )
         return 1
 
-    pull = subprocess.run(["git", "-C", str(root), "pull"], check=False)
-    if pull.returncode != 0:
-        return pull.returncode
-    inst = subprocess.run(
-        ["uv", "tool", "install", "--force", "--editable", ".[menubar]"],
-        cwd=str(root),
-        check=False,
-    )
+    try:
+        pull = subprocess.run(["git", "-C", str(root), "pull"], check=False)
+        if pull.returncode != 0:
+            return pull.returncode
+        inst = subprocess.run(
+            ["uv", "tool", "install", "--force", "--editable", ".[menubar]"],
+            cwd=str(root),
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        missing = getattr(exc, "filename", None) or "git or uv"
+        error(
+            f"`{missing}` is not on PATH. Install uv from https://docs.astral.sh/uv/ "
+            "then retry, or from the checkout run "
+            "`uv tool install --force --editable '.[menubar]'`."
+        )
+        return 1
     if inst.returncode != 0:
         return inst.returncode
     _refresh_launch_agents()

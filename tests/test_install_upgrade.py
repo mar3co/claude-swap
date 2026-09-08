@@ -58,6 +58,27 @@ class TestNoPypi:
         err = capsys.readouterr().err
         assert "moved" in err.lower() or "gone" in err.lower() or "reinstall" in err.lower()
 
+    def test_run_self_upgrade_missing_uv_is_a_clean_error(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        repo = tmp_path / "openswap"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "src" / "openswap").mkdir(parents=True)
+        (repo / "src" / "openswap" / "__init__.py").write_text("")
+        monkeypatch.setattr("openswap.update_check._checkout_root", lambda: repo)
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "git":
+                return MagicMock(returncode=0)
+            raise FileNotFoundError("uv")
+
+        monkeypatch.setattr("openswap.update_check.subprocess.run", fake_run)
+        assert run_self_upgrade() == 1
+        err = capsys.readouterr().err
+        assert "uv" in err.lower()
+        assert "PATH" in err or "path" in err.lower() or "install" in err.lower()
+
     def test_refresh_reinstalls_menubar_agent_when_plist_exists(
         self, tmp_path, monkeypatch
     ):

@@ -57,6 +57,9 @@ class TestGitCheckoutGuard:
     def test_direct_url_editable_checkout(self, tmp_path):
         repo = tmp_path / "openswap"
         repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "src" / "openswap").mkdir(parents=True)
+        (repo / "src" / "openswap" / "__init__.py").write_text("")
         dist = (
             tmp_path
             / "uv"
@@ -76,6 +79,29 @@ class TestGitCheckoutGuard:
         package_file.write_text("")
 
         assert _checkout_root(package_file) == repo
+
+    def test_direct_url_nested_in_another_git_repo_is_rejected(self, tmp_path):
+        vendor = tmp_path / "vendor" / "openswap"
+        (vendor / "src" / "openswap").mkdir(parents=True)
+        (vendor / "src" / "openswap" / "__init__.py").write_text("")
+        (tmp_path / ".git").mkdir()
+        dist = (
+            tmp_path
+            / ".venv"
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "openswap-0.1.0.dist-info"
+        )
+        dist.mkdir(parents=True)
+        (dist / "direct_url.json").write_text(
+            '{"url":"file://' + str(vendor) + '","dir_info":{}}'
+        )
+        package_file = dist.parent / "openswap" / "__init__.py"
+        package_file.parent.mkdir(parents=True)
+        package_file.write_text("")
+
+        assert _checkout_root(package_file) is None
 
 
 class TestDetectInstallMethod:
