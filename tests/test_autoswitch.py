@@ -2988,8 +2988,12 @@ class TestConsumeFirstStrategy:
         })
         assert outcome is TickOutcome.NO_ACTION
         assert h.active_number() == 1
-        reasons = [e.reason for e in h.events if isinstance(e, NoSwitchEvent)]
-        assert reasons == ["reset-unknown"]
+        events = [e for e in h.events if isinstance(e, NoSwitchEvent)]
+        assert [e.reason for e in events] == ["reset-unknown"]
+        detail = events[0].detail.lower()
+        assert "weekly" in detail
+        assert "5-hour" not in detail
+        assert "5h" not in detail
 
     def test_unreadable_candidates_stay_no_comparison(self, temp_home):
         # Every candidate unreadable this tick is a BLOCKED no-comparison for

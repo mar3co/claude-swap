@@ -47,7 +47,7 @@ class AutoSwitchSettings:
     interval_seconds: float = 60.0
     cooldown_seconds: float = 300.0
     hysteresis_pct: float = 10.0
-    strategy: str = "best"  # "best" | "consume-first" (soonest weekly) | "soonest-5h"
+    strategy: str = "best"  # "best" | "consume-first" (7-day reset) | "soonest-5h" (5-hour reset)
     include_api_key_accounts: bool = False
     unhealthy_ticks: int = 3
     # Comma-separated model display name(s) (e.g. "Fable" or "Fable,Opus"),
@@ -124,7 +124,7 @@ SETTING_SPECS: dict[str, SettingSpec] = {
             help=(
                 "How auto-switch picks the target: best (most quota left), "
                 "consume-first (burn weekly first: soonest 7-day reset), "
-                "soonest-5h (burn 5-hour first: soonest session reset)"
+                "soonest-5h (burn 5-hour first: soonest 5-hour session reset)"
             ),
         ),
         SettingSpec(
