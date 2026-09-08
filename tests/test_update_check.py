@@ -37,6 +37,23 @@ class TestGitCheckoutGuard:
 
         assert _package_is_git_checkout(package_file) is False
 
+    def test_venv_inside_another_git_repo_is_not_a_checkout(self, tmp_path):
+        (tmp_path / ".git").mkdir()
+        package_file = (
+            tmp_path
+            / ".venv"
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "openswap"
+            / "__init__.py"
+        )
+        package_file.parent.mkdir(parents=True)
+        package_file.write_text("")
+
+        assert _checkout_root(package_file) is None
+        assert _package_is_git_checkout(package_file) is False
+
     def test_direct_url_editable_checkout(self, tmp_path):
         repo = tmp_path / "openswap"
         repo.mkdir()

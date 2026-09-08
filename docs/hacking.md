@@ -11,7 +11,7 @@ uv tool install --editable '.[menubar]'
 uv sync   # dev extras: pytest, etc.
 ```
 
-OpenSwap is not on PyPI. `openswap upgrade` runs `git pull` in this checkout, then `uv tool install --editable '.[menubar]'`, then refreshes installed LaunchAgents. If you moved the clone, reinstall from the new path.
+OpenSwap is not on PyPI. `openswap upgrade` runs `git pull` in this checkout, then `uv tool install --force --editable '.[menubar]'`, then refreshes installed LaunchAgents. If you moved the clone, reinstall from the new path.
 
 ## Run tests
 

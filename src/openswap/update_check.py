@@ -10,6 +10,11 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 
+def _looks_like_openswap_checkout(root: Path) -> bool:
+    """True when ``root`` is this project's tree, not some other git repo."""
+    return (root / "src" / "openswap" / "__init__.py").is_file()
+
+
 def _checkout_root(package_file: Path | None = None) -> Path | None:
     """Directory of the git checkout this install points at, if any."""
     if package_file is None:
@@ -21,7 +26,7 @@ def _checkout_root(package_file: Path | None = None) -> Path | None:
         package_file = Path(raw)
     path = Path(package_file)
     for candidate in (path, *path.parents):
-        if (candidate / ".git").exists():
+        if (candidate / ".git").exists() and _looks_like_openswap_checkout(candidate):
             return candidate
     return _checkout_from_direct_url(path)
 
@@ -119,13 +124,14 @@ def run_self_upgrade() -> int:
         error(
             "OpenSwap is not published to PyPI.\n"
             "Clone https://github.com/mar3co/openswap.git then "
-            "`uv tool install --editable '.[menubar]'`."
+            "`uv tool install --force --editable '.[menubar]'`."
         )
         return 1
     if not root.exists():
         error(
             f"The git checkout at {root} is gone (moved?).\n"
-            "From the new location run `uv tool install --editable '.[menubar]'`, "
+            "From the new location run "
+            "`uv tool install --force --editable '.[menubar]'`, "
             "then `openswap menubar --install-service`."
         )
         return 1
@@ -134,7 +140,7 @@ def run_self_upgrade() -> int:
     if pull.returncode != 0:
         return pull.returncode
     inst = subprocess.run(
-        ["uv", "tool", "install", "--editable", ".[menubar]"],
+        ["uv", "tool", "install", "--force", "--editable", ".[menubar]"],
         cwd=str(root),
         check=False,
     )

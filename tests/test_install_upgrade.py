@@ -34,6 +34,7 @@ class TestNoPypi:
         assert run_self_upgrade() == 0
         assert runs[0] == ["git", "-C", str(repo), "pull"]
         assert runs[1][:3] == ["uv", "tool", "install"]
+        assert "--force" in runs[1]
         assert "--editable" in runs[1]
         assert ".[menubar]" in runs[1]
 
@@ -46,7 +47,7 @@ class TestNoPypi:
             mock_run.assert_not_called()
         err = capsys.readouterr().err
         assert "not published to PyPI" in err
-        assert "uv tool install --editable" in err
+        assert "uv tool install --force --editable" in err
 
     def test_run_self_upgrade_gone_checkout_path(self, tmp_path, monkeypatch, capsys):
         missing = tmp_path / "moved-openswap"
