@@ -254,6 +254,35 @@ class TestImportSequenceCommit:
                 seq = dst._get_sequence_data()
                 assert set(seq["accounts"].keys()) == {"1", "2"}
 
+    def test_import_commits_prefix_if_later_slot_write_fails(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        _seed_account(src, 3, "c@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                writes = {"n": 0}
+                orig = dst._write_account_credentials
+
+                def fail_on_third(num, email, creds):
+                    writes["n"] += 1
+                    if writes["n"] >= 3:
+                        raise OSError("disk full")
+                    return orig(num, email, creds)
+
+                dst._write_account_credentials = fail_on_third
+                with pytest.raises(OSError, match="disk full"):
+                    import_accounts(dst, str(out))
+
+                seq = dst._get_sequence_data() or {}
+                assert set(seq.get("accounts", {}).keys()) == {"1", "2"}
+
 
 class TestAliasTransfer:
     """Alias round-trips through export/import, and collisions are handled."""

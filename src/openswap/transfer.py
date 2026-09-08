@@ -485,112 +485,122 @@ def import_accounts(
 
     with FileLock(switcher.lock_file):
         data = switcher._get_sequence_data_migrated() or _empty_sequence()
-        for entry in normalized:
-            is_envelope_active = (
-                envelope_active_str is not None
-                and entry["exported_num"] == envelope_active_str
-            )
-            existing_slot = switcher._find_account_slot(
-                data, entry["email"], entry["org_uuid"]
-            )
-            had_strike = False
-            same_generation = False
-
-            if existing_slot is not None:
-                if force:
-                    outcome = "overwrote"
-                    row = switcher._usage_store.entries(
-                        {existing_slot: (entry["email"], entry["org_uuid"])}
-                    )[existing_slot]
-                    had_strike = row.auth_dead_strikes > 0
-                    same_generation = (
-                        row.struck_fingerprint is not None
-                        and credential_fingerprint(entry["creds_text"])
-                        == row.struck_fingerprint
-                    )
-                elif switcher._slot_token_dead(existing_slot, entry["email"]):
-                    outcome = "replaced"
-                else:
-                    _eprint(
-                        f"Skipped {entry['email']} (already exists, use --force)"
-                    )
-                    skipped += 1
-                    if is_envelope_active:
-                        resolved_active_slot = existing_slot
-                    continue
-                target_num = existing_slot
-                live_pids = switcher._live_session_pids(target_num, entry["email"])
-                if live_pids:
-                    _eprint(
-                        f"Warning: {entry['email']} (slot {target_num}) has a live "
-                        f"isolated profile (PID {', '.join(map(str, live_pids))}); "
-                        "its profile keeps the pre-import credentials until "
-                        "you exit that Claude process."
-                    )
-            else:
-                if entry["exported_num"] not in data.get("accounts", {}):
-                    target_num = entry["exported_num"]
-                else:
-                    target_num = _next_slot_number(data)
-                outcome = "imported"
-
-            switcher._write_account_credentials(
-                target_num, entry["email"], entry["creds_text"]
-            )
-            switcher._write_account_config(
-                target_num, entry["email"], entry["config_text"]
-            )
-            switcher._usage_store.clear_dead_token(
-                [target_num], {target_num: (entry["email"], entry["org_uuid"])}
-            )
-
-            data.setdefault("accounts", {})
-            data.setdefault("sequence", [])
-            data["accounts"][target_num] = _account_record(entry)
-            if int(target_num) not in data["sequence"]:
-                data["sequence"].append(int(target_num))
-                data["sequence"].sort()
-            dirty = True
-
-            if is_envelope_active:
-                resolved_active_slot = target_num
-            written_slots.add(target_num)
-
-            if outcome == "overwrote":
-                _eprint(f"Overwrote {entry['email']} (slot {target_num})")
-                if had_strike:
-                    _eprint("  └ cleared this slot's stored dead-token strike")
-                    if same_generation:
-                        _eprint(
-                            "  └ this import holds the same credential "
-                            "generation the strike condemned; another permanent "
-                            "auth failure will quarantine it again — recover "
-                            "with a newer export or a re-login"
-                        )
-                overwritten += 1
-            elif outcome == "replaced":
-                _eprint(
-                    f"Replaced {entry['email']} (slot {target_num} was "
-                    "quarantined: refresh token dead)"
+        try:
+            for entry in normalized:
+                is_envelope_active = (
+                    envelope_active_str is not None
+                    and entry["exported_num"] == envelope_active_str
                 )
-                replaced += 1
+                existing_slot = switcher._find_account_slot(
+                    data, entry["email"], entry["org_uuid"]
+                )
+                had_strike = False
+                same_generation = False
+
+                if existing_slot is not None:
+                    if force:
+                        outcome = "overwrote"
+                        row = switcher._usage_store.entries(
+                            {existing_slot: (entry["email"], entry["org_uuid"])}
+                        )[existing_slot]
+                        had_strike = row.auth_dead_strikes > 0
+                        same_generation = (
+                            row.struck_fingerprint is not None
+                            and credential_fingerprint(entry["creds_text"])
+                            == row.struck_fingerprint
+                        )
+                    elif switcher._slot_token_dead(existing_slot, entry["email"]):
+                        outcome = "replaced"
+                    else:
+                        _eprint(
+                            f"Skipped {entry['email']} (already exists, use --force)"
+                        )
+                        skipped += 1
+                        if is_envelope_active:
+                            resolved_active_slot = existing_slot
+                        continue
+                    target_num = existing_slot
+                    live_pids = switcher._live_session_pids(target_num, entry["email"])
+                    if live_pids:
+                        _eprint(
+                            f"Warning: {entry['email']} (slot {target_num}) has a live "
+                            f"isolated profile (PID {', '.join(map(str, live_pids))}); "
+                            "its profile keeps the pre-import credentials until "
+                            "you exit that Claude process."
+                        )
+                else:
+                    if entry["exported_num"] not in data.get("accounts", {}):
+                        target_num = entry["exported_num"]
+                    else:
+                        target_num = _next_slot_number(data)
+                    outcome = "imported"
+
+                switcher._write_account_credentials(
+                    target_num, entry["email"], entry["creds_text"]
+                )
+                switcher._write_account_config(
+                    target_num, entry["email"], entry["config_text"]
+                )
+                switcher._usage_store.clear_dead_token(
+                    [target_num], {target_num: (entry["email"], entry["org_uuid"])}
+                )
+
+                data.setdefault("accounts", {})
+                data.setdefault("sequence", [])
+                data["accounts"][target_num] = _account_record(entry)
+                if int(target_num) not in data["sequence"]:
+                    data["sequence"].append(int(target_num))
+                    data["sequence"].sort()
+                dirty = True
+
+                if is_envelope_active:
+                    resolved_active_slot = target_num
+                written_slots.add(target_num)
+
+                if outcome == "overwrote":
+                    _eprint(f"Overwrote {entry['email']} (slot {target_num})")
+                    if had_strike:
+                        _eprint("  └ cleared this slot's stored dead-token strike")
+                        if same_generation:
+                            _eprint(
+                                "  └ this import holds the same credential "
+                                "generation the strike condemned; another permanent "
+                                "auth failure will quarantine it again — recover "
+                                "with a newer export or a re-login"
+                            )
+                    overwritten += 1
+                elif outcome == "replaced":
+                    _eprint(
+                        f"Replaced {entry['email']} (slot {target_num} was "
+                        "quarantined: refresh token dead)"
+                    )
+                    replaced += 1
+                else:
+                    _eprint(f"Imported {entry['email']} → slot {target_num}")
+                    imported += 1
+
+            if (
+                data.get("activeAccountNumber") in (None, 0)
+                and resolved_active_slot is not None
+            ):
+                data["activeAccountNumber"] = int(resolved_active_slot)
+                dirty = True
+
+            if dirty:
+                data["lastUpdated"] = get_timestamp()
+                switcher._write_json(switcher.sequence_file, data)
+                final = data
             else:
-                _eprint(f"Imported {entry['email']} → slot {target_num}")
-                imported += 1
-
-        if (
-            data.get("activeAccountNumber") in (None, 0)
-            and resolved_active_slot is not None
-        ):
-            data["activeAccountNumber"] = int(resolved_active_slot)
-            dirty = True
-
-        if dirty:
-            data["lastUpdated"] = get_timestamp()
-            switcher._write_json(switcher.sequence_file, data)
-            final = data
-        else:
-            final = switcher._get_sequence_data()
+                final = switcher._get_sequence_data()
+        except Exception:
+            if dirty:
+                try:
+                    data["lastUpdated"] = get_timestamp()
+                    switcher._write_json(switcher.sequence_file, data)
+                    final = data
+                except Exception:
+                    pass
+            raise
 
     summary = (
         f"Done: {imported} imported, {overwritten} overwritten, {skipped} skipped"
