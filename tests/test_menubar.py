@@ -510,6 +510,30 @@ def test_panel_accounts_uses_last_good_when_display_is_a_sentinel():
 # --- auto-switch hold line (engine events, not extra ranking) ------------------
 
 
+def test_hold_panel_reload_plan_defers_while_left_mouse_down():
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=False, pending=False, left_mouse_down=False
+    ) == (False, False)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=True, pending=False, left_mouse_down=False
+    ) == (True, False)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=True, pending=False, left_mouse_down=True
+    ) == (False, True)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=False, pending=True, left_mouse_down=True
+    ) == (False, True)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=False, pending=True, left_mouse_down=False
+    ) == (True, False)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=True, pending=True, left_mouse_down=False
+    ) == (True, False)
+    assert menubar.hold_panel_reload_plan(
+        copy_changed=False, pending=False, left_mouse_down=True
+    ) == (False, False)
+
+
 def test_hold_event_update_keeps_no_switch_and_clears_on_switch():
     held = NoSwitchEvent(reason="cooldown")
     assert menubar.hold_event_update(None, held) is held
@@ -924,8 +948,11 @@ def test_rebuild_menu_does_not_reload_an_open_popover():
     text = Path(menubar.__file__).read_text(encoding="utf-8")
     rebuild = text[text.index("def rebuild_menu") : text.index("def _add_menu")]
     assert "self._panel.reload()" not in rebuild
+    assert "_reload_main_panel_if_shown" not in rebuild
     sync = text[text.index("def on_sync_tick") : text.index("def _detect_active_change")]
     assert "self._panel.reload()" not in sync
+    assert "_reload_main_panel_if_shown" not in sync
+    assert "_apply_hold_line" in sync
     assert "_settings_menu" not in rebuild
     assert "self._add_menu(rumps)" in rebuild
     assert "self._history_menu(rumps)" in rebuild
@@ -1000,6 +1027,44 @@ def test_panel_settings_page_does_not_set_menu_open():
     assert "on_setting=" in ctor
     assert "settings=" in ctor
     assert "strategy=" in ctor
+
+
+def test_apply_hold_line_reloads_open_main_panel_only_when_copy_changes():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    apply = text[text.index("def _apply_hold_line") : text.index("def _drain_engine_events")]
+    assert 'snap["hold_line"] = line' in apply
+    assert "self._reload_main_panel_if_shown()" in apply
+    assert "self._panel.reload()" not in apply
+    assert "panel.reload()" not in apply
+    assert "hold_panel_reload_plan" in apply
+    assert "pressedMouseButtons() & 1" in apply
+    assert "changed or self._hold_reload_pending" in apply
+    assert apply.index("changed or self._hold_reload_pending") < apply.index(
+        "pressedMouseButtons"
+    )
+    assert "reload_now, self._hold_reload_pending = hold_panel_reload_plan" in apply
+    assert "if reload_now:" in apply
+    assert apply.index("if reload_now:") < apply.index(
+        "self._reload_main_panel_if_shown()"
+    )
+    assert apply.count("return") == 1
+    assert "self.snapshot is not snap" in apply
+    assert apply.index("self.snapshot is not snap") < apply.index(
+        "hold_panel_reload_plan"
+    )
+    assert apply.index('snap["hold_line"] = line') < apply.index(
+        "self._reload_main_panel_if_shown()"
+    )
+    assert apply.index("hold_panel_reload_plan") < apply.index(
+        "self._reload_main_panel_if_shown()"
+    )
+    reload_fn = text[
+        text.index("def _reload_main_panel_if_shown") : text.index("def _stop_engine")
+    ]
+    assert "== MAIN_PAGE" in reload_fn
+    assert "SETTINGS_PAGE" not in reload_fn
+    assert "is_shown()" in reload_fn
+    assert "panel.reload()" in reload_fn
 
 
 def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():

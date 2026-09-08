@@ -1080,6 +1080,23 @@ def extra_hold_line(
     )
 
 
+def hold_panel_reload_plan(
+    *, copy_changed: bool, pending: bool, left_mouse_down: bool
+) -> tuple[bool, bool]:
+    """Whether to rebuild the open extra for a hold-copy change.
+
+    Returns ``(reload_now, pending)``. A 1s tick must not rebuild under a
+    card click: ``mouseUp_`` fires the switch, and replacing the view tree
+    first swallows it. Defer until the left button is up.
+    """
+    pending = pending or copy_changed
+    if not pending:
+        return False, False
+    if left_mouse_down:
+        return False, True
+    return True, False
+
+
 def hold_line_from_event(
     event,
     *,
@@ -1483,6 +1500,7 @@ def run(switcher) -> int:
             self._hold_event = None
             self._hold_slot = None
             self._tick_slot = None
+            self._hold_reload_pending = False
             self._event_lock = threading.Lock()
             self._panel = None
             self._kickoff_running = False
@@ -1586,9 +1604,10 @@ def run(switcher) -> int:
             if self._dirty:
                 self._dirty = False
                 self.rebuild_menu()
-                # Never reload the popover from this 1s tick. An open Settings
-                # page would lose controls; a main-page reload mid-click
-                # swallows the account-row mouseUp.
+                # Dirty path must not reload the popover: Settings would lose
+                # controls, and a main-page reload mid-click swallows mouseUp.
+                # Hold copy is applied below and reloads the open main page
+                # only when it changes, deferred while the left button is down.
             self._detect_active_change()
             self._drain_engine_events()
             self._apply_hold_line()
@@ -1733,13 +1752,29 @@ def run(switcher) -> int:
         def _apply_hold_line(self):
             # Mutate in place. Rebinding self.snapshot from the UI thread can
             # drop a newer worker snapshot that landed between the copy and
-            # the write-back.
+            # the write-back. Reload the open main page only when copy
+            # actually changed (or a deferred reload is waiting), so the 1s
+            # tick does not rebuild under a click every second. Defer while
+            # the left button is down so card mouseUp still fires. Settings
+            # keeps its controls.
             snap = self.snapshot
             line = self._hold_line_for(snap)
-            if snap.get("hold_line") == line:
+            if self.snapshot is not snap:
                 return
-            if self.snapshot is snap:
+            changed = snap.get("hold_line") != line
+            if changed:
                 snap["hold_line"] = line
+            left_down = False
+            if changed or self._hold_reload_pending:
+                import AppKit
+                left_down = bool(AppKit.NSEvent.pressedMouseButtons() & 1)
+            reload_now, self._hold_reload_pending = hold_panel_reload_plan(
+                copy_changed=changed,
+                pending=self._hold_reload_pending,
+                left_mouse_down=left_down,
+            )
+            if reload_now:
+                self._reload_main_panel_if_shown()
 
         def _drain_engine_events(self):
             with self._event_lock:
