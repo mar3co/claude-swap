@@ -1646,17 +1646,17 @@ class SwitchMixin:
         )
 
     def _refuse_session_shell(self) -> None:
-        """Refuse live-store mutation from inside a ``openswap run`` shell.
+        """Refuse live-store mutation from inside a leftover session-profile shell.
 
         A ``CLAUDE_CONFIG_DIR`` pointing inside a session profile means this
-        shell IS a session — its "live store" is the profile, not the
-        default login; a switch/add here would splice the default sequence
-        against the wrong live store (mirrors SessionManager's own guard).
-        Called by every entry point that mutates the live store or the
-        roster. There is no single chokepoint to hang this on: the one it
-        used to claim was `_perform_switch`, which covers the switch family
-        only, so `remove_account`, `swap_accounts`, `move_account`, `purge`
-        and the alias setters all ran happily inside a session shell —
+        shell's "live store" is the profile, not the default login; a
+        switch/add here would splice the default sequence against the wrong
+        live store (mirrors SessionManager's own guard). Called by every
+        entry point that mutates the live store or the roster. There is no
+        single chokepoint to hang this on: the one it used to claim was
+        `_perform_switch`, which covers the switch family only, so
+        `remove_account`, `swap_accounts`, `move_account`, `purge` and the
+        alias setters all ran happily inside a session shell —
         `remove_account` deleting the session profile of the very shell it
         was running in. Nine call sites is the honest cost of that.
         """
@@ -1670,7 +1670,7 @@ class SwitchMixin:
         except ValueError:
             return
         raise SwitchError(
-            "This shell is inside a openswap run session profile "
+            "This shell is inside a leftover session profile "
             "(CLAUDE_CONFIG_DIR points at it). Mutating accounts here would "
             "operate on the wrong live store — unset CLAUDE_CONFIG_DIR "
             "or run from a normal shell."
@@ -1745,8 +1745,8 @@ class SwitchMixin:
                         f"(PID {', '.join(map(str, pids))}). Running the same "
                         "account as both the default login and a session can make "
                         "one copy's token go stale if the server rotates it. If the "
-                        "session later fails to authenticate, exit it and re-run "
-                        f"'openswap run {target_account}'."
+                        "session later fails to authenticate, exit that Claude "
+                        "process and use `openswap switch` or the extra."
                     )
                     if emit_output:
                         warning(msg)
