@@ -525,6 +525,8 @@ class SwitchMixin:
                             raise ConfigError(
                                 f"Slot {slot} occupant changed; nothing was added. Retry."
                             )
+                else:
+                    displace_slot = None
             migrate_from = None
             old_num = self._find_account_slot(data, current_email, current_org_uuid)
             if old_num and old_num != account_num:
@@ -810,6 +812,8 @@ class SwitchMixin:
                             raise ConfigError(
                                 f"Slot {slot} occupant changed; nothing was added. Retry."
                             )
+                else:
+                    displace_slot = None
             migrate_from = None
             old_num = self._find_account_slot(data, email, "")
             if old_num and old_num != account_num:
