@@ -20,7 +20,7 @@ Card title is the alias or org tag (`personal` when the org name is empty); emai
 
 ## Title width
 
-AppKit’s default text extra is ~10pt inset per side. With the asterisk off that left inset is empty. `fit_status_item(..., compact=not show_icon, title=...)` writes the title on the status-item **button** (rumps still uses the deprecated `NSStatusItem.setTitle_`), clears the image, and sets length to measured title plus `STATUS_ITEM_COMPACT_PAD` (6pt total) when compact. Call it after every title rebuild and on popover attach. A sentinel on the active slot still titles from `last_good` (`title_usage`).
+AppKit’s default text extra is ~10pt inset per side. With the asterisk off that left inset is empty. `fit_status_item(..., compact=not show_icon, title=...)` writes the title on the status-item **button** (rumps still uses the deprecated `NSStatusItem.setTitle_`), clears the image, and sets length to measured title plus `STATUS_ITEM_COMPACT_PAD` (6pt total) when compact. Call it after every title rebuild and on popover attach. A sentinel on the active slot still titles from `last_good` (`title_usage`), frozen at `fetched_at` so a passed weekly reset does not paint as a fresh 0%.
 
 ## Appearance
 

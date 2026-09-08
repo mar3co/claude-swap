@@ -1160,6 +1160,7 @@ def test_adapt_snapshot_shape_and_active_selection():
     assert snap["active_num"] == "1"
     assert snap["active_usage"] == lg
     assert snap["active_last_good"] == lg
+    assert snap["active_fetched_at"] == 123.0
     assert snap["active_alias"] == ""
     assert snap["active_org"] == ""
     # (num, email, is_active, display, last_good, alias, org_name, disabled, fetched_at)
@@ -1203,14 +1204,30 @@ def test_adapt_snapshot_keeps_last_good_when_active_is_sentinel():
             "2",
             "a@x.com",
             True,
-            _FakeEntry(sentinel=USAGE_FOREIGN_CREDENTIAL, last_good=lg),
+            _FakeEntry(
+                sentinel=USAGE_FOREIGN_CREDENTIAL, last_good=lg, fetched_at=55.0
+            ),
             alias="adsonline",
         ),
     ]
     snap = menubar._adapt_snapshot(_FakeSnap(accts))
     assert snap["active_usage"] == menubar.SENTINEL_NOTES[USAGE_FOREIGN_CREDENTIAL]
     assert snap["active_last_good"] == lg
+    assert snap["active_fetched_at"] == 55.0
     assert menubar.title_usage(snap) == lg
+
+
+def test_title_clock_freezes_sentinel_last_good():
+    note = menubar.SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED]
+    snap = {
+        **menubar.EMPTY_SNAPSHOT,
+        "active_usage": note,
+        "active_fetched_at": 123.0,
+    }
+    assert menubar.title_clock(snap, now=999.0) == 123.0
+    live = {**menubar.EMPTY_SNAPSHOT, "active_usage": {"five_hour": {"pct": 1.0}}}
+    assert menubar.title_clock(live, now=999.0) == 999.0
+    assert menubar.title_clock(menubar.EMPTY_SNAPSHOT, now=999.0) == 999.0
 
 
 # --- weekly reset roll-forward (static 7-day cadence) --------------------------
@@ -1257,6 +1274,13 @@ def test_format_title_reflects_passed_weekly_reset():
     s = menubar.MenuBarSettings(show_account_name=False, title_pct="7d")
     usage = {"seven_day": {"pct": 95.0, "resets_at": _iso(-86400)}}
     assert menubar.format_title("a@x.com", usage, s, _NOW) == "0%"
+
+
+def test_format_title_sentinel_last_good_does_not_roll():
+    s = menubar.MenuBarSettings(show_account_name=False, title_pct="7d")
+    usage = {"seven_day": {"pct": 95.0, "resets_at": _iso(-86400)}}
+    fetched = _NOW - 3 * 86400
+    assert menubar.format_title("a@x.com", usage, s, fetched) == "95%"
 
 
 # --- notification copy --------------------------------------------------------
@@ -1478,6 +1502,40 @@ def test_panel_accounts_relogin_keeps_windows_and_uses_extra_copy():
     assert "openswap" not in cards[0]["note"]
     assert [w["label"] for w in cards[0]["windows"]] == ["5h", "7d"]
     assert cards[0]["windows"][0]["pct"] == 42.0
+    assert cards[0]["fetched_at"] is None
+
+
+def test_panel_accounts_signed_out_does_not_roll_or_tick_last_good():
+    usage = {
+        "five_hour": {"pct": 42.0, "resets_at": _iso(2 * 3600)},
+        "seven_day": {"pct": 95.0, "resets_at": _iso(-86400)},
+    }
+    fetched = _NOW - 3 * 86400
+    snap = {
+        "accounts": [
+            (
+                1,
+                "a@x.com",
+                False,
+                menubar.SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED],
+                usage,
+                "personal",
+                "",
+                False,
+                fetched,
+            ),
+        ]
+    }
+    cards = menubar.panel_accounts(snap, now=_NOW)
+    assert cards[0]["fetched_at"] == fetched
+    seven = next(w for w in cards[0]["windows"] if w["label"] == "7d")
+    five = next(w for w in cards[0]["windows"] if w["label"] == "5h")
+    assert seven["pct"] == 95.0
+    assert five["pct"] == 42.0
+    assert seven["countdown"] is None
+    assert seven["resets_at_ts"] is None
+    assert five["countdown"] is None
+    assert five["resets_at_ts"] is None
 
 
 def test_panel_accounts_foreign_note_is_not_relogin():

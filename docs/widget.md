@@ -35,7 +35,7 @@ No App Group: that needs the Developer Portal. The home-relative sandbox excepti
 
 ## Families
 
-`systemSmall` (up to 2, most remaining on the primary window, not locked to active), `systemMedium` (up to 3, slot order), `systemLarge` (up to 6), `systemExtraLarge` (up to 10). Combined remaining is a hero `remaining / total` for 5h and/or 7d (each healthy account is one slot; percentages are not averaged). Timeline: 30 one-minute entries, then `.after(30m)`. Countdown uses `resets_at_ts` from the snapshot, not a frozen string. Snapshot older than 10 minutes shows an “Updated … ago” footer.
+`systemSmall` (up to 2, most remaining on the primary window, not locked to active), `systemMedium` (up to 3, slot order), `systemLarge` (up to 6), `systemExtraLarge` (up to 10). Combined remaining is a hero `remaining / total` for 5h and/or 7d (each healthy account is one slot; percentages are not averaged). Timeline: 30 one-minute entries, then `.after(30m)`. Countdown uses `resets_at_ts` from the snapshot, not a frozen string. `updated_at` is the last usage measurement (live slots, else last-good), not extra paint time. Older than 10 minutes shows an "Updated … ago" footer. Signed-out cards keep last-good bars but omit a live reset clock.
 
 `accessoryCircular` / `accessoryRectangular` are iOS Lock Screen and watchOS complications only (`@available(macOS, unavailable)`). This companion is a macOS widget, so those families are not declared. There are no chrome action buttons; the account block (or combined hero) is the tap target.
 

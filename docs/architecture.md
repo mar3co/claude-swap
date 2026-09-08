@@ -42,7 +42,7 @@
 | Popover UI | `menubar_panel.py` | AppKit, imported after rumps |
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
 | Session `openswap run` | `session.py` | Must not POSIX-`exec` the extra |
-| Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; extension reads |
+| Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; `updated_at` is last usage measurement, not extra paint time |
 | Widget build | `widget_install.py` | `xcodebuild` + LaunchAgent |
 
 The extra is a thin shell. It must not re-implement quota math, ranking, or credential writes. It must not call `_get_current_account`, `_account_kind`, or `_get_sequence_data`; kind and live `(email, orgUuid)` are on the snapshot / `Engine.live_identity`.

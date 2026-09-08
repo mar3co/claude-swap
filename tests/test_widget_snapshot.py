@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from openswap import widget_snapshot as ws
-from openswap.menubar import panel_windows
+from openswap.menubar import SENTINEL_NOTES, panel_windows
+from openswap.switcher import USAGE_RELOGIN_REQUIRED
 
 _NOW = 1_000_000.0
 _USAGE = {
@@ -42,6 +43,50 @@ def test_build_payload_stringifies_num_and_keeps_windows():
     assert payload["combined"]["five_hour"]["total"] == 1
     assert payload["combined"]["five_hour"]["switch_num"] == "1"
     assert payload["combined"]["seven_day"]["remaining"] == 0.82
+
+
+def test_build_payload_updated_at_is_measurement_not_paint():
+    fetched = _NOW - 3600
+    snap = {
+        "accounts": [
+            (1, "a@x.com", True, _USAGE, _USAGE, "personal", "", False, fetched),
+        ]
+    }
+    payload = ws.build_widget_payload(snap, now=_NOW)
+    assert payload["updated_at"] == fetched
+    assert payload["accounts"][0]["fetched_at"] == fetched
+
+
+def test_build_payload_updated_at_signed_out_uses_last_good_fetch():
+    fetched = _NOW - 7200
+    snap = {
+        "accounts": [
+            (
+                1,
+                "a@x.com",
+                False,
+                SENTINEL_NOTES[USAGE_RELOGIN_REQUIRED],
+                _USAGE,
+                "personal",
+                "",
+                False,
+                fetched,
+            ),
+        ]
+    }
+    payload = ws.build_widget_payload(snap, now=_NOW)
+    assert payload["updated_at"] == fetched
+    for window in payload["accounts"][0]["windows"]:
+        assert window["countdown"] is None
+        assert window["resets_at_ts"] is None
+
+
+def test_snapshot_updated_at_prefers_live_over_signed_out():
+    accounts = [
+        _card(1, "personal", 20, fetched_at=_NOW - 60),
+        _card(2, "dead", 10, needs_relogin=True, fetched_at=_NOW - 7200),
+    ]
+    assert ws.snapshot_updated_at(accounts, _NOW) == _NOW - 60
 
 
 def test_panel_windows_exposes_resets_at_ts_for_the_widget():
@@ -162,7 +207,7 @@ def _card(num, title, pct_5h, pct_7d=None, **kwargs):
                 "maxed": False,
             }
         )
-    return {
+    card = {
         "num": num,
         "title": title,
         "subtitle": "",
@@ -172,6 +217,9 @@ def _card(num, title, pct_5h, pct_7d=None, **kwargs):
         "needs_relogin": kwargs.get("needs_relogin", False),
         "windows": windows,
     }
+    if "fetched_at" in kwargs:
+        card["fetched_at"] = kwargs["fetched_at"]
+    return card
 
 
 def test_remaining_fraction_clamps():

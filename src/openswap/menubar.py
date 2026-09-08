@@ -967,6 +967,20 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
         note = extra_note_for_display(display)
         usage = display if isinstance(display, dict) else last_good
         title, subtitle = account_card_names(email, alias, org_name)
+        as_of = now
+        if needs_relogin and isinstance(fetched_at, (int, float)):
+            as_of = float(fetched_at)
+        windows = panel_windows(
+            usage if isinstance(usage, dict) else None, as_of, fetched_at
+        )
+        if needs_relogin:
+            # Last-good bars stay, but the reset clock is not live: ticking
+            # countdown / wall-clock weekly roll would paint stale quota as
+            # a fresh measurement (issue #4).
+            windows = [
+                {**win, "countdown": None, "resets_at_ts": None}
+                for win in windows
+            ]
         cards.append(
             {
                 "num": num,
@@ -976,9 +990,8 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
                 "disabled": bool(disabled),
                 "note": note,
                 "needs_relogin": needs_relogin,
-                "windows": panel_windows(
-                    usage if isinstance(usage, dict) else None, now, fetched_at
-                ),
+                "fetched_at": fetched_at,
+                "windows": windows,
             }
         )
     return cards
@@ -1202,6 +1215,7 @@ EMPTY_SNAPSHOT: dict = {
     "active_num": None,
     "active_usage": None,
     "active_last_good": None,
+    "active_fetched_at": None,
     "active_alias": None,
     "active_org": None,
     "identities": {},
@@ -1215,16 +1229,18 @@ def _adapt_snapshot(snap) -> dict:
     Shape: ``{"accounts": [(num, email, is_active, display_usage, last_good, alias, org_name, disabled, fetched_at), ...],
     "active_email": str | None, "active_num": str | None,
     "active_usage": dict | str | None, "active_last_good": dict | None,
+    "active_fetched_at": float | None,
     "active_alias": str | None, "active_org": str | None}``. The snapshot itself is produced by
     ``SnapshotSource`` (the paced read path), so this is a pure transform — no
     fetching, no I/O. Per-account ``fetched_at`` is the underlying
-    measurement's fetch time, used only for the pace marker (issue #125).
+    measurement's fetch time (pace marker, signed-out freeze, widget age).
     """
     accounts = []
     active_email = None
     active_num = None
     active_usage = None
     active_last_good = None
+    active_fetched_at = None
     active_alias = None
     active_org = None
     identities: dict[str, tuple[str, str]] = {}
@@ -1247,12 +1263,14 @@ def _adapt_snapshot(snap) -> dict:
             active_org = org_name
             active_num = str(acc.number)
             active_last_good = acc.usage.last_good
+            active_fetched_at = acc.usage.fetched_at
     return {
         "accounts": accounts,
         "active_email": active_email,
         "active_num": active_num,
         "active_usage": active_usage,
         "active_last_good": active_last_good,
+        "active_fetched_at": active_fetched_at,
         "active_alias": active_alias,
         "active_org": active_org,
         "identities": identities,
@@ -1273,6 +1291,22 @@ def title_usage(snapshot: dict) -> dict | str | None:
     if isinstance(last, dict):
         return last
     return usage
+
+
+def title_clock(snapshot: dict, now: float | None = None) -> float:
+    """Clock ``format_title`` should use for last-good vs live measurements.
+
+    Sentinel active slots still title from ``last_good``. Rolling those
+    windows against wall-clock ``now`` zeros a weekly bar that we have not
+    re-fetched, which looks like a fresh 0%. Freeze at ``active_fetched_at``.
+    """
+    if now is None:
+        now = time.time()
+    if isinstance(snapshot.get("active_usage"), str):
+        fetched = snapshot.get("active_fetched_at")
+        if isinstance(fetched, (int, float)):
+            return float(fetched)
+    return now
 
 
 def should_notify_manual_switch(result: dict | None) -> bool:
@@ -1667,6 +1701,7 @@ def run(switcher) -> int:
                 self.snapshot["active_email"],
                 title_usage(self.snapshot),
                 self.settings,
+                now=title_clock(self.snapshot),
                 alias=self.snapshot.get("active_alias"),
                 org_name=self.snapshot.get("active_org"),
             )

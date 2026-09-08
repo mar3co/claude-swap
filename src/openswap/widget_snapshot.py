@@ -175,6 +175,31 @@ def build_combined(accounts: list[dict], now: float) -> dict:
     return out
 
 
+def snapshot_updated_at(accounts: list[dict], now: float) -> float:
+    """When the bars in this payload were measured, not when the extra painted.
+
+    Extra writes this file on a 1s tick. Stamping paint time made the widget
+    footer treat signed-out last-good (and any store-served row) as fresh.
+    Live cards contribute their ``fetched_at``; if every card is signed-out
+    or disabled, last-good fetch time still wins over paint time.
+    """
+    live: list[float] = []
+    any_fetch: list[float] = []
+    for card in accounts:
+        ts = card.get("fetched_at")
+        if not isinstance(ts, (int, float)):
+            continue
+        stamp = float(ts)
+        any_fetch.append(stamp)
+        if not card.get("disabled") and not card.get("needs_relogin"):
+            live.append(stamp)
+    if live:
+        return max(live)
+    if any_fetch:
+        return max(any_fetch)
+    return now
+
+
 def build_widget_payload(snapshot: dict, now: float | None = None) -> dict:
     """JSON-friendly cards from a menubar snapshot dict."""
     if now is None:
@@ -186,7 +211,7 @@ def build_widget_payload(snapshot: dict, now: float | None = None) -> dict:
         accounts.append(item)
     return {
         "schema": SCHEMA_VERSION,
-        "updated_at": now,
+        "updated_at": snapshot_updated_at(accounts, now),
         "accounts": accounts,
         "combined": build_combined(accounts, now),
     }
