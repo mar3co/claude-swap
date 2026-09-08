@@ -34,6 +34,7 @@
 | Identity | `engine/identity.py` | `(email, organizationUuid)` |
 | Consume | `engine/consume.py` | One-time refresh CAS + unclaimed stash |
 | Switch / capture | `engine/switch.py` | Classify outgoing live bytes before write |
+| Isolated session profile | `session.py` | Idle-slot kickoff bootstrap; must not POSIX-`exec` the extra |
 | Idle-slot kickoff profile | `engine/session_profile.py` | Isolated `CLAUDE_CONFIG_DIR`; live kickoff is `claude -p` in place |
 | Snapshot assembler | `engine/snapshot.py` | Store-only (`fetch=set()`) is roster-only: **does not read idle or active-slot backup credentials**. Unread idle is not `USAGE_NO_CREDENTIALS`. At most one live credential read per snapshot. |
 | Auto-switch policy | `autoswitch.py` | UI-agnostic events; CLI and extra host it |
@@ -41,7 +42,6 @@
 | Extra display knobs | `menubar.MenuBarSettings` | `menubar_settings.json` only |
 | Popover UI | `menubar_panel.py` | AppKit, imported after rumps |
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
-| Session `openswap run` | `session.py` | Must not POSIX-`exec` the extra |
 | Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; `updated_at` is last usage measurement, not extra paint time |
 | Widget build | `widget_install.py` | `xcodebuild` + LaunchAgent |
 
@@ -67,7 +67,7 @@ Credentials on macOS are Keychain, not files in the backup dir.
 
 ## Product surface
 
-OpenSwap ships for macOS (extra, widget, kickoff, Keychain). The engine still has Windows/Linux branches from upstream; we do not promise those platforms. API-key slots (`openswap add-token`, extra → Add account) are first-class to switch to. They have no 5h/7d quota, so kickoff and autoswitch skip them unless `autoswitch.includeApiKeyAccounts` is on. `openswap run` is OAuth-only.
+OpenSwap ships for macOS (extra, widget, kickoff, Keychain). The engine still has Windows/Linux branches from upstream; we do not promise those platforms. API-key slots (`openswap add-token`, extra → Add account) are first-class to switch to. They have no 5h/7d quota, so kickoff and autoswitch skip them unless `autoswitch.includeApiKeyAccounts` is on.
 
 ## Constraints we keep
 

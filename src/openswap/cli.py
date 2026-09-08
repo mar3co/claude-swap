@@ -17,7 +17,6 @@ from openswap.printer import (
     error,
     force_utf8_output,
     muted,
-    warning,
 )
 from openswap.settings import load_ui_settings
 from openswap.engine import Engine
@@ -50,7 +49,7 @@ def _prog_name() -> str:
 # users type `openswap list`, `openswap status`, `openswap add`, etc. instead of `--list`
 # / `--status` / `--add-account`, which all still work. `switch` is special-cased
 # below (a bare `switch` rotates; `switch <target>` jumps to one account) and
-# `run`/`auto` keep their own pre-dispatch parsers, so none of those are listed here.
+# `auto` keeps its own pre-dispatch parser, so none of those are listed here.
 _SUBCOMMAND_FLAGS = {
     "help": "--help",
     "list": "--list",
@@ -99,253 +98,12 @@ def _translate_subcommand(argv: list[str]) -> list[str]:
     return argv
 
 
-def _run_command(argv: list[str]) -> None:
-    """Handle `openswap run NUM|EMAIL [--no-share] [-- <claude args>]`.
-
-    Pre-dispatched before the main parser is built: a positional subcommand
-    can't coexist with main()'s mutually-exclusive flag group, and this keeps
-    the existing parser untouched. Limitation: `run` must be the
-    first argument (`openswap --debug run 2` is not supported; use
-    `openswap run 2 --debug`).
-
-    On POSIX this execs claude and never returns; on Windows it exits with
-    claude's return code. Either way the post-dispatch update check in
-    main() is unreachable, which is intended.
-    """
-    # Everything after the first `--` is forwarded to claude verbatim.
-    if "--" in argv:
-        split = argv.index("--")
-        head, tail = argv[:split], argv[split + 1 :]
-    else:
-        head, tail = argv, []
-
-    parser = argparse.ArgumentParser(
-        prog=f"{_prog_name()} run",
-        description=(
-            "[EXPERIMENTAL] Launch Claude Code as a stored account in this "
-            "terminal only (the default login and other terminals are "
-            "unaffected)."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  openswap run 2
-  openswap run user@example.com
-  openswap run 2 --no-share
-  openswap run 2 --share-history
-  openswap run 2 --require-session
-  openswap run 2 -- --resume
-        """,
-    )
-    parser.add_argument(
-        "account",
-        nargs="?",
-        metavar="NUM|EMAIL",
-        help="Account to run (number or email). Omit to use the current "
-        "directory's mapping (see `openswap map`).",
-    )
-    parser.add_argument(
-        "--no-share",
-        action="store_true",
-        help=(
-            "Don't share settings/keybindings/CLAUDE.md/skills/commands/agents "
-            "from ~/.claude into the session profile (and remove previously "
-            "shared items)"
-        ),
-    )
-    parser.add_argument(
-        "--share-history",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Share conversation history (projects/ and history.jsonl) from "
-            "~/.claude into the session profile, so every account sees one "
-            "unified history. History the profile already accumulated is "
-            "merged into ~/.claude first. --no-share-history restores "
-            "per-account history (the default). Not supported on Windows."
-        ),
-    )
-    parser.add_argument(
-        "--require-session",
-        action="store_true",
-        help=(
-            "Refuse to launch when the account is already the active default "
-            "login, instead of running plain claude on that login (which a "
-            "later switch could pull out from under the session)"
-        ),
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging",
-    )
-    args = parser.parse_args(head)
-
-    try:
-        switcher = ClaudeAccountSwitcher(debug=args.debug)
-        _guard_root(switcher)
-
-        from openswap.session import SessionManager
-
-        manager = SessionManager(switcher)
-
-        if args.account is not None:
-            manager.run(
-                args.account,
-                tail,
-                share=not args.no_share,
-                share_history=args.share_history,
-                require_session=args.require_session,
-            )
-            return  # only reachable in tests where exec/exit is mocked
-
-        # No account given: resolve from the current directory's mapping.
-        slot, email = switcher.slot_for_directory(os.getcwd())
-        if slot is not None:
-            manager.run(
-                slot,
-                tail,
-                share=not args.no_share,
-                share_history=args.share_history,
-                require_session=args.require_session,
-            )
-            return  # only reachable in tests
-        if email is not None:
-            warning(
-                f"Mapped account {email} no longer exists — "
-                "launching the default account."
-            )
-        else:
-            print(
-                dimmed(
-                    f"No account mapped for {os.getcwd()} — "
-                    "launching the default account."
-                )
-            )
-        manager.exec_default(tail)
-    except ClaudeSwitchError as e:
-        error(f"Error: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print(f"\n{dimmed('Operation cancelled')}")
-        sys.exit(130)
-
-
 def _guard_root(switcher: Engine) -> None:  # Engine ≡ ClaudeAccountSwitcher
-    """Refuse to run as root outside a container (shared by run/map/unmap)."""
+    """Refuse to run as root outside a container."""
     if sys.platform != "win32":
         if os.geteuid() == 0 and not switcher._is_running_in_container():
             error("Error: Do not run this script as root (unless running in a container)")
             sys.exit(1)
-
-
-def _map_command(argv: list[str]) -> None:
-    """Handle `openswap map [NUM|EMAIL] [PATH]`.
-
-    With no NUM|EMAIL, lists all mappings. Otherwise maps PATH (default: the
-    current directory) to the given account. Pre-dispatched before the main
-    parser for the same reason as `run` (the main parser's required
-    mutually-exclusive group can't hold a positional subcommand).
-    """
-    parser = argparse.ArgumentParser(
-        prog="openswap map",
-        description=(
-            "Map a stored account to a directory so `openswap run` (with no "
-            "account) auto-launches it there. With no arguments, lists all "
-            "mappings."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  openswap map 2 ~/work/client-app
-  openswap map user@example.com          # map the current directory
-  openswap map                           # list all mappings
-        """,
-    )
-    parser.add_argument(
-        "account",
-        nargs="?",
-        metavar="NUM|EMAIL",
-        help="Account to map (number or email). Omit to list mappings.",
-    )
-    parser.add_argument(
-        "path",
-        nargs="?",
-        metavar="PATH",
-        help="Directory to map (default: current directory)",
-    )
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args(argv)
-
-    try:
-        switcher = ClaudeAccountSwitcher(debug=args.debug)
-        _guard_root(switcher)
-
-        if args.account is None:
-            switcher.list_mappings()
-            return
-
-        from openswap.mappings import MappingStore, normalize_path
-
-        store = MappingStore(switcher.backup_dir)
-        account_num, email, org_uuid = switcher.resolve_account(args.account)
-        target = args.path or os.getcwd()
-        if not os.path.isdir(target):
-            warning(f"Warning: {target} is not an existing directory (mapping it anyway)")
-        previous = store.get(target)
-        store.set(target, email, org_uuid)
-
-        shown = normalize_path(target)
-        if previous and previous.get("email") != email:
-            prev_email = previous.get("email")
-            print(
-                f"{accent('Mapped')} {shown} → Account-{account_num} ({email}) "
-                f"{muted(f'(was {prev_email})')}"
-            )
-        else:
-            print(f"{accent('Mapped')} {shown} → Account-{account_num} ({email})")
-    except ClaudeSwitchError as e:
-        error(f"Error: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print(f"\n{dimmed('Operation cancelled')}")
-        sys.exit(130)
-
-
-def _unmap_command(argv: list[str]) -> None:
-    """Handle `openswap unmap [PATH]` — remove a directory→account mapping."""
-    parser = argparse.ArgumentParser(
-        prog="openswap unmap",
-        description="Remove a directory → account mapping (default: current directory).",
-    )
-    parser.add_argument(
-        "path",
-        nargs="?",
-        metavar="PATH",
-        help="Directory to unmap (default: current directory)",
-    )
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args(argv)
-
-    try:
-        switcher = ClaudeAccountSwitcher(debug=args.debug)
-        _guard_root(switcher)
-
-        from openswap.mappings import MappingStore, normalize_path
-
-        store = MappingStore(switcher.backup_dir)
-        target = args.path or os.getcwd()
-        shown = normalize_path(target)
-        if store.remove(target):
-            print(f"{accent('Unmapped')} {shown}")
-        else:
-            print(dimmed(f"No mapping for {shown}"))
-    except ClaudeSwitchError as e:
-        error(f"Error: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print(f"\n{dimmed('Operation cancelled')}")
-        sys.exit(130)
 
 
 def _unclaimed_command(argv: list[str]) -> None:
@@ -505,7 +263,7 @@ def _alias_command(argv: list[str]) -> None:
 
     With no arguments, lists all aliases. Otherwise sets (or, with --unset,
     removes) the alias for the given account. Pre-dispatched before the main
-    parser for the same reason as `map` (the main parser's required
+    parser for the same reason as `auto` (the main parser's required
     mutually-exclusive group can't hold a positional subcommand).
     """
     parser = argparse.ArgumentParser(
@@ -513,7 +271,7 @@ def _alias_command(argv: list[str]) -> None:
         description=(
             "Set, remove, or list a short display alias for an account. "
             "Once set, the alias can be used anywhere an account number or "
-            "email is accepted (switch, remove, run, map)."
+            "email is accepted (switch, remove)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -578,7 +336,7 @@ Examples:
 def _auto_command(argv: list[str]) -> None:
     """Handle `openswap auto [--once] [--json] [...]`.
 
-    Pre-dispatched before the main parser is built, like `run` (and with the
+    Pre-dispatched before the main parser is built (and with the
     same limitation: `auto` must be the first argument). Runs the auto-switch
     engine — a foreground loop by default, or a single evaluate-and-maybe-
     switch tick with --once whose exit code reports the outcome (for cron/
@@ -751,7 +509,7 @@ Defaults live in settings.json in the backup root; flags override them.
 def _config_command(argv: list[str]) -> None:
     """Handle `openswap config [list|get KEY|set KEY VALUE|unset KEY|path]`.
 
-    Pre-dispatched before the main parser is built, like `run` and `auto`
+    Pre-dispatched before the main parser is built, like `auto`
     (same limitation: `config` must be the first argument). Edits
     settings.json in the backup root with strict validation — unlike loading,
     which forgivingly clamps — so a typo'd key or out-of-range value errors
@@ -921,7 +679,7 @@ def _use_native_tls() -> None:
 def _widget_command(argv: list[str]) -> int:
     """Handle ``openswap widget --install|--uninstall|--status``.
 
-    Pre-dispatched like ``run`` / ``auto`` so it does not require a switcher
+    Pre-dispatched like ``auto`` so it does not require a switcher
     (building the widget must work on a fresh machine before any account is
     added). macOS-only; the install module raises ClaudeSwitchError elsewhere.
     """
@@ -1052,19 +810,15 @@ def main() -> None:
     argv = sys.argv[1:]
     try:
         from openswap.appearance import cli_should_probe, cli_theme
-        # `run` execs a child that takes over the terminal, and `--json`
-        # must stay machine-readable — never probe (and emit the OSC query)
-        # in either case.
+        # `--json` must stay machine-readable — never probe (and emit the
+        # OSC query) in that case.
         probe = cli_should_probe(argv, colors_enabled=printer.colors_enabled())
         name = cli_theme(load_ui_settings(paths.get_backup_root()).theme, colors=probe)
         printer.set_theme(name)
     except Exception:
         pass  # theme is cosmetic; never block the CLI on it
 
-    # `run` and `auto` keep their dedicated pre-dispatch parsers.
-    if argv and argv[0] == "run":
-        _run_command(argv[1:])
-        return  # only reachable in tests where exec/exit is mocked
+    # `auto` keeps its dedicated pre-dispatch parser.
     if argv and argv[0] == "auto":
         _auto_command(argv[1:])
         return  # only reachable in tests where sys.exit is mocked
@@ -1072,12 +826,6 @@ def main() -> None:
         sys.exit(_widget_command(argv[1:]))
     if len(sys.argv) > 1 and sys.argv[1] == "config":
         _config_command(sys.argv[2:])
-        return
-    if argv and argv[0] == "map":
-        _map_command(argv[1:])
-        return
-    if argv and argv[0] == "unmap":
-        _unmap_command(argv[1:])
         return
     if argv and argv[0] == "unclaimed":
         _unclaimed_command(argv[1:])
@@ -1096,6 +844,13 @@ def main() -> None:
         error(
             "The terminal dashboard is gone. Use the macOS extra "
             "or `openswap list`."
+        )
+        sys.exit(2)
+
+    if argv and argv[0] in ("run", "map", "unmap"):
+        error(
+            "Session mode and directory maps are gone. Use the macOS extra "
+            "or `openswap list` / `openswap switch`."
         )
         sys.exit(2)
 
@@ -1124,11 +879,6 @@ Commands:
   %(prog)s remove <num|email>         remove an account
   %(prog)s disable <num|email>        hold an account out of auto-rotation
   %(prog)s enable <num|email>         return a disabled account to rotation
-  %(prog)s run <num|email> [-- ...]   run as an account, this terminal only
-  %(prog)s run                        run the current dir's mapped account
-  %(prog)s map <num|email> [path]     map a directory to an account
-  %(prog)s map                        list directory mappings
-  %(prog)s unmap [path]               remove a directory mapping
   %(prog)s alias <num|email> <name>   set a short alias for an account
   %(prog)s alias <num|email> --unset  remove an account's alias
   %(prog)s alias                      list all aliases
@@ -1156,7 +906,6 @@ Aliases: ls=list  rm=remove  update=upgrade""",
   %(prog)s add --slot 3                      # add to a specific slot
   %(prog)s add-token sk-ant-api03-... --email me@example.com
   %(prog)s add-token sk-ant-oat01-... --email me@example.com
-  %(prog)s run 2 -- --resume                 # forward args after '--' to claude
   %(prog)s auto --once                       # single auto-switch tick (cron-friendly)
   %(prog)s config set autoswitch.threshold 80
 

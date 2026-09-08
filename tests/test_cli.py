@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -115,6 +115,10 @@ class TestCLI:
         assert "list " in result.stdout
         assert " tui" not in result.stdout
         assert " watch" not in result.stdout
+        # Trailing space so "running" in "keep the menu bar running" does not match.
+        assert " run " not in result.stdout
+        assert " map " not in result.stdout
+        assert " unmap " not in result.stdout
         # Hidden legacy flags must not leak into help options.
         options_section = result.stdout.split("Flags combine with subcommands:")[0]
         assert "--add-account" not in options_section
@@ -130,6 +134,35 @@ class TestCLI:
             assert result.returncode == 2
             assert "terminal dashboard is gone" in result.stderr
             assert "openswap list" in result.stderr
+
+    def test_run_map_unmap_are_gone(self):
+        cases = (
+            ["run"],
+            ["run", "2"],
+            ["run", "--help"],
+            ["map"],
+            ["map", "2"],
+            ["map", "--help"],
+            ["unmap"],
+            ["unmap", "/tmp/x"],
+            ["unmap", "--help"],
+        )
+        for argv in cases:
+            result = subprocess.run(
+                [sys.executable, "-m", "openswap", *argv],
+                capture_output=True,
+                text=True,
+                env=_subprocess_env(),
+            )
+            assert result.returncode == 2, argv
+            err = result.stderr
+            assert "gone" in err.lower(), argv
+            assert "extra" in err.lower() or "openswap list" in err or "openswap switch" in err, argv
+            # Must not look like a session launch or argparse help for the old verbs.
+            assert "this terminal only" not in err.lower()
+            assert "this terminal only" not in result.stdout.lower()
+            assert "--no-share" not in result.stdout
+            assert "Directory mappings" not in result.stdout
 
     def test_mutually_exclusive_args(self):
         """Test that mutually exclusive args are enforced."""
@@ -710,93 +743,23 @@ class TestCLICommands:
         assert "--email" in result.stdout  # modifier flag stays visible
 
 
-class TestRunCommand:
-    """`openswap run` pre-dispatch: parsing, forwarding, and dispatch."""
+class TestSessionModeGone:
+    """`openswap run` / `map` / `unmap` are cut; they must not launch a session."""
 
-    def _dispatch(self, argv: list[str]):
-        """Run cli.main() with a fake SessionManager; returns recorded calls."""
-        calls = []
-
-        class FakeSessionManager:
-            def __init__(self, switcher):
-                calls.append(("init", switcher))
-
-            def run(
-                self,
-                identifier,
-                claude_args,
-                share=True,
-                share_history=False,
-                require_session=False,
-            ):
-                calls.append((
-                    "run", identifier, claude_args, share, share_history,
-                    require_session,
-                ))
-
-        with patch("openswap.session.SessionManager", FakeSessionManager), \
-             patch("openswap.cli.ClaudeAccountSwitcher"), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", *argv]):
-            cli.main()
-        return calls
-
-    def test_run_dispatches_with_defaults(self):
-        calls = self._dispatch(["run", "2"])
-        assert ("run", "2", [], True, False, False) in calls
-
-    def test_run_by_email(self):
-        calls = self._dispatch(["run", "user@example.com"])
-        assert ("run", "user@example.com", [], True, False, False) in calls
-
-    def test_no_share_flag(self):
-        calls = self._dispatch(["run", "2", "--no-share"])
-        assert ("run", "2", [], False, False, False) in calls
-
-    def test_share_history_flag(self):
-        calls = self._dispatch(["run", "2", "--share-history"])
-        assert ("run", "2", [], True, True, False) in calls
-
-    def test_no_share_history_flag(self):
-        calls = self._dispatch(["run", "2", "--no-share-history"])
-        assert ("run", "2", [], True, False, False) in calls
-
-    def test_require_session_flag(self):
-        calls = self._dispatch(["run", "2", "--require-session"])
-        assert ("run", "2", [], True, False, True) in calls
-
-    def test_tail_forwarded_verbatim(self):
-        calls = self._dispatch(["run", "2", "--", "--resume", "--model", "x"])
-        assert ("run", "2", ["--resume", "--model", "x"], True, False, False) in calls
-
-    def test_tail_may_contain_run_flags(self):
-        """Args after `--` are NOT parsed by openswap, even if they look like ours."""
-        calls = self._dispatch(["run", "2", "--", "--no-share"])
-        assert ("run", "2", ["--no-share"], True, False, False) in calls
-
-    def test_run_unknown_flag_errors(self, capsys):
-        with patch.object(sys, "argv", ["openswap", "run", "2", "--bogus"]):
-            with pytest.raises(SystemExit) as excinfo:
-                cli.main()
-        assert excinfo.value.code == 2
-
-    def test_run_help(self, capsys):
-        with patch.object(sys, "argv", ["openswap", "run", "--help"]):
-            with pytest.raises(SystemExit) as excinfo:
-                cli.main()
-        assert excinfo.value.code == 0
-        out = capsys.readouterr().out
-        assert "--no-share" in out
-        assert "this terminal only" in out
-
-    def test_main_help_mentions_run(self):
+    def test_main_help_omits_run_map_unmap(self):
         result = subprocess.run(
             [sys.executable, "-m", "openswap", "--help"],
             capture_output=True,
             text=True,
             env=_subprocess_env(),
         )
-        assert "run 2" in result.stdout
+        assert result.returncode == 0
+        # Trailing space so "running" in "keep the menu bar running" does not match.
+        assert " run " not in result.stdout
+        assert " map " not in result.stdout
+        assert " unmap " not in result.stdout
+        assert "this terminal only" not in result.stdout.lower()
+        assert "directory mapping" not in result.stdout.lower()
 
     def test_main_help_mentions_alias(self):
         result = subprocess.run(
@@ -806,33 +769,6 @@ class TestRunCommand:
             env=_subprocess_env(),
         )
         assert "alias <num|email>" in result.stdout
-
-    def test_session_error_exits_cleanly(self, capsys):
-        class FailingSessionManager:
-            def __init__(self, switcher):
-                pass
-
-            def run(
-                self,
-                identifier,
-                claude_args,
-                share=True,
-                share_history=False,
-                require_session=False,
-            ):
-                from openswap.exceptions import SessionError
-
-                raise SessionError("boom")
-
-        with patch("openswap.session.SessionManager", FailingSessionManager), \
-             patch("openswap.cli.ClaudeAccountSwitcher"), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run", "2"]):
-            with pytest.raises(SystemExit) as excinfo:
-                cli.main()
-
-        assert excinfo.value.code == 1
-        assert "boom" in capsys.readouterr().err
 
 
 class TestSubcommandAliases:
@@ -913,30 +849,20 @@ class TestSubcommandAliases:
             show_token_status=False, json_output=True,
         )
 
-    def test_run_subcommand_still_dispatches(self):
-        """`openswap run 2` keeps reaching the session pre-dispatch (not translated)."""
-        calls = []
-
-        class FakeSessionManager:
-            def __init__(self, switcher):
-                pass
-
-            def run(
-                self,
-                identifier,
-                claude_args,
-                share=True,
-                share_history=False,
-                require_session=False,
-            ):
-                calls.append((identifier, claude_args, share))
-
-        with patch("openswap.session.SessionManager", FakeSessionManager), \
-             patch("openswap.cli.ClaudeAccountSwitcher"), \
-             patch("os.geteuid", return_value=1000, create=True), \
+    def test_run_is_not_translated_and_does_not_launch(self, capsys):
+        """`run` is not rewritten to a flag; it exits 2 without a session manager."""
+        assert cli._translate_subcommand(["run", "2"]) == ["run", "2"]
+        with patch("openswap.session.SessionManager") as mgr, \
+             patch("openswap.cli.ClaudeAccountSwitcher") as switcher_cls, \
              patch.object(sys, "argv", ["openswap", "run", "2"]):
-            cli.main()
-        assert calls == [("2", [], True)]
+            with pytest.raises(SystemExit) as excinfo:
+                cli.main()
+        assert excinfo.value.code == 2
+        mgr.assert_not_called()
+        switcher_cls.assert_not_called()
+        err = capsys.readouterr().err
+        assert "gone" in err.lower()
+        assert "extra" in err.lower() or "openswap list" in err or "openswap switch" in err
 
     def test_help_subcommand_prints_help(self):
         """`openswap help` exits 0 and prints help (with subcommand docs)."""
@@ -1296,163 +1222,6 @@ class TestUnclaimedCommand:
         fn.assert_called_once_with(["--purge", "x"])
 
 
-class TestMapCommand:
-    """`openswap map` / `openswap unmap` directory-mapping commands."""
-
-    def _seeded_switcher_env(self, temp_home):
-        """Build a real switcher with one managed account (slot 2)."""
-        switcher = ClaudeAccountSwitcher()
-        switcher._setup_directories()
-        switcher._init_sequence_file()
-        data = switcher._get_sequence_data()
-        data["accounts"]["2"] = {
-            "email": "work@co.com",
-            "uuid": "u2",
-            "organizationUuid": "",
-            "organizationName": "",
-            "added": "2024-01-01T00:00:00Z",
-        }
-        data["sequence"] = [2]
-        switcher._write_json(switcher.sequence_file, data)
-        return switcher
-
-    def test_map_account_to_path(self, temp_home, capsys):
-        from openswap.mappings import MappingStore
-        self._seeded_switcher_env(temp_home)
-        target = temp_home / "proj"
-        target.mkdir()
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command(["2", str(target)])
-
-        store = MappingStore(ClaudeAccountSwitcher().backup_dir)
-        entry = store.get(target)
-        assert entry is not None
-        assert entry["email"] == "work@co.com"
-        assert "Mapped" in capsys.readouterr().out
-
-    def test_map_nonexistent_path_warns_but_maps(self, temp_home, capsys):
-        from openswap.mappings import MappingStore
-        self._seeded_switcher_env(temp_home)
-        target = temp_home / "not-created-yet"
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command(["2", str(target)])
-
-        assert MappingStore(ClaudeAccountSwitcher().backup_dir).get(target) is not None
-        assert "is not an existing directory" in capsys.readouterr().out
-
-    def test_map_by_email_defaults_to_cwd(self, temp_home, monkeypatch, capsys):
-        from openswap.mappings import MappingStore
-        self._seeded_switcher_env(temp_home)
-        cwd = temp_home / "here"
-        cwd.mkdir()
-        monkeypatch.chdir(cwd)
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command(["work@co.com"])
-
-        store = MappingStore(ClaudeAccountSwitcher().backup_dir)
-        assert store.get(cwd) is not None
-
-    def test_map_unknown_account_errors(self, temp_home, capsys):
-        self._seeded_switcher_env(temp_home)
-        with patch("os.geteuid", return_value=1000, create=True):
-            with pytest.raises(SystemExit) as exc:
-                cli._map_command(["999", str(temp_home)])
-        assert exc.value.code == 1
-        assert "Error" in capsys.readouterr().err
-
-    def test_map_list_empty(self, temp_home, capsys):
-        self._seeded_switcher_env(temp_home)
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command([])
-        assert "No directory mappings yet" in capsys.readouterr().out
-
-    def test_map_list_shows_entries(self, temp_home, capsys):
-        from openswap.mappings import MappingStore
-        switcher = self._seeded_switcher_env(temp_home)
-        target = temp_home / "proj"
-        target.mkdir()
-        MappingStore(switcher.backup_dir).set(target, "work@co.com", "")
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command([])
-
-        out = capsys.readouterr().out
-        assert "Directory mappings" in out
-        assert "work@co.com" in out
-        assert "2:" in out  # slot number resolved
-
-    def test_map_list_flags_removed_account(self, temp_home, capsys):
-        from openswap.mappings import MappingStore
-        switcher = self._seeded_switcher_env(temp_home)
-        target = temp_home / "proj"
-        target.mkdir()
-        # Map an account identity that is not in the sequence.
-        MappingStore(switcher.backup_dir).set(target, "ghost@co.com", "")
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._map_command([])
-
-        assert "account removed" in capsys.readouterr().out
-
-    def test_unmap_removes(self, temp_home, capsys):
-        from openswap.mappings import MappingStore
-        switcher = self._seeded_switcher_env(temp_home)
-        target = temp_home / "proj"
-        target.mkdir()
-        store = MappingStore(switcher.backup_dir)
-        store.set(target, "work@co.com", "")
-
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._unmap_command([str(target)])
-
-        assert store.get(target) is None
-        assert "Unmapped" in capsys.readouterr().out
-
-    def test_unmap_nonexistent_notes(self, temp_home, capsys):
-        self._seeded_switcher_env(temp_home)
-        target = temp_home / "proj"
-        target.mkdir()
-        with patch("os.geteuid", return_value=1000, create=True):
-            cli._unmap_command([str(target)])
-        assert "No mapping for" in capsys.readouterr().out
-
-    def test_map_dispatched_from_main(self, temp_home):
-        """`openswap map` routes through main() to _map_command."""
-        with patch("openswap.cli._map_command") as map_fn, \
-             patch.object(sys, "argv", ["openswap", "map", "2", "/tmp/x"]):
-            cli.main()
-        map_fn.assert_called_once_with(["2", "/tmp/x"])
-
-    def test_unmap_dispatched_from_main(self, temp_home):
-        with patch("openswap.cli._unmap_command") as unmap_fn, \
-             patch.object(sys, "argv", ["openswap", "unmap", "/tmp/x"]):
-            cli.main()
-        unmap_fn.assert_called_once_with(["/tmp/x"])
-
-    @pytest.mark.skipif(sys.platform == "win32", reason="root guard is POSIX-only")
-    def test_unmap_refuses_root(self, temp_home, capsys):
-        self._seeded_switcher_env(temp_home)
-        with patch("os.geteuid", return_value=0, create=True), \
-             patch.object(ClaudeAccountSwitcher, "_is_running_in_container", return_value=False):
-            with pytest.raises(SystemExit) as exc:
-                cli._unmap_command([str(temp_home)])
-        assert exc.value.code == 1
-        assert "root" in capsys.readouterr().err
-
-    @pytest.mark.skipif(sys.platform == "win32", reason="root guard is POSIX-only")
-    def test_map_refuses_root(self, temp_home, capsys):
-        self._seeded_switcher_env(temp_home)
-        with patch("os.geteuid", return_value=0, create=True), \
-             patch.object(ClaudeAccountSwitcher, "_is_running_in_container", return_value=False):
-            with pytest.raises(SystemExit) as exc:
-                cli._map_command(["2", str(temp_home)])
-        assert exc.value.code == 1
-        assert "root" in capsys.readouterr().err
-
-
 class TestAliasCommand:
     """`openswap alias` — set/unset/list a short display alias for an account."""
 
@@ -1583,188 +1352,6 @@ class TestAliasCommand:
         assert exc.value.code == 2
         assert "--alias can only be used with 'add'" in capsys.readouterr().err
 
-
-class TestRunAutoResolve:
-    """`openswap run` with no account resolves the cwd's directory mapping."""
-
-    def _fake_manager(self, calls):
-        class FakeSessionManager:
-            def __init__(self, switcher):
-                pass
-
-            def run(
-                self,
-                identifier,
-                claude_args,
-                share=True,
-                share_history=False,
-                require_session=False,
-            ):
-                calls.append(("run", identifier, claude_args, share, share_history))
-
-            def exec_default(self, claude_args):
-                calls.append(("exec_default", claude_args))
-
-        return FakeSessionManager
-
-    def _fake_switcher(self, backup, seq):
-        sw = MagicMock()
-        sw.backup_dir = backup
-        sw._get_sequence_data_migrated.return_value = seq
-        # Use the real resolvers, not MagicMock auto-attrs.
-        sw._find_account_slot = ClaudeAccountSwitcher._find_account_slot
-        sw.slot_for_directory = (
-            lambda d: ClaudeAccountSwitcher.slot_for_directory(sw, d)
-        )
-        return sw
-
-    def test_mapped_dir_runs_resolved_account(self, tmp_path, monkeypatch):
-        from openswap.mappings import MappingStore
-
-        repo = tmp_path / "work" / "client-app"
-        repo.mkdir(parents=True)
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        MappingStore(backup).set(repo, "work@co.com", "org-1")
-        seq = {
-            "accounts": {
-                "2": {
-                    "email": "work@co.com",
-                    "organizationUuid": "org-1",
-                    "organizationName": "Co",
-                }
-            },
-            "sequence": [2],
-        }
-        calls = []
-        monkeypatch.chdir(repo)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, seq)), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run"]):
-            cli.main()
-        assert ("run", "2", [], True, False) in calls
-
-    def test_mapped_subdir_inherits(self, tmp_path, monkeypatch):
-        from openswap.mappings import MappingStore
-
-        repo = tmp_path / "work"
-        sub = repo / "client" / "src"
-        sub.mkdir(parents=True)
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        MappingStore(backup).set(repo, "work@co.com", "")
-        seq = {
-            "accounts": {"2": {"email": "work@co.com", "organizationUuid": "",
-                                "organizationName": ""}},
-            "sequence": [2],
-        }
-        calls = []
-        monkeypatch.chdir(sub)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, seq)), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run"]):
-            cli.main()
-        assert ("run", "2", [], True, False) in calls
-
-    def test_unmapped_dir_falls_back_to_default(self, tmp_path, monkeypatch, capsys):
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        scratch = tmp_path / "scratch"
-        scratch.mkdir()
-        calls = []
-        monkeypatch.chdir(scratch)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run"]):
-            cli.main()
-        assert ("exec_default", []) in calls
-        assert "No account mapped" in capsys.readouterr().out
-
-    def test_removed_account_falls_back_with_warning(self, tmp_path, monkeypatch, capsys):
-        from openswap.mappings import MappingStore
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        MappingStore(backup).set(repo, "ghost@co.com", "")
-        calls = []
-        monkeypatch.chdir(repo)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run"]):
-            cli.main()
-        assert ("exec_default", []) in calls
-        assert "no longer exists" in capsys.readouterr().out
-
-    def test_explicit_account_still_runs(self, tmp_path, monkeypatch):
-        """An explicit account argument bypasses mapping resolution."""
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        calls = []
-        monkeypatch.chdir(tmp_path)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, {"accounts": {}, "sequence": []})), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run", "3"]):
-            cli.main()
-        assert ("run", "3", [], True, False) in calls
-
-    def test_no_account_forwards_tail(self, tmp_path, monkeypatch):
-        from openswap.mappings import MappingStore
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        MappingStore(backup).set(repo, "work@co.com", "")
-        seq = {
-            "accounts": {"2": {"email": "work@co.com", "organizationUuid": "",
-                                "organizationName": ""}},
-            "sequence": [2],
-        }
-        calls = []
-        monkeypatch.chdir(repo)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, seq)), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run", "--", "--resume"]):
-            cli.main()
-        assert ("run", "2", ["--resume"], True, False) in calls
-
-    def test_no_account_forwards_share_history(self, tmp_path, monkeypatch):
-        """--share-history survives the mapped-account resolution path."""
-        from openswap.mappings import MappingStore
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        backup = tmp_path / "backup"
-        backup.mkdir()
-        MappingStore(backup).set(repo, "work@co.com", "")
-        seq = {
-            "accounts": {"2": {"email": "work@co.com", "organizationUuid": "",
-                                "organizationName": ""}},
-            "sequence": [2],
-        }
-        calls = []
-        monkeypatch.chdir(repo)
-        with patch("openswap.session.SessionManager", self._fake_manager(calls)), \
-             patch("openswap.cli.ClaudeAccountSwitcher",
-                   return_value=self._fake_switcher(backup, seq)), \
-             patch("os.geteuid", return_value=1000, create=True), \
-             patch.object(sys, "argv", ["openswap", "run", "--share-history"]):
-            cli.main()
-        assert ("run", "2", [], True, True) in calls
 
 
 class TestDisableEnableDispatch:
