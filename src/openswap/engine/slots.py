@@ -897,31 +897,6 @@ class SlotsMixin:
         )
         return slot, email
 
-    def list_mappings(self) -> None:
-        """Print all directory → account mappings (for `openswap map`)."""
-        from openswap.mappings import MappingStore
-
-        mappings = MappingStore(self.backup_dir).all()
-        if not mappings:
-            print(dimmed("No directory mappings yet."))
-            print(muted("Map one with: openswap map <NUM|EMAIL> [PATH]"))
-            return
-        seq = self._get_sequence_data_migrated() or {}
-        print(bolded("Directory mappings:"))
-        for path in sorted(mappings):
-            entry = mappings[path]
-            email = entry.get("email", "")
-            org_uuid = entry.get("organizationUuid", "") or ""
-            slot = self._find_account_slot(seq, email, org_uuid)
-            if slot:
-                account = seq.get("accounts", {}).get(slot, {})
-                tag = self._get_display_tag(
-                    email, account.get("organizationName", ""), org_uuid
-                )
-                print(f"  {path} {dimmed('→')} {slot}: {email} {muted(f'[{tag}]')}")
-            else:
-                print(f"  {path} {dimmed('→')} {email} {muted('(account removed)')}")
-
     def read_account_credentials(self, account_num: str, email: str) -> str:
         """Public wrapper for session bootstrap. Empty string when missing."""
         return self._read_account_credentials(account_num, email)

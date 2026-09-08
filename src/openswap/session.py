@@ -623,17 +623,17 @@ class SessionManager:
         raise AssertionError("unreachable")  # pragma: no cover
 
     def _ensure_not_api_key(self, account_num: str, email: str) -> None:
-        """Reject API-key accounts in session mode (not supported yet).
+        """Reject API-key accounts from isolated profile bootstrap.
 
-        Session bootstrap is OAuth-shaped — it seeds ``.credentials.json`` and
-        ``_is_session_valid`` requires ``authMethod == "claude.ai"`` — so an API-key
-        account would otherwise fail validation opaquely. Raise early with guidance.
+        Kickoff seeds ``.credentials.json`` and ``_is_session_valid`` requires
+        ``authMethod == "claude.ai"``, so an API-key account would otherwise fail
+        validation opaquely. Raise early with guidance.
         """
         if self.switcher.account_kind_for(account_num) == "api_key":
             raise SessionError(
                 f"Account-{account_num} ({email}) is an API-key account; "
-                "'openswap run' (session mode) does not support API-key accounts yet. "
-                "Use 'openswap --switch-to' to make it your default login instead."
+                "isolated profiles do not support API-key accounts. "
+                "Use `openswap switch` or the extra to make it the default login."
             )
 
     # -- bootstrap -------------------------------------------------------
