@@ -164,6 +164,64 @@ class TestRoundTrip:
                 assert final["activeAccountNumber"] == 9  # untouched
 
 
+class TestImportSequenceCommit:
+    """Import publishes sequence.json once, after all slot files are written."""
+
+    def test_multi_account_import_writes_sequence_once(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        _seed_account(src, 3, "c@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                writes: list[Path] = []
+                orig = dst._write_json
+
+                def _count(path, data):
+                    writes.append(path)
+                    return orig(path, data)
+
+                dst._write_json = _count
+                import_accounts(dst, str(out))
+
+                seq_writes = [p for p in writes if Path(p) == dst.sequence_file]
+                assert len(seq_writes) == 1
+                seq = dst._get_sequence_data()
+                assert set(seq["accounts"].keys()) == {"1", "2", "3"}
+
+    def test_force_overwrite_writes_sequence_once(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                _seed_account(dst, 1, "a@example.com")
+                _seed_account(dst, 2, "b@example.com")
+                writes: list[Path] = []
+                orig = dst._write_json
+
+                def _count(path, data):
+                    writes.append(path)
+                    return orig(path, data)
+
+                dst._write_json = _count
+                import_accounts(dst, str(out), force=True)
+                seq_writes = [p for p in writes if Path(p) == dst.sequence_file]
+                assert len(seq_writes) == 1
+
+
 class TestAliasTransfer:
     """Alias round-trips through export/import, and collisions are handled."""
 

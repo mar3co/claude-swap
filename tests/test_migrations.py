@@ -594,3 +594,40 @@ class TestMacosKeyringToSecurity:
             run_migrations(switcher)
         state = json.loads((switcher.backup_dir / ".migrations.json").read_text())
         assert "macos_keyring_to_security" in state["applied"]
+
+
+class TestPlatformScopedRunner:
+    """The runner only invokes migrations that apply on this platform."""
+
+    def test_for_platform_macos_excludes_windows(self):
+        ids = [mid for mid, _ in migrations.for_platform(Platform.MACOS)]
+        assert "windows_keyring_to_files" not in ids
+        assert ids == [
+            "macos_keyring_to_security",
+            "claude_swap_backup_to_openswap",
+        ]
+
+    def test_for_platform_windows_excludes_macos(self):
+        ids = [mid for mid, _ in migrations.for_platform(Platform.WINDOWS)]
+        assert ids == ["windows_keyring_to_files"]
+
+    def test_for_platform_linux_and_wsl_are_empty(self):
+        assert migrations.for_platform(Platform.LINUX) == []
+        assert migrations.for_platform(Platform.WSL) == []
+
+    def test_runner_iterates_for_platform(self, temp_home):
+        switcher = _make_macos_switcher(temp_home)
+        _seed_sequence(switcher, {"1": {"email": "a@example.com"}})
+        calls: list = []
+
+        def sentinel(_switcher):
+            calls.append(_switcher)
+            return True
+
+        with patch.object(
+            migrations, "for_platform", return_value=[("sentinel", sentinel)]
+        ):
+            run_migrations(switcher)
+        assert calls == [switcher]
+        state = json.loads((switcher.backup_dir / ".migrations.json").read_text())
+        assert "sentinel" in state["applied"]

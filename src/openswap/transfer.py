@@ -145,6 +145,35 @@ def _slim_config(config_obj: dict, label: str) -> dict:
     return {"oauthAccount": oauth}
 
 
+def _empty_sequence() -> dict[str, Any]:
+    return {
+        "activeAccountNumber": None,
+        "lastUpdated": get_timestamp(),
+        "sequence": [],
+        "accounts": {},
+    }
+
+
+def _next_slot_number(data: dict) -> str:
+    nums = [int(k) for k in data.get("accounts", {}) if str(k).isdigit()]
+    return str(max(nums, default=0) + 1)
+
+
+def _account_record(entry: dict[str, Any]) -> dict[str, Any]:
+    record = {
+        "email": entry["email"],
+        "uuid": entry["uuid"],
+        "organizationUuid": entry["org_uuid"],
+        "organizationName": entry["org_name"],
+        "added": entry["added"],
+    }
+    if entry["kind"] == "api_key":
+        record["kind"] = "api_key"
+    if entry.get("alias"):
+        record["alias"] = entry["alias"]
+    return record
+
+
 def _slim_credentials(creds_obj: dict) -> dict:
     """Reduce an OAuth credential object to the account's own login.
 
@@ -436,21 +465,17 @@ def import_accounts(
             }
         )
 
-    # Pass 2: writes. Validation is complete; remaining failures (disk I/O,
-    # keyring) are environmental and don't reflect on the file's integrity.
+    # Pass 2: slot files first, then one sequence.json commit.
     switcher._setup_directories()
-    switcher._init_sequence_file()
+    data = switcher._get_sequence_data_migrated() or _empty_sequence()
 
     imported = 0
     skipped = 0
     overwritten = 0
     replaced = 0
     written_slots: set[str] = set()
+    dirty = False
 
-    # Track where the envelope's active account ended up locally. We can't
-    # just look up envelope_active in the final account map afterwards: the
-    # destination may already have an unrelated account at that slot number,
-    # while the envelope's active account got allocated to a different slot.
     envelope_active = envelope.get("activeAccountNumber")
     envelope_active_str = (
         str(envelope_active) if isinstance(envelope_active, int) else None
@@ -462,27 +487,15 @@ def import_accounts(
             envelope_active_str is not None
             and entry["exported_num"] == envelope_active_str
         )
-
-        # Re-read sequence each iteration so per-account writes see prior updates
-        data = switcher._get_sequence_data_migrated() or {
-            "activeAccountNumber": None,
-            "lastUpdated": get_timestamp(),
-            "sequence": [],
-            "accounts": {},
-        }
         existing_slot = switcher._find_account_slot(
             data, entry["email"], entry["org_uuid"]
         )
+        had_strike = False
+        same_generation = False
 
         if existing_slot is not None:
             if force:
                 outcome = "overwrote"
-                # Snapshot the row before the write path's clear_dead_token
-                # wipes it, so the "Overwrote" print can say the strike was
-                # lifted. Silence here is how issue #218 read a lifted-then-
-                # honestly-re-condemned strike as a clear that never happened.
-                # Identity-guarded: a foreign row reads blank, so only this
-                # account's own verdict narrates.
                 row = switcher._usage_store.entries(
                     {existing_slot: (entry["email"], entry["org_uuid"])}
                 )[existing_slot]
@@ -493,44 +506,29 @@ def import_accounts(
                     == row.struck_fingerprint
                 )
             elif switcher._slot_token_dead(existing_slot, entry["email"]):
-                # Narrow auto-heal (issue #136): a plain import replaces a
-                # slot iff its identity-matched usage row is quarantined as
-                # refresh-token-dead. The verdict normally postdates the
-                # slot's last credential write, so the heal targets creds that
-                # failed after being stored (known exception and full
-                # trade-off: INVESTIGATION-import-dead-token.md). Identity-
-                # guarded — a stale row for a different account returns an
-                # empty entry — so healthy slots still require --force. Never
-                # triggered by the live store's "no credentials" state, which
-                # isn't attributable to the backup.
                 outcome = "replaced"
             else:
                 _eprint(
                     f"Skipped {entry['email']} (already exists, use --force)"
                 )
                 skipped += 1
-                # Even when skipped, the envelope's active account exists
-                # locally — record where so we can seed activeAccountNumber.
                 if is_envelope_active:
                     resolved_active_slot = existing_slot
                 continue
             target_num = existing_slot
-            # The credential write below invalidates the slot's non-live
-            # session profile (chokepoint in _write_account_credentials). A
-            # leftover live session keeps running on its own copy — warn.
             live_pids = switcher._live_session_pids(target_num, entry["email"])
             if live_pids:
                 _eprint(
                     f"Warning: {entry['email']} (slot {target_num}) has a live "
-                    f"session-mode instance (PID {', '.join(map(str, live_pids))}); "
-                    "its session profile keeps the pre-import credentials until "
+                    f"isolated profile (PID {', '.join(map(str, live_pids))}); "
+                    "its profile keeps the pre-import credentials until "
                     "you exit that Claude process."
                 )
         else:
             if entry["exported_num"] not in data.get("accounts", {}):
                 target_num = entry["exported_num"]
             else:
-                target_num = str(switcher._get_next_account_number())
+                target_num = _next_slot_number(data)
             outcome = "imported"
 
         switcher._write_account_credentials(
@@ -539,36 +537,17 @@ def import_accounts(
         switcher._write_account_config(
             target_num, entry["email"], entry["config_text"]
         )
-        # Every successful import write introduces credential material whose
-        # previous auth verdict is no longer authoritative, so lift any
-        # dead-token quarantine on this slot (mirrors add_account / the
-        # add-token paths). This clears for both "imported" and "overwrote":
-        # account removal doesn't prune usage.json, so re-importing a removed
-        # identity into the same slot would otherwise stay quarantined and
-        # never re-fetch to prove the imported token — issue #138.
         switcher._usage_store.clear_dead_token(
             [target_num], {target_num: (entry["email"], entry["org_uuid"])}
         )
 
         data.setdefault("accounts", {})
         data.setdefault("sequence", [])
-        new_record = {
-            "email": entry["email"],
-            "uuid": entry["uuid"],
-            "organizationUuid": entry["org_uuid"],
-            "organizationName": entry["org_name"],
-            "added": entry["added"],
-        }
-        if entry["kind"] == "api_key":
-            new_record["kind"] = "api_key"
-        if entry.get("alias"):
-            new_record["alias"] = entry["alias"]
-        data["accounts"][target_num] = new_record
+        data["accounts"][target_num] = _account_record(entry)
         if int(target_num) not in data["sequence"]:
             data["sequence"].append(int(target_num))
             data["sequence"].sort()
-        data["lastUpdated"] = get_timestamp()
-        switcher._write_json(switcher.sequence_file, data)
+        dirty = True
 
         if is_envelope_active:
             resolved_active_slot = target_num
@@ -577,15 +556,8 @@ def import_accounts(
         if outcome == "overwrote":
             _eprint(f"Overwrote {entry['email']} (slot {target_num})")
             if had_strike:
-                # Store-fact wording on purpose: import rewrites the backup,
-                # so for the active slot the next poll may still exercise the
-                # live credentials — promise only what actually happened.
                 _eprint("  └ cleared this slot's stored dead-token strike")
                 if same_generation:
-                    # "credential generation" / "permanent auth failure", not
-                    # "refresh-token generation" / "invalid_grant": strikes
-                    # also come from no_refresh_token, where the condemned
-                    # blob has no refresh token and fingerprints by content.
                     _eprint(
                         "  └ this import holds the same credential "
                         "generation the strike condemned; another permanent "
@@ -594,8 +566,6 @@ def import_accounts(
                     )
             overwritten += 1
         elif outcome == "replaced":
-            # Describe the observed trigger (the quarantine verdict), not the
-            # token itself — a stale verdict can sit over newer working creds.
             _eprint(
                 f"Replaced {entry['email']} (slot {target_num} was "
                 "quarantined: refresh token dead)"
@@ -605,24 +575,20 @@ def import_accounts(
             _eprint(f"Imported {entry['email']} → slot {target_num}")
             imported += 1
 
-    # Migration UX: if the destination has no recorded active account
-    # (clean home, no prior preference), seed activeAccountNumber from the
-    # *resolved* slot of the envelope's active account — not the envelope's
-    # raw slot number, which may already be occupied locally by an unrelated
-    # account. If the user already has an active selection locally, leave it.
-    final = switcher._get_sequence_data()
     if (
-        final is not None
-        and final.get("activeAccountNumber") in (None, 0)
+        data.get("activeAccountNumber") in (None, 0)
         and resolved_active_slot is not None
     ):
-        final["activeAccountNumber"] = int(resolved_active_slot)
-        final["lastUpdated"] = get_timestamp()
-        switcher._write_json(switcher.sequence_file, final)
+        data["activeAccountNumber"] = int(resolved_active_slot)
+        dirty = True
 
-    # "replaced" gets its own count — the user must be able to distinguish
-    # "I forced this" from "openswap healed this". Appended only when it
-    # happened, keeping the common-case summary stable.
+    if dirty:
+        data["lastUpdated"] = get_timestamp()
+        switcher._write_json(switcher.sequence_file, data)
+        final: dict | None = data
+    else:
+        final = switcher._get_sequence_data()
+
     summary = (
         f"Done: {imported} imported, {overwritten} overwritten, {skipped} skipped"
     )
@@ -630,10 +596,6 @@ def import_accounts(
         summary += f", {replaced} replaced (dead token)"
     _eprint(summary)
 
-    # If we just rewrote the stored backup for the account that is the current
-    # live login, a plain switch would back the (possibly stale) live
-    # credentials up over it (issue #79) — point at the explicit activation
-    # path instead.
     identity = switcher._get_current_account()
     if identity is not None and final is not None:
         live_slot = switcher._find_account_slot(final, identity[0], identity[1])

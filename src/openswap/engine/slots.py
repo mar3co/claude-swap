@@ -400,29 +400,8 @@ class SlotsMixin:
             # first through a temporary name.
             self._swap_session_dirs(num_a, email_a, num_b, email_b)
 
-            # Set each destination key to its owner's exact state: write
-            # material that exists, actively clear what doesn't. An empty
-            # source must never leave the destination serving leftover
-            # material — the other account's (same-email overlap, where no
-            # separate old-key cleanup runs) or a stale file leaked by an
-            # earlier crash. The old keys are cleared only after the commit
-            # below, so the records never point at missing material.
-            if creds_a:
-                self._write_account_credentials(num_b, email_a, creds_a)
-            else:
-                self._delete_account_credentials_strict(num_b, email_a)
-            if config_a:
-                self._write_account_config(num_b, email_a, config_a)
-            else:
-                self._delete_config_backup(num_b, email_a)
-            if creds_b:
-                self._write_account_credentials(num_a, email_b, creds_b)
-            else:
-                self._delete_account_credentials_strict(num_a, email_b)
-            if config_b:
-                self._write_account_config(num_a, email_b, config_b)
-            else:
-                self._delete_config_backup(num_a, email_b)
+            self._write_or_clear_slot_backup(num_b, email_a, creds_a, config_a)
+            self._write_or_clear_slot_backup(num_a, email_b, creds_b, config_b)
 
             data["accounts"][num_a], data["accounts"][num_b] = record_b, record_a
             int_a, int_b = int(num_a), int(num_b)
@@ -476,6 +455,23 @@ class SlotsMixin:
             f"Swapped slots: {num_a} ({email_a}) <-> {num_b} ({email_b})"
         )
         return num_a, num_b
+
+    def _write_or_clear_slot_backup(
+        self, account_num: str, email: str, creds: str, config: str
+    ) -> None:
+        """Set one slot key to this account's exact backup, or empty it.
+
+        An empty source must not leave leftover material under the destination
+        key (same-email overlap, or a stale file from an earlier crash).
+        """
+        if creds:
+            self._write_account_credentials(account_num, email, creds)
+        else:
+            self._delete_account_credentials_strict(account_num, email)
+        if config:
+            self._write_account_config(account_num, email, config)
+        else:
+            self._delete_config_backup(account_num, email)
 
     def _delete_config_backup(self, account_num: str, email: str) -> None:
         """Delete one slot key's config backup file, if present.
@@ -815,19 +811,7 @@ class SlotsMixin:
                         f"Session profile move skipped during move: {e}"
                     )
 
-            # Set the target key to the account's exact state: write material
-            # that exists, actively clear what doesn't — an unbacked account
-            # must not adopt stale material leaked under the target key by an
-            # earlier crash. The old key is cleared only after the commit
-            # below, so the records never point at missing material.
-            if creds:
-                self._write_account_credentials(target, email, creds)
-            else:
-                self._delete_account_credentials_strict(target, email)
-            if config:
-                self._write_account_config(target, email, config)
-            else:
-                self._delete_config_backup(target, email)
+            self._write_or_clear_slot_backup(target, email, creds, config)
 
             data["accounts"][target] = record
             del data["accounts"][num_src]

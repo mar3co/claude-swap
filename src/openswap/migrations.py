@@ -16,9 +16,10 @@ Applied migrations are tracked in ``<backup_dir>/.migrations.json``:
 
     {"version": 1, "applied": {"windows_keyring_to_files": "<iso-timestamp>"}}
 
-Run once at switcher construction (see ``ClaudeAccountSwitcher.__init__``);
-after the state file records a migration it short-circuits with a single tiny
-file read and never touches the source backend again.
+Run once at switcher construction (see ``ClaudeAccountSwitcher.__init__``).
+The runner only loads migrations for this platform, so a macOS extra tick
+never imports ``keyring`` or calls the Windows relocation. After the state
+file records those ids it short-circuits with a single tiny file read.
 """
 
 from __future__ import annotations
@@ -131,6 +132,38 @@ def _delete_keyring_quietly(
         )
 
 
+def _legacy_usernames(
+    account_num: str, email: str, email_counts: Counter
+) -> tuple[str, str | None]:
+    """Canonical keyring username, plus unique ``account-None-{email}`` fallback."""
+    canonical = f"account-{account_num}-{email}"
+    if str(account_num) != "None" and email_counts[email] == 1:
+        return canonical, f"account-None-{email}"
+    return canonical, None
+
+
+def _read_legacy_secret(
+    account_num: str,
+    email: str,
+    email_counts: Counter,
+    read: Callable[[str], str | None],
+) -> tuple[str, str]:
+    """Return ``(secret, source_username)``; empty secret means nothing to migrate.
+
+    ``read(username)`` returns the secret or a falsey miss. Raises on a hard
+    failure so the caller can count the account as failed and skip it.
+    """
+    canonical, fallback = _legacy_usernames(account_num, email, email_counts)
+    creds = read(canonical) or ""
+    if creds:
+        return creds, canonical
+    if fallback:
+        creds = read(fallback) or ""
+        if creds:
+            return creds, fallback
+    return "", canonical
+
+
 def migrate_windows_keyring_to_files(switcher: "ClaudeAccountSwitcher") -> bool:
     """Copy Windows backup credentials from Credential Manager to files.
 
@@ -192,30 +225,19 @@ def migrate_windows_keyring_to_files(switcher: "ClaudeAccountSwitcher") -> bool:
         canonical = f"account-{account_num}-{email}"
         none_user = f"account-None-{email}"
 
-        # --- pick a source (canonical wins) -------------------------------
+        def _read_kr(username: str) -> str:
+            return keyring.get_password(KEYRING_SERVICE, username) or ""
+
         try:
-            creds = keyring.get_password(KEYRING_SERVICE, canonical)
+            creds, source_username = _read_legacy_secret(
+                account_num, email, email_counts, _read_kr
+            )
         except Exception as e:  # noqa: BLE001
             switcher._logger.warning(
                 f"windows_keyring_to_files: read of {canonical} failed: {e}"
             )
             failed += 1
             continue
-
-        source_username = canonical
-        if not creds and str(account_num) != "None" and email_counts[email] == 1:
-            # Canonical missing; fall back to account-None only when the email
-            # unambiguously maps to this one slot.
-            try:
-                creds = keyring.get_password(KEYRING_SERVICE, none_user)
-            except Exception as e:  # noqa: BLE001
-                switcher._logger.warning(
-                    f"windows_keyring_to_files: read of {none_user} failed: {e}"
-                )
-                failed += 1
-                continue
-            if creds:
-                source_username = none_user
 
         if not creds:
             # Nothing in the keyring for this slot (e.g. added on the new
@@ -410,28 +432,16 @@ def migrate_macos_keyring_to_security(switcher: "ClaudeAccountSwitcher") -> bool
         canonical = f"account-{account_num}-{email}"
         none_user = f"account-None-{email}"
 
-        # --- pick a source (canonical wins) -------------------------------
         try:
-            creds = _read_old(canonical)
+            creds, source_username = _read_legacy_secret(
+                account_num, email, email_counts, _read_old
+            )
         except Exception as e:  # noqa: BLE001
             switcher._logger.warning(
                 f"macos_keyring_to_security: read of {canonical} failed: {e}"
             )
             failed += 1
             continue
-
-        source_username = canonical
-        if not creds and str(account_num) != "None" and email_counts[email] == 1:
-            try:
-                creds = _read_old(none_user)
-            except Exception as e:  # noqa: BLE001
-                switcher._logger.warning(
-                    f"macos_keyring_to_security: read of {none_user} failed: {e}"
-                )
-                failed += 1
-                continue
-            if creds:
-                source_username = none_user
 
         if not creds:
             # Nothing in the keyring for this slot (e.g. added on the new version,
@@ -494,7 +504,6 @@ def migrate_macos_keyring_to_security(switcher: "ClaudeAccountSwitcher") -> bool
     return True
 
 
-# Registry of (id, fn). Order matters if migrations ever depend on each other.
 def migrate_claude_swap_backup_items(switcher: "ClaudeAccountSwitcher") -> bool:
     """Copy leftover ``claude-swap`` backup Keychain items into ``openswap``.
 
@@ -544,11 +553,26 @@ def migrate_claude_swap_backup_items(switcher: "ClaudeAccountSwitcher") -> bool:
     return True
 
 
-MIGRATIONS: list[tuple[str, Callable[["ClaudeAccountSwitcher"], bool]]] = [
-    ("windows_keyring_to_files", migrate_windows_keyring_to_files),
-    ("macos_keyring_to_security", migrate_macos_keyring_to_security),
-    ("claude_swap_backup_to_openswap", migrate_claude_swap_backup_items),
+_Migration = tuple[str, Callable[["ClaudeAccountSwitcher"], bool]]
+
+_MIGRATIONS_BY_PLATFORM: dict[Platform, tuple[_Migration, ...]] = {
+    Platform.WINDOWS: (
+        ("windows_keyring_to_files", migrate_windows_keyring_to_files),
+    ),
+    Platform.MACOS: (
+        ("macos_keyring_to_security", migrate_macos_keyring_to_security),
+        ("claude_swap_backup_to_openswap", migrate_claude_swap_backup_items),
+    ),
+}
+
+MIGRATIONS: list[_Migration] = [
+    item for items in _MIGRATIONS_BY_PLATFORM.values() for item in items
 ]
+
+
+def for_platform(platform: Platform) -> list[_Migration]:
+    """Migrations that can do work on ``platform``. Empty on Linux/WSL."""
+    return list(_MIGRATIONS_BY_PLATFORM.get(platform, ()))
 
 
 # ---------------------------------------------------------------------------
@@ -557,18 +581,21 @@ MIGRATIONS: list[tuple[str, Callable[["ClaudeAccountSwitcher"], bool]]] = [
 
 
 def run_migrations(switcher: "ClaudeAccountSwitcher") -> None:
-    """Run any not-yet-applied migrations. Never raises.
+    """Run any not-yet-applied migrations for this platform. Never raises.
 
-    A no-op on fresh installs (backup dir not yet materialized — preserves the
-    lazy-dir invariant) and once the state file records every migration. A
-    failing migration is logged and left unmarked so it retries next run; it
-    must never abort switcher construction.
+    A no-op when the backup dir does not exist yet, when this platform has
+    no migrations, and once the state file records every one. A failing
+    migration is logged and left unmarked so the next run retries; it must
+    never abort switcher construction.
     """
+    pending = for_platform(switcher.platform)
+    if not pending:
+        return
     if not switcher.backup_dir.exists():
         return
 
     applied = _load_applied(switcher)
-    for migration_id, fn in MIGRATIONS:
+    for migration_id, fn in pending:
         if migration_id in applied:
             continue
         try:
