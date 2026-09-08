@@ -86,7 +86,7 @@ class SessionProfileMixin:
     def _invalidate_session_credentials(self, account_num: str, email: str) -> None:
         """Drop a session profile's credential material, keeping its history.
 
-        The next `openswap run` fails the reuse check and re-bootstraps from
+        The next setup_session fails the reuse check and re-bootstraps from
         backup; the bootstrap merges .claude.json, so the profile's own
         projects/history survive. Used when backup credentials change under
         an existing profile (e.g. --import --force).

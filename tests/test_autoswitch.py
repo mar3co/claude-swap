@@ -1869,7 +1869,7 @@ class TestFreshening:
         assert any(isinstance(e, ErrorEvent) for e in h.events)
 
     def test_live_session_target_is_skipped_even_with_fresh_token(self, temp_home):
-        # Auto never activates an account that has a live `openswap run` session:
+        # Auto never activates an account that has a live isolated-profile session:
         # dual refresh-token ownership with nobody reading the warning.
         h = EngineHarness(temp_home)
         h.seed(1, "a@example.com")

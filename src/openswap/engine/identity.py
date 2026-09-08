@@ -16,8 +16,8 @@ class IdentityMixin:
         """Resolve NUM|EMAIL to (account_num, email, organizationUuid).
 
         Unlike switch_to/remove_account, ambiguity is a hard error rather
-        than an interactive prompt: session mode ends in an exec, so callers
-        need a deterministic resolution.
+        than an interactive prompt: isolated-profile bootstrap (kickoff)
+        cannot prompt, so callers need a deterministic resolution.
 
         Raises:
             AccountNotFoundError: identifier doesn't match any account.

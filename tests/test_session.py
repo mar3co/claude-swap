@@ -1,4 +1,4 @@
-"""Tests for session mode (openswap.session + the switcher guards)."""
+"""Tests for isolated session profiles (openswap.session + the switcher guards)."""
 
 from __future__ import annotations
 
@@ -540,7 +540,7 @@ class TestBootstrap:
         self, manager, seeded_switcher, auth_status_tracks_seed, refresh_rotates,
         legacy_location: bool,
     ):
-        """A second `openswap run` joining a live session must not invalidate
+        """A second setup_session joining a live profile must not invalidate
         under the running claude; the marker survives for later."""
         session_dir, _, _ = manager.setup_session("2", share=False)
         (session_dir / ".credentials.json").write_text("live lineage")
@@ -1387,7 +1387,7 @@ class TestRun:
             manager.run("2", [])
 
         # Warned, and the overrides are scrubbed from the launched env —
-        # `openswap run 2` means account 2, not whatever the API key resolves to.
+        # launching account 2 means account 2, not whatever the API key resolves to.
         out = capsys.readouterr().out
         assert "Ignoring ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN" in out
         assert "ANTHROPIC_API_KEY" not in exc.value.env
@@ -1417,7 +1417,7 @@ class TestRun:
 
         assert exc.value.binary == "/fake/bin/claude"
         assert exc.value.argv == ["/fake/bin/claude", "--resume"]
-        # Plain claude behavior: API key is NOT scrubbed (unlike session mode).
+        # Plain claude behavior: API key is NOT scrubbed (unlike an isolated profile).
         assert exc.value.env["ANTHROPIC_API_KEY"] == "sk-ant-key"
 
     def test_exec_default_claude_not_on_path(self, manager, monkeypatch):
@@ -1612,7 +1612,7 @@ class TestGuards:
     ):
         """Re-login + --add-account (or any backup cred write) must force the
         non-live session profile to re-bootstrap — otherwise the documented
-        recovery path leaves `openswap run` on stale credentials that still pass
+        recovery path leaves setup_session on stale credentials that still pass
         the local reuse check."""
         session_dir = session_dir_for(
             seeded_switcher.backup_dir, ACCOUNT_NUM, ACCOUNT_EMAIL
@@ -2566,7 +2566,7 @@ class TestAConsumedGrantIsNotSpentOnAProfileThatWonBootstrap:
     """A one-time grant consumed for THIS pass must reach the profile it was for.
 
     The consume runs before the bootstrap lock (it POSTs, and must never hold
-    one). The under-lock re-check then returns early when another `openswap run`
+    one). The under-lock re-check then returns early when another setup_session
     bootstrapped while we waited — at which point this pass has already burned
     a one-time refresh token whose successor nobody uses for the session it was
     fetched for. The successor is persisted to the BACKUP, so nothing is lost;

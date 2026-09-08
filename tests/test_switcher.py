@@ -11303,8 +11303,8 @@ class TestGateUltraReviewFixes:
                 "DEFECT: the invalidation was denied and NO stale marker "
                 "landed — the marker's own write target was the directory "
                 "that denied it. The profile's token is unexpired, so the "
-                "local reuse check passes and `openswap run` launches claude on "
-                "the spent generation, silently"
+                "local reuse check passes and the next setup_session / kickoff "
+                "seeds claude on the spent generation, silently"
             )
         else:
             # Ceiling: nothing under a read-only `sessions/` can be written.
@@ -12319,7 +12319,7 @@ class TestSessionShellGuardCoversEveryMutator:
 
 
 class TestLiveSessionSwitchWarning:
-    """Leftover session-mode Claude must not be recovered via `openswap run`."""
+    """Leftover isolated-profile Claude must not be recovered via the cut run verb."""
 
     def test_warning_points_at_switch_or_extra(
         self, temp_home: Path, mock_claude_config: Path,
