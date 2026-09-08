@@ -164,6 +164,126 @@ class TestRoundTrip:
                 assert final["activeAccountNumber"] == 9  # untouched
 
 
+class TestImportSequenceCommit:
+    """Import publishes sequence.json once, after all slot files are written."""
+
+    def test_multi_account_import_writes_sequence_once(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        _seed_account(src, 3, "c@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                writes: list[Path] = []
+                orig = dst._write_json
+
+                def _count(path, data):
+                    writes.append(path)
+                    return orig(path, data)
+
+                dst._write_json = _count
+                import_accounts(dst, str(out))
+
+                seq_writes = [p for p in writes if Path(p) == dst.sequence_file]
+                assert len(seq_writes) == 1
+                seq = dst._get_sequence_data()
+                assert set(seq["accounts"].keys()) == {"1", "2", "3"}
+
+    def test_force_overwrite_writes_sequence_once(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                _seed_account(dst, 1, "a@example.com")
+                _seed_account(dst, 2, "b@example.com")
+                writes: list[Path] = []
+                orig = dst._write_json
+
+                def _count(path, data):
+                    writes.append(path)
+                    return orig(path, data)
+
+                dst._write_json = _count
+                import_accounts(dst, str(out), force=True)
+                seq_writes = [p for p in writes if Path(p) == dst.sequence_file]
+                assert len(seq_writes) == 1
+
+    def test_import_holds_account_lock_for_sequence_commit(
+        self, temp_home: Path, monkeypatch
+    ):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        entered: list[Path] = []
+
+        class SpyLock:
+            def __init__(self, path, timeout=10.0):
+                self.path = path
+
+            def __enter__(self):
+                entered.append(self.path)
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr("openswap.transfer.FileLock", SpyLock)
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                import_accounts(dst, str(out))
+                assert entered == [dst.lock_file]
+                seq = dst._get_sequence_data()
+                assert set(seq["accounts"].keys()) == {"1", "2"}
+
+    def test_import_commits_prefix_if_later_slot_write_fails(self, temp_home: Path):
+        src = _linux_switcher(temp_home)
+        _seed_account(src, 1, "a@example.com")
+        _seed_account(src, 2, "b@example.com")
+        _seed_account(src, 3, "c@example.com")
+        out = temp_home / "backup.openswap"
+        export_accounts(src, str(out))
+
+        dst_home = temp_home.parent / "dst"
+        dst_home.mkdir()
+        with patch("pathlib.Path.home", return_value=dst_home):
+            with patch.dict(os.environ, {"HOME": str(dst_home)}):
+                dst = _linux_switcher(dst_home)
+                writes = {"n": 0}
+                orig = dst._write_account_credentials
+
+                def fail_on_third(num, email, creds):
+                    writes["n"] += 1
+                    if writes["n"] >= 3:
+                        raise OSError("disk full")
+                    return orig(num, email, creds)
+
+                dst._write_account_credentials = fail_on_third
+                with pytest.raises(OSError, match="disk full"):
+                    import_accounts(dst, str(out))
+
+                seq = dst._get_sequence_data() or {}
+                assert set(seq.get("accounts", {}).keys()) == {"1", "2"}
+
+
 class TestAliasTransfer:
     """Alias round-trips through export/import, and collisions are handled."""
 

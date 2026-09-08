@@ -224,25 +224,28 @@ class SlotsMixin:
         except ValueError as e:
             raise ValidationError(str(e)) from e
 
-        self._get_sequence_data_migrated()
-        account_num = self._resolve_account_identifier(identifier)
-        if not account_num:
-            raise AccountNotFoundError(
-                f"No account found with identifier: {identifier}"
-            )
-        data = self._get_sequence_data() or {}
-        record = data.get("accounts", {}).get(account_num)
-        if not record:
-            raise AccountNotFoundError(f"Account-{account_num} does not exist")
+        with FileLock(self.lock_file):
+            self._get_sequence_data_migrated()
+            account_num = self._resolve_account_identifier(identifier)
+            if not account_num:
+                raise AccountNotFoundError(
+                    f"No account found with identifier: {identifier}"
+                )
+            data = self._get_sequence_data() or {}
+            record = data.get("accounts", {}).get(account_num)
+            if not record:
+                raise AccountNotFoundError(f"Account-{account_num} does not exist")
 
-        conflict = self._alias_in_use(normalized, exclude_num=account_num)
-        if conflict is not None:
-            raise ConfigError(f"Alias '{normalized}' is already used by account {conflict}")
+            conflict = self._alias_in_use(normalized, exclude_num=account_num)
+            if conflict is not None:
+                raise ConfigError(
+                    f"Alias '{normalized}' is already used by account {conflict}"
+                )
 
-        record["alias"] = normalized
-        data["lastUpdated"] = get_timestamp()
-        self._write_json(self.sequence_file, data)
-        return account_num, normalized
+            record["alias"] = normalized
+            data["lastUpdated"] = get_timestamp()
+            self._write_json(self.sequence_file, data)
+            return account_num, normalized
 
     def unset_alias(self, identifier: str) -> str:
         """Clear the alias for the account matching identifier.
@@ -255,22 +258,23 @@ class SlotsMixin:
             AccountNotFoundError: identifier doesn't match any account.
         """
         self._refuse_session_shell()
-        self._get_sequence_data_migrated()
-        account_num = self._resolve_account_identifier(identifier)
-        if not account_num:
-            raise AccountNotFoundError(
-                f"No account found with identifier: {identifier}"
-            )
-        data = self._get_sequence_data() or {}
-        record = data.get("accounts", {}).get(account_num)
-        if not record:
-            raise AccountNotFoundError(f"Account-{account_num} does not exist")
+        with FileLock(self.lock_file):
+            self._get_sequence_data_migrated()
+            account_num = self._resolve_account_identifier(identifier)
+            if not account_num:
+                raise AccountNotFoundError(
+                    f"No account found with identifier: {identifier}"
+                )
+            data = self._get_sequence_data() or {}
+            record = data.get("accounts", {}).get(account_num)
+            if not record:
+                raise AccountNotFoundError(f"Account-{account_num} does not exist")
 
-        if "alias" in record:
-            del record["alias"]
-            data["lastUpdated"] = get_timestamp()
-            self._write_json(self.sequence_file, data)
-        return account_num
+            if "alias" in record:
+                del record["alias"]
+                data["lastUpdated"] = get_timestamp()
+                self._write_json(self.sequence_file, data)
+            return account_num
 
     def list_aliases(self) -> list[tuple[str, str, str]]:
         """Every set alias as ``(account_num, alias, email)``, slot-number order."""
@@ -400,29 +404,8 @@ class SlotsMixin:
             # first through a temporary name.
             self._swap_session_dirs(num_a, email_a, num_b, email_b)
 
-            # Set each destination key to its owner's exact state: write
-            # material that exists, actively clear what doesn't. An empty
-            # source must never leave the destination serving leftover
-            # material — the other account's (same-email overlap, where no
-            # separate old-key cleanup runs) or a stale file leaked by an
-            # earlier crash. The old keys are cleared only after the commit
-            # below, so the records never point at missing material.
-            if creds_a:
-                self._write_account_credentials(num_b, email_a, creds_a)
-            else:
-                self._delete_account_credentials_strict(num_b, email_a)
-            if config_a:
-                self._write_account_config(num_b, email_a, config_a)
-            else:
-                self._delete_config_backup(num_b, email_a)
-            if creds_b:
-                self._write_account_credentials(num_a, email_b, creds_b)
-            else:
-                self._delete_account_credentials_strict(num_a, email_b)
-            if config_b:
-                self._write_account_config(num_a, email_b, config_b)
-            else:
-                self._delete_config_backup(num_a, email_b)
+            self._write_or_clear_slot_backup(num_b, email_a, creds_a, config_a)
+            self._write_or_clear_slot_backup(num_a, email_b, creds_b, config_b)
 
             data["accounts"][num_a], data["accounts"][num_b] = record_b, record_a
             int_a, int_b = int(num_a), int(num_b)
@@ -476,6 +459,23 @@ class SlotsMixin:
             f"Swapped slots: {num_a} ({email_a}) <-> {num_b} ({email_b})"
         )
         return num_a, num_b
+
+    def _write_or_clear_slot_backup(
+        self, account_num: str, email: str, creds: str, config: str
+    ) -> None:
+        """Set one slot key to this account's exact backup, or empty it.
+
+        An empty source must not leave leftover material under the destination
+        key (same-email overlap, or a stale file from an earlier crash).
+        """
+        if creds:
+            self._write_account_credentials(account_num, email, creds)
+        else:
+            self._delete_account_credentials_strict(account_num, email)
+        if config:
+            self._write_account_config(account_num, email, config)
+        else:
+            self._delete_config_backup(account_num, email)
 
     def _delete_config_backup(self, account_num: str, email: str) -> None:
         """Delete one slot key's config backup file, if present.
@@ -815,19 +815,7 @@ class SlotsMixin:
                         f"Session profile move skipped during move: {e}"
                     )
 
-            # Set the target key to the account's exact state: write material
-            # that exists, actively clear what doesn't — an unbacked account
-            # must not adopt stale material leaked under the target key by an
-            # earlier crash. The old key is cleared only after the commit
-            # below, so the records never point at missing material.
-            if creds:
-                self._write_account_credentials(target, email, creds)
-            else:
-                self._delete_account_credentials_strict(target, email)
-            if config:
-                self._write_account_config(target, email, config)
-            else:
-                self._delete_config_backup(target, email)
+            self._write_or_clear_slot_backup(target, email, creds, config)
 
             data["accounts"][target] = record
             del data["accounts"][num_src]
@@ -974,26 +962,27 @@ class SlotsMixin:
         if not self.sequence_file.exists():
             raise ConfigError("No accounts are managed yet")
 
-        # resolve_account migrates org fields and hard-errors on ambiguity.
-        account_num, email, _ = self.resolve_account(identifier)
+        with FileLock(self.lock_file):
+            # resolve_account migrates org fields and hard-errors on ambiguity.
+            account_num, email, _ = self.resolve_account(identifier)
 
-        data = self._get_sequence_data() or {}
-        record = data.get("accounts", {}).get(account_num)
-        if not record:
-            raise AccountNotFoundError(f"Account-{account_num} does not exist")
+            data = self._get_sequence_data() or {}
+            record = data.get("accounts", {}).get(account_num)
+            if not record:
+                raise AccountNotFoundError(f"Account-{account_num} does not exist")
 
-        verb = "disabled" if disabled else "enabled"
-        if bool(record.get("disabled")) == disabled:
-            print(dimmed(f"Account-{account_num} ({email}) is already {verb}."))
-            return
+            verb = "disabled" if disabled else "enabled"
+            if bool(record.get("disabled")) == disabled:
+                print(dimmed(f"Account-{account_num} ({email}) is already {verb}."))
+                return
 
-        if disabled:
-            record["disabled"] = True
-        else:
-            record.pop("disabled", None)
-        data["lastUpdated"] = get_timestamp()
-        self._write_json(self.sequence_file, data)
-        self._logger.info(f"{verb.capitalize()} account {account_num}: {email}")
+            if disabled:
+                record["disabled"] = True
+            else:
+                record.pop("disabled", None)
+            data["lastUpdated"] = get_timestamp()
+            self._write_json(self.sequence_file, data)
+            self._logger.info(f"{verb.capitalize()} account {account_num}: {email}")
 
         print(f"{accent(verb.capitalize())} Account-{account_num} ({email}).")
 
@@ -1310,6 +1299,7 @@ class SlotsMixin:
             raise AccountNotFoundError(f"Account-{account_num} does not exist")
 
         email = account_info.get("email")
+        confirmed_org = account_info.get("organizationUuid", "") or ""
         active_account = data.get("activeAccountNumber")
 
         # Check before the confirmation prompt (better UX); the chokepoint in
@@ -1328,16 +1318,26 @@ class SlotsMixin:
                 print(dimmed("Cancelled"))
                 return
 
-        # Remove backup files
-        self._delete_account_files(account_num, email)
+        with FileLock(self.lock_file):
+            data = self._get_sequence_data()
+            account_info = (data or {}).get("accounts", {}).get(account_num)
+            if not account_info:
+                raise AccountNotFoundError(f"Account-{account_num} does not exist")
+            live_email = account_info.get("email")
+            live_org = account_info.get("organizationUuid", "") or ""
+            if live_email != email or live_org != confirmed_org:
+                raise AccountNotFoundError(
+                    f"Account-{account_num} is no longer {email}; "
+                    "it moved or was replaced. Nothing was removed."
+                )
+            email = live_email
+            self._delete_account_files(account_num, email)
+            del data["accounts"][account_num]
+            data["sequence"] = [n for n in data["sequence"] if n != int(account_num)]
+            data["lastUpdated"] = get_timestamp()
+            self._write_json(self.sequence_file, data)
+            self._logger.info(f"Removed account {account_num}: {email}")
 
-        # Update sequence.json
-        del data["accounts"][account_num]
-        data["sequence"] = [n for n in data["sequence"] if n != int(account_num)]
-        data["lastUpdated"] = get_timestamp()
-
-        self._write_json(self.sequence_file, data)
-        self._logger.info(f"Removed account {account_num}: {email}")
         print(f"{accent('Removed')} Account-{account_num} ({email})")
 
         self._prune_mappings(email, account_info.get("organizationUuid", ""))
