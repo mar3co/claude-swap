@@ -1,4 +1,4 @@
-"""Command-line interface for Claude Swap."""
+"""Command-line interface for OpenSwap."""
 
 from __future__ import annotations
 
@@ -866,7 +866,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog=_prog_name(),
         usage="%(prog)s <command> [args] [options]",
-        description="""Multi-Account Switcher for Claude Code
+        description="""OpenSwap: OpenSoft macOS CLI for rotating Claude Code accounts
 
 Commands:
   %(prog)s help                       show this help
@@ -889,13 +889,12 @@ Commands:
   %(prog)s unclaimed [--purge ID]     list or drop stashed credential entries
   %(prog)s export <path>              export accounts
   %(prog)s import <path>              import accounts
-  %(prog)s menubar                    macOS menu bar app
-  %(prog)s menubar --install-service  keep the menu bar running via launchd
+  %(prog)s menubar                    macOS menu bar extra
+  %(prog)s menubar --install-service  keep the extra running via launchd
   %(prog)s widget --install           macOS Desktop / Notification Center widget
-  %(prog)s upgrade                    self-upgrade to latest
   %(prog)s purge                      remove all openswap data
 
-Aliases: ls=list  rm=remove  update=upgrade""",
+Aliases: ls=list  rm=remove""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Flags combine with subcommands:
   %(prog)s switch --strategy best           # pick the account with most quota left
