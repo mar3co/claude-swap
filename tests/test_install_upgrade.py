@@ -99,3 +99,44 @@ class TestNoPypi:
 
         _refresh_launch_agents()
         assert called == ["menubar"]
+
+    def test_refresh_migrates_legacy_menubar_plist(self, tmp_path, monkeypatch):
+        plist = tmp_path / "Library" / "LaunchAgents" / "com.cswap.menubar.plist"
+        plist.parent.mkdir(parents=True)
+        plist.write_bytes(b"")
+        monkeypatch.setattr("openswap.update_check.sys.platform", "darwin")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        called = []
+        monkeypatch.setattr(
+            "openswap.launch_agent.install",
+            lambda **k: called.append("menubar") or {"label": "x"},
+        )
+        monkeypatch.setattr("openswap.launch_agent.is_loaded", lambda *a, **k: False)
+        from openswap.update_check import _refresh_launch_agents
+
+        _refresh_launch_agents()
+        assert called == ["menubar"]
+
+    def test_run_self_upgrade_reports_agent_refresh_failure(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from openswap.exceptions import ClaudeSwitchError
+
+        repo = tmp_path / "openswap"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "src" / "openswap").mkdir(parents=True)
+        (repo / "src" / "openswap" / "__init__.py").write_text("")
+        monkeypatch.setattr("openswap.update_check._checkout_root", lambda: repo)
+        monkeypatch.setattr(
+            "openswap.update_check.subprocess.run",
+            lambda *a, **k: MagicMock(returncode=0),
+        )
+        def boom():
+            raise ClaudeSwitchError("bootstrap failed")
+
+        monkeypatch.setattr("openswap.update_check._refresh_launch_agents", boom)
+        assert run_self_upgrade() == 1
+        err = capsys.readouterr().err
+        assert "bootstrap failed" in err
+        assert "menubar --install-service" in err

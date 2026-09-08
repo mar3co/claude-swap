@@ -117,17 +117,29 @@ def _refresh_launch_agents() -> None:
     from openswap import launch_agent
     from openswap import widget_install
 
-    if launch_agent.plist_path().exists():
+    menubar_present = launch_agent.plist_path().exists()
+    if not menubar_present:
+        menubar_present = any(
+            launch_agent.plist_path(old).exists() or launch_agent.is_loaded(old)
+            for old in launch_agent.LEGACY_LABELS
+        )
+    if menubar_present:
         launch_agent.install()
     widget_plist = widget_install.plist_path(widget_install.LABEL)
+    legacy_widget = widget_install.plist_path(widget_install.LEGACY_LABEL)
     if widget_plist.exists() and launch_agent.is_loaded(widget_install.LABEL):
         launch_agent._launchctl(
             "kickstart", "-k", launch_agent.service_target(widget_install.LABEL)
+        )
+    elif legacy_widget.exists() or launch_agent.is_loaded(widget_install.LEGACY_LABEL):
+        launch_agent._launchctl(
+            "kickstart", "-k", launch_agent.service_target(widget_install.LEGACY_LABEL)
         )
 
 
 def run_self_upgrade() -> int:
     """git pull this checkout, reinstall the editable tool, refresh agents."""
+    from openswap.exceptions import ClaudeSwitchError
     from openswap.printer import error
 
     root = _checkout_root()
@@ -166,5 +178,12 @@ def run_self_upgrade() -> int:
         return 1
     if inst.returncode != 0:
         return inst.returncode
-    _refresh_launch_agents()
+    try:
+        _refresh_launch_agents()
+    except ClaudeSwitchError as exc:
+        error(
+            f"Tool upgraded, but the menu bar service did not reload: {exc}\n"
+            "Run: openswap menubar --install-service"
+        )
+        return 1
     return 0
