@@ -1,7 +1,7 @@
-"""Session mode: run Claude Code as a stored account in one terminal.
+"""Isolated per-account Claude Code profiles.
 
-``openswap run NUM|EMAIL`` launches Claude Code with ``CLAUDE_CONFIG_DIR``
-pointing at a persistent per-account profile under
+Scheduled kickoff (and leftover live session processes) run Claude Code with
+``CLAUDE_CONFIG_DIR`` pointing at a persistent per-account profile under
 ``<backup_dir>/sessions/<num>-<email-slug>/``, leaving the default
 ``~/.claude/`` login (and every other terminal, plus the VS Code extension)
 untouched. ``CLAUDE_CONFIG_DIR`` fully isolates Claude Code's config and
@@ -95,7 +95,7 @@ SHARE_MANIFEST = ".openswap-shared.json"
 
 # Deferred-invalidation marker: backup credentials changed while a session was
 # live (we never pull credentials out from under a running claude), so the
-# profile must be re-bootstrapped on the next non-live `openswap run` even if it
+# profile must be re-bootstrapped on the next non-live setup_session even if it
 # still passes the local reuse check.
 STALE_MARKER = ".openswap-stale-credentials"
 
@@ -186,8 +186,8 @@ def mark_session_stale(session_dir: Path) -> bool:
 # Env vars that make claude bypass account OAuth entirely (verified against
 # claude 2.1.175). Dropped from the auth-status probe (they'd fake "logged in"
 # for the wrong reason) AND scrubbed from the session launch env with a
-# warning: `openswap run N` is an explicit request for account N, so letting an
-# exported API key silently hijack the session would defeat the command. The
+# warning: isolated-profile launch is an explicit request for that account, so
+# letting an exported API key silently hijack the session would defeat it. The
 # same-account fast path (plain claude, untouched env) does not scrub.
 AUTH_OVERRIDE_ENV_VARS = (
     "ANTHROPIC_API_KEY",
@@ -492,7 +492,7 @@ def _probe_env(session_dir: Path) -> dict[str, str]:
 
 
 class SessionManager:
-    """Bootstraps per-account session profiles and launches Claude into them."""
+    """Bootstraps per-account isolated profiles used by kickoff."""
 
     def __init__(self, switcher: ClaudeAccountSwitcher):
         self.switcher = switcher
@@ -591,8 +591,7 @@ class SessionManager:
     def exec_default(self, claude_args: list[str]) -> NoReturn:
         """Launch plain Claude Code with the current default login.
 
-        Used by `openswap run` (no account) when the cwd has no mapping, or its
-        mapped account no longer exists. Equivalent to typing `claude`
+        Used when no isolated profile is wanted. Equivalent to typing `claude`
         directly: the unmodified environment is passed through (no session
         profile, no auth-override scrubbing), so whatever the default login
         resolves to is what runs.
@@ -650,7 +649,7 @@ class SessionManager:
         # Deferred invalidation: backup credentials changed while this profile
         # was live, so its credentials are presumed stale even if they still
         # pass the local reuse check. Honored only when no session is live —
-        # a second `openswap run` joining a live session must not invalidate
+        # a second setup_session joining a live profile must not invalidate
         # under the running claude (the marker survives for later).
         stale = is_session_stale(session_dir) and profile_is_quiescent(session_dir)
 
@@ -729,14 +728,14 @@ class SessionManager:
 
         with FileLock(self.switcher.lock_file, timeout=_BOOTSTRAP_LOCK_TIMEOUT):
             # Re-evaluate the marker under the lock, then re-check validity:
-            # another `openswap run` may have bootstrapped while we waited.
+            # another setup_session may have bootstrapped while we waited.
             if is_session_stale(session_dir) and profile_is_quiescent(session_dir):
                 self.switcher.invalidate_session_credentials(account_num, email)
                 clear_session_stale(session_dir)
             if self._is_session_valid(session_dir, email, org_uuid):
                 # Valid, but possibly not on the generation WE just paid for.
                 # The consume above runs outside this lock (it POSTs), so a
-                # peer `openswap run` can bootstrap while we wait — and its
+                # peer setup_session can bootstrap while we wait — and its
                 # profile predates our rotation. Its refresh token is the one
                 # our gate consumed, so claude's own refresh would get
                 # invalid_grant on first use: a spent grant, silently.
@@ -1255,7 +1254,7 @@ class SessionManager:
         genuinely has no user servers (``{}`` propagates the removal), while
         a missing/corrupt config or a non-dict key returns ``None`` so the
         caller leaves the profile untouched. Reads the default-home path
-        (ignoring CLAUDE_CONFIG_DIR — a nested `openswap run` must not source
+        (ignoring CLAUDE_CONFIG_DIR — a nested isolated profile must not source
         from another session); no lock needed, claude's writes are atomic.
         """
         config = SessionManager._load_json_object(get_default_global_config_path())

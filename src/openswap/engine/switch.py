@@ -31,7 +31,7 @@ class SwitchMixin:
         return merge_shared_credential_fields(target_credentials, live_shared)
 
     def live_session_pids_for(self, account_num: str, email: str) -> list[int]:
-        """Public wrapper: PIDs of live ``openswap run`` sessions for a slot."""
+        """Public wrapper: PIDs of live isolated-profile Claude sessions for a slot."""
         return self._live_session_pids(account_num, email)
 
     def _reject_identity_drift_since_verify(

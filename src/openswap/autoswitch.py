@@ -809,12 +809,13 @@ class AutoSwitchEngine:
         if self.switcher.account_kind_for(number) == "api_key":
             return "ok"  # API keys don't expire/refresh
         if self.switcher.live_session_pids_for(number, email):
-            # A live `openswap run` session owns this account's token in its own
-            # profile. Auto-activating it as the default login too would put
-            # one rotating refresh token in two config dirs (the stale-copy
-            # failure class) with nobody reading the warning — and its quota
-            # is already being consumed by that session anyway. Manual
-            # switch_to keeps its warn-and-proceed behavior; auto skips.
+            # A live isolated-profile Claude (kickoff or leftover session) owns
+            # this account's token in its own profile. Auto-activating it as
+            # the default login too would put one rotating refresh token in two
+            # config dirs (the stale-copy failure class) with nobody reading
+            # the warning — and its quota is already being consumed by that
+            # session anyway. Manual switch_to keeps its warn-and-proceed
+            # behavior; auto skips.
             return "skip-live-session"
         creds = self.switcher.read_account_credentials(number, email)
         if not creds:

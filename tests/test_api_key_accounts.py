@@ -3,7 +3,7 @@
 Covers kind detection, ``--add-token`` auto-detection, the cross-kind collision
 guard, the ``add_account`` live-key guard, kind+platform-aware active credential
 read/write with OAuth↔API-key mutual exclusion, the "API key — no quota" usage
-display, the ``openswap run`` session guard, and export/import of raw keys.
+display, the isolated-profile session guard, and export/import of raw keys.
 """
 
 from __future__ import annotations

@@ -39,7 +39,7 @@ class SlotsMixin:
         import, switch backing up, or a usage-refresh rotation): a session profile
         seeded from the old credentials may now hold a stale or rotated-out token
         that still passes the local reuse check. Drop the profile's credential
-        material so the next `openswap run` re-bootstraps from this fresh backup
+        material so the next setup_session / kickoff re-bootstraps from this fresh backup
         (history is preserved). A LIVE session keeps its own copy untouched — claude
         manages it; pulling credentials out from under a running process would be
         worse than the drift caveat — but gets a stale marker so setup_session
@@ -78,7 +78,7 @@ class SlotsMixin:
         "successor" byte-identical to what the store now holds, and a
         successful refresh is demoted to ``transient`` (measured: the tick then
         emits "could not freshen any candidate (network?)" forever over a
-        healthy slot, and ``openswap run`` prints "Could not refresh the token").
+        healthy slot, and setup_session prints "Could not refresh the token").
 
         So the invalidation is contained, and its failure LEAVES THE MARKER
         instead. That is not a downgrade: a profile whose access token is still
@@ -878,7 +878,7 @@ class SlotsMixin:
         self._logger.info(f"Moved slot: {num_src} ({email}) -> {target}")
 
     def slot_for_directory(self, directory: str | Path) -> tuple[str | None, str | None]:
-        """Resolve a directory to its mapped account slot, for `openswap run`.
+        """Resolve a directory to its mapped account slot (leftover mappings.json).
 
         Returns (slot, email): (None, None) when no mapping covers the
         directory, (None, email) when a mapping exists but its account was

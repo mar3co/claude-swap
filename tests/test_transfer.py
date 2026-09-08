@@ -1468,7 +1468,7 @@ class TestImportSessionInvalidation:
 
         import_accounts(s, str(out), force=True)
 
-        # Credential material dropped → next `openswap run` re-bootstraps from
+        # Credential material dropped → next setup_session re-bootstraps from
         # the imported backup; profile history (.claude.json) survives.
         assert not (session_dir / ".credentials.json").exists()
         assert (session_dir / ".claude.json").exists()

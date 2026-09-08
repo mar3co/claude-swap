@@ -1,9 +1,8 @@
-"""Directory → account mappings for `openswap run` auto-resolution.
+"""Leftover directory → account mappings from the cut map/run verbs.
 
 Maps a normalized absolute directory path to a stored account identity
-(email + organizationUuid). `openswap run` with no account argument resolves the
-current working directory to the nearest mapped ancestor and launches that
-account in session mode.
+(email + organizationUuid). The CLI no longer auto-resolves cwd through these;
+the store remains so account removal can prune stale ``mappings.json`` entries.
 
 Persisted to ``<backup_dir>/mappings.json``. Identity is stored as the stable
 (email, organizationUuid) composite rather than the slot number, since slot

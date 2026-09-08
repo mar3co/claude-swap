@@ -103,7 +103,7 @@ CANDIDATE_MAX_INTERVAL_S = 600.0
 EXHAUSTED_INTERVAL_S = 600.0
 
 # A window whose binding pct moved at least this much between polls is being
-# consumed somewhere (this machine, another PC, session mode) → tighten; an
+# consumed somewhere (this machine, another PC, isolated session profile) → tighten; an
 # unmoved one backs off toward its ceiling.
 MOVEMENT_DELTA_PCT = 1.0
 
