@@ -1269,15 +1269,18 @@ class AutoSwitchEngine:
                 # so an opted-in user can see the strategy working (or inert).
                 if active_reset_ts is None:
                     # The strictly-sooner filter skips every candidate when the
-                    # active account's weekly reset is unknown — without this
+                    # active account's ranked reset is unknown — without this
                     # reason the strategy would look enabled while doing
                     # nothing, with no way to tell.
+                    window_word = (
+                        "5-hour" if settings.strategy == "soonest-5h" else "weekly"
+                    )
                     self._emit(
                         NoSwitchEvent(
                             reason="reset-unknown",
                             detail=(
-                                "active account's weekly reset time is "
-                                "unknown; consume-first is idle until it "
+                                f"active account's {window_word} reset time is "
+                                f"unknown; {settings.strategy} is idle until it "
                                 "is reported"
                             ),
                         )

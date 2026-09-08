@@ -872,6 +872,8 @@ class MenuBarPanel:
         snap = self._snapshot()
         cards = panel_accounts(snap)
         hold_line = snap.get("hold_line") or ""
+        if not self._auto_enabled():
+            hold_line = ""
         running_line = snap.get("running_line") or ""
         pal = _colors()
 

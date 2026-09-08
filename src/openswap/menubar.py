@@ -53,9 +53,18 @@ REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
 AUTO_THRESHOLD_CHOICES: tuple[int, ...] = (80, 90, 95, 98)
 AUTO_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (
     ("best", "Most quota left"),
-    ("consume-first", "Soonest weekly reset"),
-    ("soonest-5h", "Soonest 5-hour reset"),
+    ("consume-first", "Burn weekly first"),
+    ("soonest-5h", "Burn 5-hour first"),
 )
+AUTO_STRATEGY_HINTS: dict[str, str] = {
+    "best": "Picks the account with the most quota left.",
+    "consume-first": "Picks the account whose 7-day window resets soonest.",
+    "soonest-5h": "Picks the account whose 5-hour session resets soonest.",
+}
+_HOLD_WINDOW = {
+    "consume-first": "weekly",
+    "soonest-5h": "5-hour",
+}
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
 
 
@@ -248,6 +257,13 @@ def settings_page_rows(
                     "label": "Auto-switch strategy",
                     "options": list(AUTO_STRATEGY_CHOICES),
                     "value": strategy,
+                },
+                {
+                    "kind": "group",
+                    "id": "strategy_hint",
+                    "label": AUTO_STRATEGY_HINTS.get(
+                        strategy, AUTO_STRATEGY_HINTS["best"]
+                    ),
                 },
             ]
         )
@@ -997,50 +1013,132 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
     return cards
 
 
-def auto_hold_line(strategy: str, accounts: list[dict], *, now: float) -> str | None:
-    """One glanceable sentence, or None for strategy 'best' or empty cards.
+def hold_event_update(current, event):
+    """Keep the last engine hold event; a real switch clears it."""
+    kind = getattr(event, "kind", None)
+    if kind in ("no-switch", "all-exhausted"):
+        return event
+    if kind == "switch":
+        return None
+    return current
 
-    accounts items: {"num", "title", "active", "windows": [{"label","resets_at_ts",...}]}
-    For consume-first use 7d window; for soonest-5h use 5h.
-    If active already soonest: "Holding on {title}: {5h|weekly} reset is soonest."
-    If another title would win: "Would pick {title} ({5h|weekly} resets sooner)."
-    Disabled / missing reset ts: skip that card.
+
+def hold_event_for_snapshot(event, *, hold_slot, active_num):
+    """Drop a cached hold that belongs to a different live slot.
+
+    ``hold_slot=""`` is a real bind (no active account this tick). ``None``
+    means the slot is unknown, so the event is kept.
     """
-    if strategy == "soonest-5h":
-        want_label, kind = "5h", "5h"
-    elif strategy == "consume-first":
-        want_label, kind = "7d", "weekly"
-    else:
+    if event is None:
         return None
-    if not accounts:
+    if hold_slot is None:
+        return event
+    if str(active_num or "") != str(hold_slot):
         return None
+    return event
 
-    def reset_ts(card: dict) -> float | None:
-        if card.get("disabled"):
-            return None
-        for window in card.get("windows") or []:
-            if window.get("label") != want_label:
-                continue
-            ts = window.get("resets_at_ts")
-            if isinstance(ts, (int, float)) and ts > now:
-                return float(ts)
-            return None
-        return None
 
-    scored: list[tuple[float, dict]] = []
-    for card in accounts:
-        ts = reset_ts(card)
-        if ts is not None:
-            scored.append((ts, card))
-    if not scored:
+def poll_tick_slot(event) -> str | None:
+    """Decision-time slot from a PollEvent; None if this event is not a poll."""
+    if getattr(event, "kind", None) != "poll":
         return None
-    scored.sort(key=lambda item: item[0])
-    soonest_ts, soonest = scored[0]
-    active = next((card for card in accounts if card.get("active")), None)
-    active_ts = reset_ts(active) if active is not None else None
-    if active is not None and active_ts is not None and active_ts <= soonest_ts:
-        return f"Holding on {active['title']}: {kind} reset is soonest."
-    return f"Would pick {soonest['title']} ({kind} resets sooner)."
+    active = getattr(event, "active", None) or {}
+    num = active.get("number")
+    return str(num) if num is not None else ""
+
+
+def hold_cache_after_event(hold_event, hold_slot, tick_slot, event):
+    """Advance the extra's hold cache for one engine callback.
+
+    Poll events record the tick's decision-time slot and must not clear it
+    when there is not yet a cached hold. Only a switch clears the cache.
+    """
+    poll_slot = poll_tick_slot(event)
+    if poll_slot is not None:
+        tick_slot = poll_slot
+    prev = hold_event
+    new = hold_event_update(prev, event)
+    if getattr(event, "kind", None) == "switch":
+        return None, None, None
+    if new is not None and new is not prev:
+        hold_slot = tick_slot if tick_slot is not None else ""
+    return new, hold_slot, tick_slot
+
+
+def extra_hold_line(
+    *,
+    auto_enabled: bool,
+    event,
+    active_title: str | None,
+    strategy: str,
+) -> str | None:
+    """Return popover hold copy only when auto-switch is running."""
+    if not auto_enabled:
+        return None
+    return hold_line_from_event(
+        event, active_title=active_title, strategy=strategy
+    )
+
+
+def hold_line_from_event(
+    event,
+    *,
+    active_title: str | None = None,
+    strategy: str = "best",
+) -> str | None:
+    """One glanceable sentence from an engine event. Extra does not re-rank."""
+    if event is None:
+        return None
+    kind = getattr(event, "kind", None)
+    if kind == "all-exhausted":
+        return "All accounts are out of usage."
+    if kind != "no-switch":
+        return None
+    reason = getattr(event, "reason", "") or ""
+    detail = str(getattr(event, "detail", "") or "").rstrip(".")
+    title = (active_title or "").strip() or "this account"
+    window = _HOLD_WINDOW.get(strategy)
+    if reason == "already-consuming-soonest":
+        # Engine uses this for both "active is soonest" and "sooner peers
+        # have no room"; do not claim the active account resets first.
+        if window:
+            return f"Holding on {title}: no sooner {window} reset with room."
+        return f"Holding on {title}: no sooner reset with room."
+    if reason == "below-threshold":
+        return f"Holding: {detail}." if detail else "Holding: below switch threshold."
+    if reason == "cooldown":
+        return "Holding: cooldown after last switch."
+    if reason == "reset-unknown":
+        if window:
+            return f"Holding: {window} reset time is unknown."
+        return "Holding: reset time is unknown."
+    if reason == "no-comparison":
+        return "Holding: no candidate has readable usage."
+    if reason == "no-candidates":
+        return "Holding: no other accounts to switch to."
+    if reason == "no-qualifying-candidate":
+        return "Holding: no better account yet."
+    if reason == "active-api-key":
+        return "Holding: API-key accounts have no quota to watch."
+    if reason == "active-idle":
+        return "Holding: Claude Code is idle."
+    if reason == "active-usage-unknown":
+        return (
+            f"Holding: waiting for usage ({detail})."
+            if detail
+            else "Holding: waiting for usage."
+        )
+    if reason == "unmanaged-active-account":
+        return "Holding: live login is not a managed account."
+    if reason == "no-active-account":
+        return "Holding: no active account."
+    if reason == "no-viable-target":
+        return "Holding: no viable target."
+    if reason == "stale-usage":
+        return "Holding: usage is stale."
+    if reason:
+        return f"Holding: {reason.replace('-', ' ')}."
+    return None
 
 
 def _local_part(email: str, limit: int = 12) -> str:
@@ -1382,6 +1480,9 @@ def run(switcher) -> int:
             # background thread while enabled.
             self._engine = None
             self._engine_events: list = []
+            self._hold_event = None
+            self._hold_slot = None
+            self._tick_slot = None
             self._event_lock = threading.Lock()
             self._panel = None
             self._kickoff_running = False
@@ -1435,9 +1536,7 @@ def run(switcher) -> int:
                 snap = _adapt_snapshot(raw)
                 self._log_usage(snap)
                 now = time.time()
-                snap["hold_line"] = auto_hold_line(
-                    self._strategy(), panel_accounts(snap, now=now), now=now
-                )
+                snap["hold_line"] = self._hold_line_for(snap)
                 try:
                     from openswap.process_detection import get_running_instances
 
@@ -1492,6 +1591,7 @@ def run(switcher) -> int:
                 # swallows the account-row mouseUp.
             self._detect_active_change()
             self._drain_engine_events()
+            self._apply_hold_line()
             self._drain_relogin_notifies()
             self._maybe_auto_capture_relogin()
             self._drain_kickoff_results()
@@ -1526,6 +1626,9 @@ def run(switcher) -> int:
             if live_slot_changed(
                 self.snapshot, self.switcher.current_account_number()
             ):
+                # Do not clear the hold cache here: the engine may already have
+                # recorded a reason for the new slot. Display is gated by
+                # hold_event_for_snapshot so an old hold cannot caption a new card.
                 self.refresh_async()
 
         # ---- auto-switch engine ----------------------------------------------
@@ -1544,7 +1647,12 @@ def run(switcher) -> int:
                 self.switcher._logger.warning("auto-switch engine failed to start: %s", e)
                 self._notify(notification_copy_for_engine_start_failure(str(e)))
                 return
-            self._engine = engine
+            engine.on_event = lambda event, e=engine: self._on_engine_event(event, e)
+            with self._event_lock:
+                self._engine = engine
+                self._hold_event = None
+                self._hold_slot = None
+                self._tick_slot = None
             threading.Thread(target=self._run_engine, args=(engine,), daemon=True).start()
 
         def _run_engine(self, engine):
@@ -1553,22 +1661,85 @@ def run(switcher) -> int:
             except Exception:
                 self.switcher._logger.debug("auto-switch engine crashed", exc_info=True)
 
+        def _clear_hold_event(self):
+            with self._event_lock:
+                self._hold_event = None
+                self._hold_slot = None
+                self._tick_slot = None
+
+        def _reload_main_panel_if_shown(self):
+            panel = self._panel
+            if (
+                panel is not None
+                and panel.is_shown()
+                and getattr(panel, "_page", None) == MAIN_PAGE
+            ):
+                panel.reload()
+
         def _stop_engine(self):
-            if self._engine is not None:
-                self._engine.stop()
+            with self._event_lock:
+                engine = self._engine
                 self._engine = None
+                self._hold_event = None
+                self._hold_slot = None
+                self._tick_slot = None
+                self._engine_events = []
+            if engine is not None:
+                engine.stop()
 
         def _restart_engine(self):
             """Apply changed core settings by restarting the running engine."""
             if self._engine is not None:
                 self._stop_engine()
                 self._start_engine()
+                self._apply_hold_line()
 
-        def _on_engine_event(self, event):
+        def _on_engine_event(self, event, engine=None):
             # Runs on the engine thread; must not raise. Queue for the main
             # thread, which surfaces notifications and reacts on the sync tick.
             with self._event_lock:
+                if self._engine is None:
+                    return
+                if engine is not None and engine is not self._engine:
+                    return
                 self._engine_events.append(event)
+                self._hold_event, self._hold_slot, self._tick_slot = (
+                    hold_cache_after_event(
+                        self._hold_event,
+                        self._hold_slot,
+                        self._tick_slot,
+                        event,
+                    )
+                )
+
+        def _hold_line_for(self, snap: dict) -> str | None:
+            with self._event_lock:
+                event = hold_event_for_snapshot(
+                    self._hold_event,
+                    hold_slot=self._hold_slot,
+                    active_num=snap.get("active_num"),
+                )
+                engine_on = self._engine is not None
+            cards = panel_accounts(snap, now=time.time())
+            active = next((card for card in cards if card.get("active")), None)
+            title = None if active is None else active.get("title")
+            return extra_hold_line(
+                auto_enabled=engine_on,
+                event=event,
+                active_title=title,
+                strategy=self._strategy(),
+            )
+
+        def _apply_hold_line(self):
+            # Mutate in place. Rebinding self.snapshot from the UI thread can
+            # drop a newer worker snapshot that landed between the copy and
+            # the write-back.
+            snap = self.snapshot
+            line = self._hold_line_for(snap)
+            if snap.get("hold_line") == line:
+                return
+            if self.snapshot is snap:
+                snap["hold_line"] = line
 
         def _drain_engine_events(self):
             with self._event_lock:
@@ -1831,15 +2002,19 @@ def run(switcher) -> int:
             if result is None:
                 return
             if should_notify_manual_switch(result):
+                self._clear_hold_event()
                 record_manual_switch(self.switcher.backup_dir)
                 self._notify_switched(dest_name)
                 self.refresh_async()
+                self._apply_hold_line()
             if (
                 close_panel
                 and should_dismiss_panel_after_switch(result)
                 and self._panel is not None
             ):
                 self._panel.close()
+            elif should_notify_manual_switch(result):
+                self._reload_main_panel_if_shown()
 
         def _notify(self, copy: NotificationCopy | None):
             if copy is None:
@@ -2166,7 +2341,9 @@ def run(switcher) -> int:
                 self._start_engine()
             else:
                 self._stop_engine()
+            self._apply_hold_line()
             self.rebuild_menu()
+            self._reload_main_panel_if_shown()
 
         def on_toggle_icon(self, _sender):
             self.settings.show_icon = not self.settings.show_icon

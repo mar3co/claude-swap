@@ -131,6 +131,10 @@ def test_auto_strategy_choices_match_core_settings():
     spec = SETTING_SPECS["autoswitch.strategy"]
     values = tuple(value for value, _label in menubar.AUTO_STRATEGY_CHOICES)
     assert values == spec.choices
+    labels = {value: label for value, label in menubar.AUTO_STRATEGY_CHOICES}
+    assert "weekly" in labels["consume-first"].lower()
+    assert "5-hour" in labels["soonest-5h"].lower()
+    assert "quota" in labels["best"].lower()
 
 
 def test_settings_page_constants():
@@ -163,6 +167,7 @@ def test_settings_page_rows_include_required_ids_and_values():
         "auto_switch_enabled",
         "threshold",
         "strategy",
+        "strategy_hint",
         "kickoff_enabled",
         "kickoff_time",
         "show_icon",
@@ -195,6 +200,8 @@ def test_settings_page_rows_include_required_ids_and_values():
     assert by_id["strategy"]["kind"] == "choice"
     assert by_id["strategy"]["value"] == "soonest-5h"
     assert by_id["strategy"]["options"] == list(menubar.AUTO_STRATEGY_CHOICES)
+    assert by_id["strategy_hint"]["kind"] == "group"
+    assert "5-hour" in by_id["strategy_hint"]["label"]
     assert by_id["kickoff_time"]["kind"] == "popup"
     assert by_id["kickoff_time"]["label"] == "Time"
     assert by_id["kickoff_time"]["value"] == kickoff_time_value(19, 30)
@@ -221,7 +228,9 @@ def test_settings_page_hides_autoswitch_policy_when_disabled():
     ids_on = [row["id"] for row in on]
     assert ids_on.index("auto_switch_enabled") < ids_on.index("threshold")
     assert ids_on.index("threshold") < ids_on.index("strategy")
-    assert ids_on.index("strategy") < ids_on.index("kickoff_enabled")
+    assert ids_on.index("strategy") < ids_on.index("strategy_hint")
+    assert ids_on.index("strategy_hint") < ids_on.index("kickoff_enabled")
+    assert "strategy_hint" not in ids_off
 
 
 def test_settings_page_hides_kickoff_time_when_disabled():
@@ -498,105 +507,190 @@ def test_panel_accounts_uses_last_good_when_display_is_a_sentinel():
     assert cards[0]["windows"][0]["pct"] == 42.0
 
 
-# --- auto-switch hold line (popover, consume strategies only) ------------------
-
-_HOLD_NOW = 1_000_000.0
+# --- auto-switch hold line (engine events, not extra ranking) ------------------
 
 
-def _hold_cards(*, active_5h, active_7d, peer_5h, peer_7d, peer_disabled=False):
-    """Two cards titled personal / Ads Online with synthetic reset timestamps."""
-    return [
-        {
-            "num": 1,
-            "title": "personal",
-            "active": True,
-            "disabled": False,
-            "windows": [
-                {"label": "5h", "resets_at_ts": active_5h},
-                {"label": "7d", "resets_at_ts": active_7d},
-            ],
-        },
-        {
-            "num": 2,
-            "title": "Ads Online",
-            "active": False,
-            "disabled": peer_disabled,
-            "windows": [
-                {"label": "5h", "resets_at_ts": peer_5h},
-                {"label": "7d", "resets_at_ts": peer_7d},
-            ],
-        },
-    ]
+def test_hold_event_update_keeps_no_switch_and_clears_on_switch():
+    held = NoSwitchEvent(reason="cooldown")
+    assert menubar.hold_event_update(None, held) is held
+    exhausted = AllExhaustedEvent(earliest_reset_at=None)
+    assert menubar.hold_event_update(held, exhausted) is exhausted
+    poll = PollEvent(active=None, headroom={}, threshold=90.0)
+    assert menubar.hold_event_update(exhausted, poll) is exhausted
+    switched = SwitchEvent(trigger="proactive", from_ref=None, to_ref=None)
+    assert menubar.hold_event_update(exhausted, switched) is None
 
 
-def test_auto_hold_line_none_for_best_or_empty():
-    cards = _hold_cards(
-        active_5h=_HOLD_NOW + 100,
-        active_7d=_HOLD_NOW + 1000,
-        peer_5h=_HOLD_NOW + 50,
-        peer_7d=_HOLD_NOW + 500,
-    )
-    assert menubar.auto_hold_line("best", cards, now=_HOLD_NOW) is None
-    assert menubar.auto_hold_line("consume-first", [], now=_HOLD_NOW) is None
-    assert menubar.auto_hold_line("soonest-5h", [], now=_HOLD_NOW) is None
+def test_hold_event_for_snapshot_hides_hold_from_another_slot():
+    ev = NoSwitchEvent(reason="cooldown")
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot="1", active_num="2"
+    ) is None
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot="1", active_num="1"
+    ) is ev
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot=None, active_num="2"
+    ) is ev
+    assert menubar.hold_event_for_snapshot(
+        None, hold_slot="1", active_num="1"
+    ) is None
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot="", active_num="1"
+    ) is None
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot="", active_num=None
+    ) is ev
 
 
-def test_auto_hold_line_holding_when_active_is_soonest():
-    cards = _hold_cards(
-        active_5h=_HOLD_NOW + 400,
-        active_7d=_HOLD_NOW + 400,
-        peer_5h=_HOLD_NOW + 50,
-        peer_7d=_HOLD_NOW + 800,
+def test_poll_tick_slot_uses_poll_active_not_live_login():
+    poll = PollEvent(
+        active={"number": 2, "email": "b@x.com"},
+        headroom={},
+        threshold=90.0,
     )
-    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
-        "Holding on personal: weekly reset is soonest."
-    )
-    soonest_5h = _hold_cards(
-        active_5h=_HOLD_NOW + 50,
-        active_7d=_HOLD_NOW + 800,
-        peer_5h=_HOLD_NOW + 400,
-        peer_7d=_HOLD_NOW + 400,
-    )
-    assert menubar.auto_hold_line("soonest-5h", soonest_5h, now=_HOLD_NOW) == (
-        "Holding on personal: 5h reset is soonest."
-    )
+    assert menubar.poll_tick_slot(poll) == "2"
+    empty = PollEvent(active=None, headroom={}, threshold=90.0)
+    assert menubar.poll_tick_slot(empty) == ""
+    assert menubar.poll_tick_slot(NoSwitchEvent(reason="cooldown")) is None
 
 
-def test_auto_hold_line_would_pick_sooner_peer():
-    cards = _hold_cards(
-        active_5h=_HOLD_NOW + 400,
-        active_7d=_HOLD_NOW + 2000,
-        peer_5h=_HOLD_NOW + 50,
-        peer_7d=_HOLD_NOW + 500,
+def test_hold_cache_after_event_poll_then_hold_keeps_tick_slot():
+    poll = PollEvent(
+        active={"number": 1, "email": "a@x.com"},
+        headroom={},
+        threshold=90.0,
     )
-    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
-        "Would pick Ads Online (weekly resets sooner)."
-    )
-    assert menubar.auto_hold_line("soonest-5h", cards, now=_HOLD_NOW) == (
-        "Would pick Ads Online (5h resets sooner)."
-    )
+    held = NoSwitchEvent(reason="cooldown")
+    ev, slot, tick = menubar.hold_cache_after_event(None, None, None, poll)
+    assert ev is None
+    assert slot is None
+    assert tick == "1"
+    ev, slot, tick = menubar.hold_cache_after_event(ev, slot, tick, held)
+    assert ev is held
+    assert slot == "1"
+    assert tick == "1"
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot=slot, active_num="1"
+    ) is held
+    empty = PollEvent(active=None, headroom={}, threshold=90.0)
+    none_hold = NoSwitchEvent(reason="no-active-account")
+    ev, slot, tick = menubar.hold_cache_after_event(None, None, None, empty)
+    assert tick == ""
+    ev, slot, tick = menubar.hold_cache_after_event(ev, slot, tick, none_hold)
+    assert slot == ""
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot=slot, active_num=None
+    ) is none_hold
+    assert menubar.hold_event_for_snapshot(
+        ev, hold_slot=slot, active_num="1"
+    ) is None
+    switched = SwitchEvent(trigger="proactive", from_ref=None, to_ref=None)
+    ev, slot, tick = menubar.hold_cache_after_event(held, "1", "1", switched)
+    assert ev is None
+    assert slot is None
+    assert tick is None
 
 
-def test_auto_hold_line_skips_disabled_and_missing_reset_ts():
-    cards = _hold_cards(
-        active_5h=_HOLD_NOW + 400,
-        active_7d=_HOLD_NOW + 2000,
-        peer_5h=_HOLD_NOW + 10,
-        peer_7d=_HOLD_NOW + 10,
-        peer_disabled=True,
+def test_extra_hold_line_none_when_auto_off_or_no_event():
+    ev = NoSwitchEvent(reason="cooldown")
+    assert menubar.extra_hold_line(
+        auto_enabled=False, event=ev, active_title="personal", strategy="best"
+    ) is None
+    assert menubar.extra_hold_line(
+        auto_enabled=True, event=None, active_title="personal", strategy="best"
+    ) is None
+    poll = PollEvent(active=None, headroom={}, threshold=90.0)
+    assert menubar.extra_hold_line(
+        auto_enabled=True, event=poll, active_title="personal", strategy="best"
+    ) is None
+
+
+def test_hold_line_from_event_uses_engine_reason_not_peer_rank():
+    soonest = NoSwitchEvent(reason="already-consuming-soonest")
+    assert menubar.hold_line_from_event(
+        soonest, active_title="personal", strategy="consume-first"
+    ) == "Holding on personal: no sooner weekly reset with room."
+    assert menubar.hold_line_from_event(
+        soonest, active_title="personal", strategy="soonest-5h"
+    ) == "Holding on personal: no sooner 5-hour reset with room."
+    assert menubar.hold_line_from_event(
+        NoSwitchEvent(reason="cooldown"),
+        active_title="Ads Online",
+        strategy="soonest-5h",
+    ) == "Holding: cooldown after last switch."
+    assert menubar.hold_line_from_event(
+        NoSwitchEvent(reason="below-threshold", detail="10% < 90%"),
+        active_title="personal",
+        strategy="best",
+    ) == "Holding: 10% < 90%."
+    assert menubar.hold_line_from_event(
+        AllExhaustedEvent(earliest_reset_at=None)
+    ) == "All accounts are out of usage."
+    assert menubar.hold_line_from_event(
+        NoSwitchEvent(reason="already-active")
+    ) == "Holding: already active."
+
+
+def test_extra_hold_line_passes_through_engine_copy_when_auto_on():
+    ev = NoSwitchEvent(reason="cooldown")
+    assert menubar.extra_hold_line(
+        auto_enabled=True, event=ev, active_title="personal", strategy="best"
+    ) == "Holding: cooldown after last switch."
+    assert menubar.extra_hold_line(
+        auto_enabled=True,
+        event=AllExhaustedEvent(earliest_reset_at=None),
+        active_title="personal",
+        strategy="best",
+    ) == "All accounts are out of usage."
+    soonest = NoSwitchEvent(reason="already-consuming-soonest")
+    assert menubar.extra_hold_line(
+        auto_enabled=True,
+        event=soonest,
+        active_title="personal",
+        strategy="consume-first",
+    ) == "Holding on personal: no sooner weekly reset with room."
+
+
+def test_hold_line_from_event_reset_unknown_names_window():
+    unk = NoSwitchEvent(reason="reset-unknown")
+    assert menubar.hold_line_from_event(
+        unk, strategy="consume-first"
+    ) == "Holding: weekly reset time is unknown."
+    assert menubar.hold_line_from_event(
+        unk, strategy="soonest-5h"
+    ) == "Holding: 5-hour reset time is unknown."
+    assert menubar.hold_line_from_event(
+        unk, strategy="best"
+    ) == "Holding: reset time is unknown."
+
+
+def test_settings_strategy_hint_matches_selected_strategy():
+    consume = menubar.settings_page_rows(
+        menubar.MenuBarSettings(auto_switch_enabled=True),
+        strategy="consume-first",
+        threshold=90,
     )
-    assert menubar.auto_hold_line("consume-first", cards, now=_HOLD_NOW) == (
-        "Holding on personal: weekly reset is soonest."
+    soonest = menubar.settings_page_rows(
+        menubar.MenuBarSettings(auto_switch_enabled=True),
+        strategy="soonest-5h",
+        threshold=90,
     )
-    missing = _hold_cards(
-        active_5h=_HOLD_NOW + 400,
-        active_7d=_HOLD_NOW + 2000,
-        peer_5h=None,
-        peer_7d=None,
+    best = menubar.settings_page_rows(
+        menubar.MenuBarSettings(auto_switch_enabled=True),
+        strategy="best",
+        threshold=90,
     )
-    assert menubar.auto_hold_line("soonest-5h", missing, now=_HOLD_NOW) == (
-        "Holding on personal: 5h reset is soonest."
-    )
+    by_consume = {row["id"]: row for row in consume}
+    by_soonest = {row["id"]: row for row in soonest}
+    by_best = {row["id"]: row for row in best}
+    assert "7-day" in by_consume["strategy_hint"]["label"]
+    assert "5-hour" in by_soonest["strategy_hint"]["label"]
+    assert by_consume["strategy_hint"]["label"] != by_soonest["strategy_hint"]["label"]
+    best_hint = by_best["strategy_hint"]["label"].lower()
+    assert "quota" in best_hint
+    assert "7-day" not in best_hint
+    assert "5-hour" not in best_hint
 
 
 # --- usage logging -------------------------------------------------------------
@@ -910,6 +1004,11 @@ def test_panel_settings_page_does_not_set_menu_open():
 
 def test_manual_switch_uses_json_stamps_cooldown_and_alerts_in_front():
     text = Path(menubar.__file__).read_text(encoding="utf-8")
+    finish = text[
+        text.index("def _finish_manual_switch") : text.index("def _notify(")
+    ]
+    assert "_clear_hold_event" in finish
+    assert "_apply_hold_line" in finish
     assert "record_manual_switch" in text
     assert "json_output=True" in text
     assert "should_notify_manual_switch" in text

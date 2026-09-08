@@ -2988,8 +2988,12 @@ class TestConsumeFirstStrategy:
         })
         assert outcome is TickOutcome.NO_ACTION
         assert h.active_number() == 1
-        reasons = [e.reason for e in h.events if isinstance(e, NoSwitchEvent)]
-        assert reasons == ["reset-unknown"]
+        events = [e for e in h.events if isinstance(e, NoSwitchEvent)]
+        assert [e.reason for e in events] == ["reset-unknown"]
+        detail = events[0].detail.lower()
+        assert "weekly" in detail
+        assert "5-hour" not in detail
+        assert "5h" not in detail
 
     def test_unreadable_candidates_stay_no_comparison(self, temp_home):
         # Every candidate unreadable this tick is a BLOCKED no-comparison for
@@ -3275,6 +3279,20 @@ class TestSoonest5hStrategy:
         sw = next(e for e in h.events if isinstance(e, SwitchEvent))
         assert sw.trigger == "consume-first"
         assert sw.to_ref == {"number": 2, "email": "b@example.com"}
+
+    def test_reset_unknown_detail_names_5h_not_weekly(self, temp_home):
+        h = self._harness(temp_home)
+        outcome = h.tick_with_usage({
+            "1": _usage5(20, None, pct7=20, reset7=_R_SOON),
+            "2": _usage5(10, _R_SOON, pct7=10, reset7=_R_LATEST),
+            "3": _usage5(10, _R_LATEST, pct7=10, reset7=_R_LATER),
+        })
+        assert outcome is TickOutcome.NO_ACTION
+        events = [e for e in h.events if isinstance(e, NoSwitchEvent)]
+        assert [e.reason for e in events] == ["reset-unknown"]
+        detail = events[0].detail.lower()
+        assert "5-hour" in detail or "5h" in detail
+        assert "weekly" not in detail
 
     def test_stays_when_active_already_has_soonest_5h(self, temp_home):
         h = self._harness(temp_home)
