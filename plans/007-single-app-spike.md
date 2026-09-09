@@ -136,8 +136,9 @@ Conventions to match:
   target in `macos/OpenSwapWidget/project.yml` — a tiny command-line helper
   that calls `WidgetCenter.shared.reloadAllTimelines()` (Step 5)
 - `src/openswap/menubar_display.py` — one guard in `ensure_notification_identity`
-- `src/openswap/cli.py` — one frozen-default in `main`
+- `src/openswap/cli.py` — one helper and one frozen-default in `main`
 - `tests/test_menubar.py` — one test for the guard
+- `tests/test_cli.py` — two tests for the frozen default
 - `.gitignore` — add `packaging/macos/dist/` and `packaging/macos/build/`
 - `plans/README.md` — status row
 
@@ -212,31 +213,69 @@ the new test on the neighbouring one): monkeypatch `sys.frozen = True`, call
 **Verify**: `uv run pytest tests/test_menubar.py -q` → all pass, count is one
 higher than before.
 
-### Step 2: Default to `menubar` when the frozen app is launched with no arguments
+### Step 2: Default to `menubar` when the frozen app is launched without a terminal
 
-Finder, `open -a`, and the LaunchAgent in plan 008 launch the bundle's main
-executable. From Finder that means no arguments (macOS may pass a `-psn_…`
-argument on older systems). From a terminal, `OpenSwap.app/Contents/MacOS/OpenSwap list`
-must behave as the CLI.
+Finder, `open -a`, and LaunchServices start the bundle's main executable with
+no arguments and no controlling terminal (older macOS may add a `-psn_…`
+argument). Plan 008's LaunchAgent passes `menubar` explicitly. A person who
+types `openswap` in a terminal (the cask will symlink this same executable
+onto `PATH`) must still get help, not a menu bar extra taking over their
+shell. The deciding signal is therefore "is there a terminal", not "is the
+app frozen".
 
-In `src/openswap/cli.py` `main`, before the line
-`if not argv: argv = ["--help"]` (around line 948), add:
+In `src/openswap/cli.py`, add a module-level helper next to `_prog_name`
+(search for `def _prog_name`):
 
 ```python
-    if getattr(sys, "frozen", False) and not [a for a in argv if not a.startswith("-psn")]:
-        argv = ["menubar"]
+def _frozen_without_terminal() -> bool:
+    """True when the frozen .app was started by Finder / LaunchServices."""
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        return not sys.stdin.isatty()
+    except (AttributeError, ValueError, OSError):
+        return True  # no usable stdin at all: not a terminal
 ```
 
-Place it **before** the existing `auto` / `widget` / `statusline` dispatch
-block so it runs before any subcommand parsing (i.e. as the first thing that
-inspects `argv` after theme setup). The existing `menubar` handling then takes
-over unchanged.
+Then in `main`, replace
 
-Add a test in `tests/test_cli.py` (model on any existing test that calls
-`main` with a patched `sys.argv`): with `sys.frozen = True` and argv `[]`,
-`main` must call `openswap.menubar.run` (patch it) rather than print help.
+```python
+    # Bare `openswap` prints help (used to open the terminal dashboard).
+    if not argv:
+        argv = ["--help"]
+```
 
-**Verify**: `uv run pytest tests/test_cli.py -q` → all pass.
+with
+
+```python
+    # Bare `openswap` prints help (used to open the terminal dashboard).
+    # The frozen bundle launched by Finder has no terminal: run the extra.
+    if _frozen_without_terminal() and not [a for a in argv if not a.startswith("-psn")]:
+        argv = ["menubar"]
+    if not argv:
+        argv = ["--help"]
+```
+
+This sits after the `auto` / `widget` / `statusline` / `config` dispatch
+block on purpose: an empty argv never matches those verbs, so nothing before
+this point needs to know about the frozen case. The existing `menubar`
+handling then takes over unchanged.
+
+Add two tests in `tests/test_cli.py` next to the existing test that sets
+`sys.argv` to `["openswap", "menubar"]` and patches `openswap.menubar.run`
+(search for that test and copy its structure). Both set
+`sys.frozen = True` (monkeypatch with `raising=False`) and
+`sys.argv = ["openswap"]`:
+
+1. No terminal: `monkeypatch.setattr(sys, "stdin", io.StringIO())` →
+   `main` calls the patched `openswap.menubar.run`.
+2. Terminal: `monkeypatch.setattr(sys.stdin, "isatty", lambda: True)` →
+   `main` raises `SystemExit` with code 0 (argparse `--help`), captured
+   stdout contains `Commands:`, and the patched `openswap.menubar.run` was
+   never called.
+
+**Verify**: `uv run pytest tests/test_cli.py -q` → all pass, count is two
+higher than before.
 
 ### Step 3: Build the appex with manual Developer ID signing disabled (sign later)
 
@@ -362,7 +401,11 @@ If PyInstaller reports a missing module at runtime in Step 7, add it to
 
 **Verify**: `ls packaging/macos/dist/OpenSwap.app/Contents/MacOS/OpenSwap` →
 exists. `packaging/macos/dist/OpenSwap.app/Contents/MacOS/OpenSwap list` from
-a terminal → prints the account table (same output as `openswap list`).
+a terminal → prints the account table (same output as `openswap list`). On
+macOS a `console=False` PyInstaller binary keeps the terminal's stdin/stdout
+when run from one, so this is expected to work as is. If it prints nothing,
+STOP and report; do not switch to `console=True`, which makes PyInstaller
+set `LSBackgroundOnly`, a key a status-item app must not carry.
 
 ### Step 5: Assemble the bundle
 
@@ -421,58 +464,98 @@ signing/entitlement issues it names; anything else is a STOP.
 
 ### Step 7: Run the bundle as a user would and record the verdict
 
-On this Mac, with the current `uv`-installed extra **stopped**
-(`launchctl bootout gui/$(id -u)/com.opensoft.openswap.menubar`), and the
-current widget host stopped (`launchctl bootout gui/$(id -u)/com.opensoft.openswap.widget`):
+This Mac already runs OpenSwap: `~/Applications/OpenSwap.app` is the current
+widget host (bundle id `com.opensoft.openswap.widget`) and its appex is the
+one WidgetKit knows about (`pluginkit -m -i com.opensoft.openswap.widget.extension -v`
+prints that path). The spike bundle carries an appex with the **same** id, so
+the old app must be moved aside, not just stopped, or WidgetKit sees two
+parents for one extension.
 
-1. `cp -R packaging/macos/dist/OpenSwap.app /Applications/` then
-   `open -a /Applications/OpenSwap.app`. Expected: the status item appears
-   within a few seconds, the popover opens on click, cards show usage bars,
-   a card click switches accounts (check `openswap list` from a terminal
-   afterwards shows the new active slot).
-2. Check `~/Library/Logs/` and Console.app for the bundle's process: no
-   `ModuleNotFoundError`, no signature or library-validation errors.
-3. Add the OpenSwap widget from Edit Widgets. Expected: it renders cards from
-   `~/Library/Application Support/OpenSwap/widget-snapshot.json`.
-4. Switch accounts from the popover, then run
-   `/Applications/OpenSwap.app/Contents/MacOS/openswap-widget-reload`.
-   Expected: the widget updates within a couple of seconds. This proves the
-   reload helper works from inside the bundle (the extra will call it in
-   plan 008 instead of posting the Darwin notification). If the widget does
-   not update, confirm with
-   `log stream --predicate 'subsystem == "com.apple.widgetkit"'` whether a
-   reload request arrived at all. Record the result either way.
-5. Tap the widget. Expected: the extra consumes `widget-command.json` and
-   switches (the extra must be running).
-6. `/Applications/OpenSwap.app/Contents/MacOS/OpenSwap switch 1` from a
-   terminal. Expected: same output as `openswap switch 1`.
-7. Restore the user's setup: `rm -rf /Applications/OpenSwap.app`, then
-   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.opensoft.openswap.menubar.plist`
-   and the same for the widget plist.
+**Never switch accounts during this step.** The extra and the CLI act on the
+operator's live Claude login. `list` (a Keychain read) is the proof the
+frozen build needs; the switch checks belong to the operator.
+
+Prepare (run each line, in order):
+
+```bash
+launchctl bootout gui/$(id -u)/com.opensoft.openswap.menubar
+launchctl bootout gui/$(id -u)/com.opensoft.openswap.widget
+pluginkit -r ~/Applications/OpenSwap.app/Contents/PlugIns/OpenSwapWidgetExtension.appex
+mv ~/Applications/OpenSwap.app ~/Applications/OpenSwap.app.pre-spike
+cp -R packaging/macos/dist/OpenSwap.app /Applications/
+pluginkit -a /Applications/OpenSwap.app/Contents/PlugIns/OpenSwapWidgetExtension.appex
+pluginkit -m -i com.opensoft.openswap.widget.extension -v
+```
+
+The last command must list exactly one path, under `/Applications`. If it
+still lists the `~/Applications` one, STOP.
+
+Checks:
+
+1. `open -a /Applications/OpenSwap.app`. Expected: the status item appears
+   within a few seconds, the popover opens on click, cards show usage bars.
+   Do not click a card.
+2. `log show --last 5m --predicate 'process == "OpenSwap"'` (or Console.app):
+   no `ModuleNotFoundError`, no signature or library-validation errors.
+3. `/Applications/OpenSwap.app/Contents/MacOS/OpenSwap list` from a terminal.
+   Expected: the same table as `openswap list` (the frozen build reads the
+   Keychain). Also `/Applications/OpenSwap.app/Contents/MacOS/OpenSwap` with
+   no arguments prints help rather than starting a second extra.
+4. Add the OpenSwap widget from Edit Widgets. Expected: it renders cards from
+   `~/Library/Application Support/OpenSwap/widget-snapshot.json`. Also note
+   whether a widget that was already on the desktop before this step kept
+   rendering or went blank; plan 008 needs that fact.
+5. In one terminal run
+   `log stream --predicate 'subsystem == "com.apple.widgetkit"'`; in another
+   run `/Applications/OpenSwap.app/Contents/MacOS/openswap-widget-reload`.
+   Expected: the stream shows a reload request naming
+   `com.opensoft.openswap.widget.extension` within a couple of seconds. This
+   is the in-bundle reload proof (plan 008 has the extra call this helper
+   instead of posting the Darwin notification). No account switch is needed.
+6. **Operator only**: a card click switches accounts; a widget tap switches
+   (the extra must be running); `/Applications/OpenSwap.app/Contents/MacOS/OpenSwap switch <n>`
+   from a terminal matches `openswap switch <n>`. Record these three as
+   `OPERATOR` in the verdict and leave them; the operator fills in PASS or
+   FAIL, or drops them.
+
+Restore (run each line, in order):
+
+```bash
+pkill -x OpenSwap
+pluginkit -r /Applications/OpenSwap.app/Contents/PlugIns/OpenSwapWidgetExtension.appex
+rm -rf /Applications/OpenSwap.app
+mv ~/Applications/OpenSwap.app.pre-spike ~/Applications/OpenSwap.app
+pluginkit -a ~/Applications/OpenSwap.app/Contents/PlugIns/OpenSwapWidgetExtension.appex
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.opensoft.openswap.widget.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.opensoft.openswap.menubar.plist
+```
 
 Write `packaging/macos/README.md` with: how to run `build.sh`, the env vars it
 needs (`OPENSWAP_SIGN_IDENTITY`, the `openswap-notary` profile name), the
 bundle size from `du -sh dist/OpenSwap.app`, and a **Spike verdict** section
-listing each of the seven checks above as PASS or FAIL with one line of
-evidence. That verdict is what plan 008 is gated on.
+listing each of the six checks above as PASS, FAIL, or OPERATOR with one line
+of evidence. That verdict is what plan 008 is gated on.
 
-**Verify**: `test -f packaging/macos/README.md && grep -c "PASS\|FAIL" packaging/macos/README.md` → at least 7.
+**Verify**: `test -f packaging/macos/README.md && grep -c "PASS\|FAIL\|OPERATOR" packaging/macos/README.md` → at least 6.
 
 ## Test plan
 
 - `tests/test_menubar.py`: frozen guard in `ensure_notification_identity`
   (Step 1).
-- `tests/test_cli.py`: frozen no-args launches the menu bar (Step 2).
+- `tests/test_cli.py`: frozen no-args without a terminal launches the menu
+  bar; with a terminal it prints help (Step 2).
 - Pattern: neighbouring tests in the same files.
-- Manual: the seven checks in Step 7, recorded in `packaging/macos/README.md`.
-- Verification: `uv run pytest` → all pass, two new tests.
+- Manual: the six checks in Step 7, recorded in `packaging/macos/README.md`;
+  check 6 is the operator's.
+- Verification: `uv run pytest` → all pass, three new tests.
 
 ## Done criteria
 
-- [ ] `uv run pytest` exits 0 with two more tests than at `92722b1` (2263 passed)
+- [ ] `uv run pytest` exits 0 with three more tests than at `92722b1` (2264 passed)
 - [ ] `packaging/macos/build.sh` exists and, with the two env inputs, produces a stapled `dist/OpenSwap.app`
 - [ ] `spctl --assess --type execute --verbose=2 packaging/macos/dist/OpenSwap.app` → `accepted`, `source=Notarized Developer ID`
-- [ ] `packaging/macos/README.md` has a Spike verdict with all seven checks marked
+- [ ] `packaging/macos/README.md` has a Spike verdict with all six checks marked
+- [ ] `~/Applications/OpenSwap.app` is back in place and both LaunchAgents are loaded again (`launchctl list | grep opensoft` shows both labels)
 - [ ] `grep -rn "Developer ID Application:" packaging/ macos/` returns no matches (identity is env-only)
 - [ ] `git status` shows no files outside the in-scope list modified; `packaging/macos/dist/` and `build/` are git-ignored
 - [ ] `plans/README.md` status row updated
@@ -489,10 +572,12 @@ Stop and report back (do not improvise) if:
   py2app with a framework Python, which is a different plan.
 - Notarization returns `Invalid` for a reason other than a signing or
   entitlement problem you can name from the notarytool log.
-- The reload helper (Step 7 check 4) does not reload the widget **and**
-  `log stream` shows no request. Report it; plan 008 then keeps a small
-  embedded Swift login item instead of the helper, which is a design change
-  the operator must approve.
+- The reload helper (Step 7 check 5) produces no reload request in
+  `log stream`. Report it. The fallback for plan 008 is the existing 30-line
+  observer in `macos/OpenSwapWidget/Host/main.swift`, embedded in this same
+  bundle as a helper app, not a new design; the operator still approves it.
+- You are about to switch accounts, click a card, or tap the widget. Those
+  are the operator's checks (Step 7 check 6).
 - You find yourself wanting to change `widget_install.py`, `launch_agent.py`,
   or `update_check.py`. That is plan 008.
 
@@ -508,6 +593,10 @@ Stop and report back (do not improvise) if:
   on a macOS runner with the certificate in secrets.
 - Existing users have LaunchAgents pointing at the uv console script. Plan
   008 needs a one-time migration that rewrites those plists.
+- The outer bundle id changes from `com.opensoft.openswap.widget` (Swift
+  host) to `com.opensoft.openswap`. Widgets already placed on a desktop may
+  go blank and need re-adding when 008 ships; Step 7 check 4 records what
+  actually happens, and 008's release note must say so.
 - Reviewer focus: the signing order in `build.sh` (inside-out, outer app
   last), the two entitlements on the outer app (no more than needed), and
   that no identity or credential string landed in any file.
