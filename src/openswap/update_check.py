@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 
 def _looks_like_openswap_checkout(root: Path) -> bool:
@@ -72,7 +73,7 @@ def _checkout_from_direct_url(package_file: Path | None) -> Path | None:
         if not str(url).startswith("file:"):
             return None
         parsed = urlparse(str(url))
-        local = unquote(parsed.path)
+        local = url2pathname(unquote(parsed.path))
         return Path(local) if local else None
     return None
 

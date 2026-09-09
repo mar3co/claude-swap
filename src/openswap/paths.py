@@ -196,7 +196,9 @@ def migrate_legacy_backup_dir(target: Path) -> bool:
 
     if not legacy.exists():
         # Successful prior run that died before unlinking the flag.
-        flag.unlink(missing_ok=True)
+        # missing_ok still calls os.unlink; skip the syscall when absent.
+        if flag.exists():
+            flag.unlink()
         return False
 
     try:

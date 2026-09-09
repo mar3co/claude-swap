@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ def test_packaging_files_do_not_embed_signing_identity():
     assert hits == [], f"signing identity string leaked into {hits}"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="ci-import is a bash script for macOS runners")
 def test_ci_import_signing_keychain_requires_p12():
     script = PACKAGING / "ci-import-signing-keychain.sh"
     assert script.is_file(), "CI keychain import script is missing"
@@ -55,7 +57,8 @@ def test_ci_import_signing_keychain_requires_p12():
         check=False,
     )
     assert result.returncode != 0
-    assert "SIGNING_APPLICATION_P12_BASE64" in result.stderr
+    combined = result.stderr + result.stdout
+    assert "SIGNING_APPLICATION_P12_BASE64" in combined
 
 
 def test_build_sh_unsigned_path_is_success_not_a_stop():

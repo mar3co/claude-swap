@@ -1905,7 +1905,8 @@ def test_launch_claude_login_opens_command_file(tmp_path):
         command_path=dest,
     )
     assert dest.is_file()
-    assert dest.stat().st_mode & 0o111
+    if sys.platform != "win32":
+        assert dest.stat().st_mode & 0o111
     body = dest.read_text(encoding="utf-8")
     assert body.startswith("#!/bin/bash\n")
     assert "a@x.com" in body

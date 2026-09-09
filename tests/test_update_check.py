@@ -72,7 +72,7 @@ class TestGitCheckoutGuard:
         )
         dist.mkdir(parents=True)
         (dist / "direct_url.json").write_text(
-            '{"url":"file://' + str(repo) + '","dir_info":{"editable":true}}'
+            '{"url":"' + repo.as_uri() + '","dir_info":{"editable":true}}'
         )
         package_file = dist.parent / "openswap" / "__init__.py"
         package_file.parent.mkdir(parents=True)
@@ -95,7 +95,7 @@ class TestGitCheckoutGuard:
         )
         dist.mkdir(parents=True)
         (dist / "direct_url.json").write_text(
-            '{"url":"file://' + str(vendor) + '","dir_info":{}}'
+            '{"url":"' + vendor.as_uri() + '","dir_info":{}}'
         )
         package_file = dist.parent / "openswap" / "__init__.py"
         package_file.parent.mkdir(parents=True)
