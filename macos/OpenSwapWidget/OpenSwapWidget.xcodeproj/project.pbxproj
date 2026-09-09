@@ -10,6 +10,7 @@
 		326E82E0B0334C92D5967939 /* OpenSwapWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5DF5673563504B55F67F048 /* OpenSwapWidget.swift */; };
 		33E81616023CCFEC7061222F /* SwitchAccountIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66011BDBD3C337C99C45D6CC /* SwitchAccountIntent.swift */; };
 		35A1862213BCB7EC9FE3E3DF /* OpenSwapWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBC8696FB698C18C92EFF27 /* OpenSwapWidgetIntent.swift */; };
+		422C803CA10470BD6EFF8916 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545F0B2D126C0EDD48DA0D64 /* main.swift */; };
 		7E306D52DAB972E2C13DFC26 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825D66A41D3651C7C2BFC94C /* main.swift */; };
 		C2FE40AF4FA2F9380F6DB9D0 /* OpenSwapWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C4E69EC707B8344C41FD59BB /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D2E0B5985112579495B7E2E /* WidgetKit.framework */; };
@@ -45,12 +46,14 @@
 /* Begin PBXFileReference section */
 		0953BA2D0CD5C01ECFA61624 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		0D2E0B5985112579495B7E2E /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		545F0B2D126C0EDD48DA0D64 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		66011BDBD3C337C99C45D6CC /* SwitchAccountIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchAccountIntent.swift; sourceTree = "<group>"; };
 		6F1ABC0B06A9209702B8DBD8 /* OpenSwapWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidgetView.swift; sourceTree = "<group>"; };
 		825D66A41D3651C7C2BFC94C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenSwapWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DDB9E5B80A043484C87A2355 /* OpenSwapWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenSwapWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5DF5673563504B55F67F048 /* OpenSwapWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidget.swift; sourceTree = "<group>"; };
+		E71C8BC8EB3C5B3190A89E92 /* OpenSwapWidgetReload */ = {isa = PBXFileReference; includeInIndex = 0; path = OpenSwapWidgetReload; sourceTree = BUILT_PRODUCTS_DIR; };
 		EBBC8696FB698C18C92EFF27 /* OpenSwapWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSwapWidgetIntent.swift; sourceTree = "<group>"; };
 		FFBCB82C286FBDD20FEDD06B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -79,6 +82,14 @@
 			path = Widget;
 			sourceTree = "<group>";
 		};
+		41A723B2627CADB0F90A08FE /* WidgetReload */ = {
+			isa = PBXGroup;
+			children = (
+				545F0B2D126C0EDD48DA0D64 /* main.swift */,
+			);
+			path = WidgetReload;
+			sourceTree = "<group>";
+		};
 		61D6F6C0E7C81467B3870C18 = {
 			isa = PBXGroup;
 			children = (
@@ -94,6 +105,7 @@
 			children = (
 				DDB9E5B80A043484C87A2355 /* OpenSwapWidget.app */,
 				8B78DB0358C3C075B296B6F4 /* OpenSwapWidgetExtension.appex */,
+				E71C8BC8EB3C5B3190A89E92 /* OpenSwapWidgetReload */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -111,6 +123,7 @@
 			children = (
 				FFBCB82C286FBDD20FEDD06B /* Assets.xcassets */,
 				825D66A41D3651C7C2BFC94C /* main.swift */,
+				41A723B2627CADB0F90A08FE /* WidgetReload */,
 			);
 			path = Host;
 			sourceTree = "<group>";
@@ -118,6 +131,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		17AEA313319F66585D0EDE70 /* OpenSwapWidgetReload */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1FE6C6E112B92D1AE7FE4041 /* Build configuration list for PBXNativeTarget "OpenSwapWidgetReload" */;
+			buildPhases = (
+				1688292906729806667F7DE8 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenSwapWidgetReload;
+			packageProductDependencies = (
+			);
+			productName = OpenSwapWidgetReload;
+			productReference = E71C8BC8EB3C5B3190A89E92 /* OpenSwapWidgetReload */;
+			productType = "com.apple.product-type.tool";
+		};
 		792BAAD0CEEF490707EF43BE /* OpenSwapWidget */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DDC61D7DFCA40623882097EC /* Build configuration list for PBXNativeTarget "OpenSwapWidget" */;
@@ -165,6 +195,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					17AEA313319F66585D0EDE70 = {
+						ProvisioningStyle = Automatic;
+					};
 					792BAAD0CEEF490707EF43BE = {
 						ProvisioningStyle = Automatic;
 					};
@@ -189,6 +222,7 @@
 			targets = (
 				792BAAD0CEEF490707EF43BE /* OpenSwapWidget */,
 				8F3555D2DAF0F7F5E5252517 /* OpenSwapWidgetExtension */,
+				17AEA313319F66585D0EDE70 /* OpenSwapWidgetReload */,
 			);
 		};
 /* End PBXProject section */
@@ -210,6 +244,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				7E306D52DAB972E2C13DFC26 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1688292906729806667F7DE8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				422C803CA10470BD6EFF8916 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -421,6 +463,38 @@
 			};
 			name = Release;
 		};
+		CBD681CAC22C8EC37986F2B7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.opensoft.openswap.widget-reload";
+				PRODUCT_NAME = "openswap-widget-reload";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		DF7906377845C9CB3A5D6641 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.opensoft.openswap.widget-reload";
+				PRODUCT_NAME = "openswap-widget-reload";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 		E2491F23E52B0462E765F371 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -447,6 +521,15 @@
 			buildConfigurations = (
 				9E7C52E7F958C4B4F351C735 /* Debug */,
 				BFEE1CBB9473AA0984305C8D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1FE6C6E112B92D1AE7FE4041 /* Build configuration list for PBXNativeTarget "OpenSwapWidgetReload" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CBD681CAC22C8EC37986F2B7 /* Debug */,
+				DF7906377845C9CB3A5D6641 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

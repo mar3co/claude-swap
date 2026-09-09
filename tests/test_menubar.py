@@ -79,6 +79,14 @@ def test_notification_identity_is_noop_off_macos(tmp_path: Path):
     assert not (executable.parent / "Info.plist").exists()
 
 
+def test_notification_identity_is_noop_when_frozen(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    executable = tmp_path / "OpenSwap"
+    result = menubar.ensure_notification_identity(executable, platform="darwin")
+    assert result is None
+    assert not (tmp_path / "Info.plist").exists()
+
+
 # --- settings ------------------------------------------------------------------
 
 def test_settings_defaults_when_file_missing(tmp_path: Path):
@@ -1897,7 +1905,8 @@ def test_launch_claude_login_opens_command_file(tmp_path):
         command_path=dest,
     )
     assert dest.is_file()
-    assert dest.stat().st_mode & 0o111
+    if sys.platform != "win32":
+        assert dest.stat().st_mode & 0o111
     body = dest.read_text(encoding="utf-8")
     assert body.startswith("#!/bin/bash\n")
     assert "a@x.com" in body

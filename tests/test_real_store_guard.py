@@ -366,6 +366,11 @@ def test_frozen_specs_cover_the_migration_flag_and_the_transcript_tree(
     # regression reads as a write that was ALLOWED, not a missing directory.
     flag.parent.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(conftest, "_REAL_STORE_SPECS", specs)
+    monkeypatch.setattr(
+        conftest,
+        "_REAL_STORE_HINTS",
+        conftest._derive_real_store_hints(specs, home),
+    )
     with pytest.raises(conftest.RealStoreWriteBlocked):
         flag.touch()
 

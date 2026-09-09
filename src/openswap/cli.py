@@ -26,6 +26,16 @@ from openswap.engine import Engine
 ClaudeAccountSwitcher = Engine
 
 
+def _frozen_without_terminal() -> bool:
+    """True when the frozen .app was started by Finder / LaunchServices."""
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        return not sys.stdin.isatty()
+    except (AttributeError, ValueError, OSError):
+        return True  # no usable stdin at all: not a terminal
+
+
 def _prog_name() -> str:
     """The command name to show in usage/help.
 
@@ -945,6 +955,9 @@ def main() -> None:
         sys.exit(2)
 
     # Bare `openswap` prints help (used to open the terminal dashboard).
+    # The frozen bundle launched by Finder has no terminal: run the extra.
+    if _frozen_without_terminal() and not [a for a in argv if not a.startswith("-psn")]:
+        argv = ["menubar"]
     if not argv:
         argv = ["--help"]
 

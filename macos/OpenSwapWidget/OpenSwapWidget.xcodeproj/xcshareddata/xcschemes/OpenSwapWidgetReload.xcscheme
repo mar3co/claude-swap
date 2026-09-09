@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "792BAAD0CEEF490707EF43BE"
-               BuildableName = "OpenSwap.app"
-               BlueprintName = "OpenSwapWidget"
+               BlueprintIdentifier = "17AEA313319F66585D0EDE70"
+               BuildableName = "openswap-widget-reload"
+               BlueprintName = "OpenSwapWidgetReload"
                ReferencedContainer = "container:OpenSwapWidget.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -30,9 +30,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "792BAAD0CEEF490707EF43BE"
-            BuildableName = "OpenSwap.app"
-            BlueprintName = "OpenSwapWidget"
+            BlueprintIdentifier = "17AEA313319F66585D0EDE70"
+            BuildableName = "openswap-widget-reload"
+            BlueprintName = "OpenSwapWidgetReload"
             ReferencedContainer = "container:OpenSwapWidget.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -40,7 +40,7 @@
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Release"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -53,9 +53,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "792BAAD0CEEF490707EF43BE"
-            BuildableName = "OpenSwap.app"
-            BlueprintName = "OpenSwapWidget"
+            BlueprintIdentifier = "17AEA313319F66585D0EDE70"
+            BuildableName = "openswap-widget-reload"
+            BlueprintName = "OpenSwapWidgetReload"
             ReferencedContainer = "container:OpenSwapWidget.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -70,9 +70,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "792BAAD0CEEF490707EF43BE"
-            BuildableName = "OpenSwap.app"
-            BlueprintName = "OpenSwapWidget"
+            BlueprintIdentifier = "17AEA313319F66585D0EDE70"
+            BuildableName = "openswap-widget-reload"
+            BlueprintName = "OpenSwapWidgetReload"
             ReferencedContainer = "container:OpenSwapWidget.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

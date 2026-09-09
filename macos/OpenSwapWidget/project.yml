@@ -25,6 +25,7 @@ targets:
         excludes:
           - Info.plist
           - "*.entitlements"
+          - WidgetReload
     settings:
       base:
         PRODUCT_NAME: OpenSwap
@@ -63,11 +64,29 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks @executable_path/../../../../Frameworks"
         SKIP_INSTALL: YES
         MACOSX_DEPLOYMENT_TARGET: "14.0"
+  OpenSwapWidgetReload:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Host/WidgetReload
+    settings:
+      base:
+        PRODUCT_NAME: openswap-widget-reload
+        PRODUCT_BUNDLE_IDENTIFIER: com.opensoft.openswap.widget-reload
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SKIP_INSTALL: YES
 schemes:
   OpenSwapWidget:
     build:
       targets:
         OpenSwapWidget: all
         OpenSwapWidgetExtension: all
+        OpenSwapWidgetReload: all
+    run:
+      config: Release
+  OpenSwapWidgetReload:
+    build:
+      targets:
+        OpenSwapWidgetReload: all
     run:
       config: Release

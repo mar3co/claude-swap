@@ -12,6 +12,10 @@ wheels/
 # superpowers session planning artifacts (not part of the project)
 docs/superpowers/
 
+# Spike freeze output (plan 007)
+packaging/macos/dist/
+packaging/macos/build/
+
 # Xcode
 macos/OpenSwapWidget/DerivedData/
 macos/OpenSwapWidget/*.xcodeproj/xcuserdata/
