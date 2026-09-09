@@ -32,7 +32,7 @@ Observe `effectiveAppearance` and `AppleInterfaceThemeChangedNotification`; relo
 
 ## Auto-switch from the extra
 
-`MenuBarSettings.auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.py` / `openswap config`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
+`MenuBarSettings` is `menubar_settings.json` (title, refresh, auto on/off, kickoff). `auto_switch_enabled` is only the on/off toggle. Threshold and strategy are `settings.json` via `openswap config`. Cooldown / last switch live in `autoswitch_state.json`. Changing strategy from the extra calls `set_setting` then `_restart_engine` so the running engine reloads policy.
 
 Settings-page strategies: **Most quota left** (`best`), **Burn weekly first** (`consume-first`, ranks 7d `resets_at`), **Burn 5-hour first** (`soonest-5h`, ranks 5h `resets_at`). A muted hint under the picker explains the selected strategy (7-day vs 5-hour when relevant). See `autoswitch._window_reset_ts`. `SwitchEvent.trigger` stays `consume-first` for both consume strategies; that is not the settings key. A muted hold-reason line under the popover header paraphrases the engine's last no-switch or exhausted event (`hold_line_from_event`); the extra does not re-rank cards. When a Claude Code session or IDE lock is live, a muted `running_line` sits above the footer. A successful extra switch (card, Rotate, Best) calls `record_manual_switch` so that policy does not undo the pick for `cooldownSeconds`.
 
