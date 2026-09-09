@@ -19,7 +19,7 @@ Commit style: `feat(menubar): …` / `fix(…): …` / `docs: …`. Origin is
 | 003  | Show live Claude Code sessions after a switch | P1 | S | 001 | DONE |
 | 004  | Move Settings into the popover | P2 | M | 001, 003 | DONE |
 | 005  | Widget tap-to-switch and accessory families | P2 | M | 001 | DONE |
-| 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | TODO |
+| 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | BLOCKED |
 | 008  | Ship the single app: cask, install/upgrade rewiring, release CI | P1 | L | 007 verdict | NOT WRITTEN |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
