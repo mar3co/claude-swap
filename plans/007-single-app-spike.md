@@ -20,6 +20,11 @@
 - **Depends on**: none
 - **Category**: direction
 - **Planned at**: commit `92722b1`, 2026-09-09
+- **Executor note (2026-09-09)**: operator overrode Step 0 STOP. Local Mac
+  freezes unsigned (`build.sh` exits 0 without `OPENSWAP_SIGN_IDENTITY`).
+  Sign/notarize/staple moved to GitHub Actions
+  (`.github/workflows/macos-app.yml` + `packaging/macos/ci-import-signing-keychain.sh`).
+  Do not treat a missing local identity as a halt.
 
 ## Why this matters
 

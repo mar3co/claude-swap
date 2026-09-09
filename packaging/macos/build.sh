@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Build, assemble, sign, notarize, and staple OpenSwap.app (plan 007).
-# Identity is env-only: OPENSWAP_SIGN_IDENTITY, notary profile openswap-notary.
+# Freeze and assemble OpenSwap.app. Sign, notarize, and staple when an
+# identity is in the environment (GitHub Actions or a local keychain).
+#
+# Identity is env-only: OPENSWAP_SIGN_IDENTITY.
+# Notary: OPENSWAP_NOTARY_PROFILE (keychain) or OPENSWAP_NOTARY_KEY_PATH +
+# OPENSWAP_NOTARY_KEY_ID + OPENSWAP_NOTARY_ISSUER.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -72,8 +76,9 @@ fi
 plutil -lint "$APP/Contents/Info.plist"
 
 if [[ -z "$IDENTITY" ]]; then
-  echo "OPENSWAP_SIGN_IDENTITY is unset; leaving $APP unsigned (plan 007 Step 0)." >&2
-  exit 2
+  echo "OPENSWAP_SIGN_IDENTITY is unset; leaving $APP unsigned." >&2
+  echo "GitHub Actions (.github/workflows/macos-app.yml) signs and notarizes when secrets are present." >&2
+  exit 0
 fi
 
 # 1. every Mach-O the freezer produced (dylibs, .so, Python framework)
@@ -95,7 +100,29 @@ codesign --force --options runtime --timestamp --sign "$IDENTITY" \
 codesign --force --options runtime --timestamp --sign "$IDENTITY" \
   --entitlements "$HERE/entitlements.plist" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
-ditto -c -k --keepParent "$APP" "$HERE/dist/OpenSwap.zip"
-xcrun notarytool submit "$HERE/dist/OpenSwap.zip" --keychain-profile openswap-notary --wait
+
+if [[ "${OPENSWAP_SKIP_NOTARY:-}" == "1" ]]; then
+  echo "OPENSWAP_SKIP_NOTARY=1; signed $APP but skipped notarization."
+  exit 0
+fi
+
+ZIP="$HERE/dist/OpenSwap.zip"
+ditto -c -k --keepParent "$APP" "$ZIP"
+
+if [[ -n "${OPENSWAP_NOTARY_KEY_PATH:-}" ]]; then
+  : "${OPENSWAP_NOTARY_KEY_ID:?OPENSWAP_NOTARY_KEY_ID is required with OPENSWAP_NOTARY_KEY_PATH}"
+  : "${OPENSWAP_NOTARY_ISSUER:?OPENSWAP_NOTARY_ISSUER is required with OPENSWAP_NOTARY_KEY_PATH}"
+  xcrun notarytool submit "$ZIP" --wait \
+    --key "$OPENSWAP_NOTARY_KEY_PATH" \
+    --key-id "$OPENSWAP_NOTARY_KEY_ID" \
+    --issuer "$OPENSWAP_NOTARY_ISSUER"
+elif [[ -n "${OPENSWAP_NOTARY_PROFILE:-}" ]]; then
+  xcrun notarytool submit "$ZIP" --wait \
+    --keychain-profile "$OPENSWAP_NOTARY_PROFILE"
+else
+  echo "signed $APP; notarization skipped (set OPENSWAP_NOTARY_PROFILE or OPENSWAP_NOTARY_KEY_PATH)."
+  exit 0
+fi
+
 xcrun stapler staple "$APP"
 spctl --assess --type execute --verbose=2 "$APP"

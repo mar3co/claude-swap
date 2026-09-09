@@ -19,13 +19,16 @@ Commit style: `feat(menubar): …` / `fix(…): …` / `docs: …`. Origin is
 | 003  | Show live Claude Code sessions after a switch | P1 | S | 001 | DONE |
 | 004  | Move Settings into the popover | P2 | M | 001, 003 | DONE |
 | 005  | Widget tap-to-switch and accessory families | P2 | M | 001 | DONE |
-| 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | BLOCKED |
+| 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | IN PROGRESS |
 | 008  | Ship the single app: cask, install/upgrade rewiring, release CI | P1 | L | 007 verdict | NOT WRITTEN |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
-007 was added 2026-09-09 (planned at `92722b1`). 008 is only outlined in
-007's maintenance notes; write it after 007 records its spike verdict.
+007 was added 2026-09-09 (planned at `92722b1`). Freeze and assemble are
+proved on this Mac; local Developer ID signing was skipped (operator:
+GitHub Actions `.github/workflows/macos-app.yml` signs once secrets exist).
+008 is only outlined in 007's maintenance notes; write it after a notarized
+CI artifact records `spctl` `source=Notarized Developer ID`.
 
 001 and 006 share no files and may run in parallel. 002–005 all touch the extra
 and/or widget; run them only after 001 is merged into the executor’s base.
