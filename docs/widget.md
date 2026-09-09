@@ -29,7 +29,7 @@ Regenerate the Xcode project with xcodegen from `macos/OpenSwapWidget/project.ym
 3. Xcode last-selected team, if it has a local Apple Development cert
 4. Any local cert OU
 
-Last Xcode team on a machine that also has VirtualShield can be `5LHJJ5JW3C`. Prefer the installed app’s team (`KJ999FVUJ4` on this Mac) so `com.opensoft.openswap.widget` does not change and already-placed widgets do not go blank.
+Last Xcode team on a machine with more than one team can flip identifiers. Prefer the installed app’s team so `com.opensoft.openswap.widget` does not change and already-placed widgets do not go blank.
 
 No App Group: that needs the Developer Portal. The home-relative sandbox exception is enough (read-write on that directory only, so the appex can write the command file).
 

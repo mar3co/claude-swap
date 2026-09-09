@@ -17,7 +17,7 @@ cd openswap
 uv tool install --editable '.[menubar]'
 ```
 
-Update with `openswap upgrade` (`git pull` plus `uv tool install --force --editable '.[menubar]'`, then refresh LaunchAgents). OpenSwap is not on PyPI.
+Update with `openswap upgrade` (pull this checkout, reinstall the tool, refresh the extra and widget if installed). OpenSwap is not on PyPI.
 
 ## Quick start
 
@@ -43,7 +43,7 @@ openswap menubar --install-service    # extra at login
 openswap widget --install             # Desktop / Notification Center (this checkout + Xcode)
 ```
 
-Click the extra for usage bars, then a card to switch. Auto-switch waits five minutes before it can move you again. More → Settings: auto-switch, burn weekly first, burn 5-hour first, 5-hour kickoff. Add the widget from Edit Widgets (search **OpenSwap**). Right-click it to choose all accounts, combined remaining, or one account.
+Click the extra for usage bars, then a card to switch. Auto-switch waits five minutes before it can move you again. Settings (in the popover): auto-switch, burn weekly first, burn 5-hour first, 5-hour kickoff. Add the widget from Edit Widgets (search **OpenSwap**). Right-click it to choose all accounts, combined remaining, or one account.
 
 [Menu bar](https://github.com/mar3co/openswap/wiki/Menu-Bar) · [Widget](https://github.com/mar3co/openswap/wiki/Desktop-Widget) · [Kickoff](https://github.com/mar3co/openswap/wiki/Five-Hour-Kickoff)
 
@@ -62,5 +62,6 @@ The `cswap` command still works as an alias during the rename.
 | `openswap config` | Shared settings (`autoswitch.*`) |
 | `openswap menubar` | macOS extra |
 | `openswap widget --install` | macOS widget |
+| `openswap upgrade` | Pull this checkout and reinstall |
 
 `openswap help` lists everything. [CLI reference](https://github.com/mar3co/openswap/wiki/CLI-Reference).

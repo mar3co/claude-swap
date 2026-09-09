@@ -22,13 +22,8 @@ detects symlinks and writes through to the target, so in-session ``/config``
 changes land in ``~/.claude``), copies re-synced on every launch on Windows.
 A manifest records what openswap created so removal never touches user data.
 
-History sharing (``--share-history``, opt-in): additionally links
-``projects/`` (conversation transcripts — what ``claude --resume`` lists) and
-``history.jsonl`` (prompt history) from ``~/.claude``, so all accounts see one
-unified conversation history. POSIX-only: Windows shares by re-synced copy,
-which would fork history rather than share it. If the profile already
-accumulated its own history, it is merged into ``~/.claude`` first so nothing
-disappears from ``--resume``.
+Kickoff does not share conversation history (``projects/``, ``history.jsonl``).
+Those stay per-account on the isolated profile.
 
 This module must not import ``switcher`` (switcher imports us for the
 session-aware guards); it receives a ``ClaudeAccountSwitcher`` instance.
@@ -46,7 +41,7 @@ import tempfile
 import time
 import unicodedata
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING
 
 from openswap import macos_keychain
 from openswap.claude_locks import proper_lockfile
@@ -59,7 +54,7 @@ from openswap.fsutil import replace_with_retry
 from openswap.locking import FileLock
 from openswap.models import Platform
 from openswap.paths import get_default_global_config_path
-from openswap.printer import accent, dimmed, muted, warning
+from openswap.printer import dimmed, warning
 from openswap.process_detection import ClaudeSession, scan_sessions
 from openswap.settings import atomic_write_json
 
@@ -69,8 +64,8 @@ if TYPE_CHECKING:
 # Items mirrored from ~/.claude into session profiles when sharing is on.
 # Deliberately excludes anything account- or instance-scoped: plugins/,
 # sessions/, ide/, .claude.json, .credentials.json, statsig/ and other
-# telemetry. projects/ and history.jsonl are per-account by default and move
-# to HISTORY_ITEMS sharing only with the opt-in --share-history flag.
+# telemetry. projects/ and history.jsonl stay per-account (kickoff does not
+# share conversation history). HISTORY_ITEMS remains for leftover profiles.
 # .claude.json stays excluded as a file, but its one user-scoped key —
 # top-level mcpServers — is mirrored separately by _sync_mcp_servers.
 SHARED_ITEMS = (
@@ -82,15 +77,15 @@ SHARED_ITEMS = (
     "agents",
 )
 
-# Conversation-history items linked additionally under --share-history.
+# Conversation-history items. Kickoff passes share_history=False.
 # POSIX symlinks only: Windows copy-mode would fork history, not share it.
 HISTORY_ITEMS = (
     "projects",
     "history.jsonl",
 )
 
-# Records which entries in a session profile openswap created (so --no-share and
-# re-syncs only ever remove openswap-managed links/copies, never user data).
+# Records which entries in a session profile openswap created (so turning
+# share off only removes openswap-managed links/copies, never user data).
 SHARE_MANIFEST = ".openswap-shared.json"
 
 # Deferred-invalidation marker: backup credentials changed while a session was
@@ -184,11 +179,9 @@ def mark_session_stale(session_dir: Path) -> bool:
         return False
 
 # Env vars that make claude bypass account OAuth entirely (verified against
-# claude 2.1.175). Dropped from the auth-status probe (they'd fake "logged in"
-# for the wrong reason) AND scrubbed from the session launch env with a
-# warning: isolated-profile launch is an explicit request for that account, so
-# letting an exported API key silently hijack the session would defeat it. The
-# same-account fast path (plain claude, untouched env) does not scrub.
+# claude 2.1.175). Dropped from the auth-status probe and from kickoff's
+# subprocess env: they'd fake "logged in" for the wrong reason, or let an
+# exported API key hijack the isolated profile.
 AUTH_OVERRIDE_ENV_VARS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -499,128 +492,6 @@ class SessionManager:
         self.sessions_dir = switcher.backup_dir / "sessions"
         self._logger = switcher._logger
 
-    # -- launch ----------------------------------------------------------
-
-    def run(
-        self,
-        identifier: str,
-        claude_args: list[str],
-        share: bool = True,
-        share_history: bool = False,
-        require_session: bool = False,
-    ) -> NoReturn:
-        """Launch Claude Code as the given account in the current terminal.
-
-        ``require_session`` turns the same-account fast path (a plain claude
-        launch on the default login) into a refusal: a wrapper that hands a
-        terminal to one account per session needs the isolation guaranteed,
-        and a session on the default login is the one thing an account
-        switch can later pull out from under it.
-        """
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            raise SessionError(
-                "'claude' was not found on PATH. Install Claude Code first."
-            )
-        if share_history and self.switcher.platform == Platform.WINDOWS:
-            raise SessionError(
-                "--share-history is not supported on Windows yet: sharing uses "
-                "re-synced copies there, which would fork the history instead "
-                "of sharing it."
-            )
-
-        account_num, email, org_uuid = self.switcher.resolve_account(identifier)
-        # Guard before the same-account direct-launch fast path below (which
-        # _exec's claude and never returns) — and before setup_session.
-        self._ensure_not_api_key(account_num, email)
-
-        config_dir_preset = os.environ.get("CLAUDE_CONFIG_DIR")
-        if config_dir_preset:
-            # With CLAUDE_CONFIG_DIR set, "current default account" is
-            # meaningless (we may already be inside a session terminal), so
-            # the same-account fast path below must not trigger.
-            warning(
-                f"CLAUDE_CONFIG_DIR is already set ({config_dir_preset}); "
-                "overriding it for this launch."
-            )
-        else:
-            # Same-account fast path: never create a second credential copy
-            # for the account that is already the active default login —
-            # two copies of one account can drift if the server rotates the
-            # refresh token.
-            current = self.switcher.live_identity()
-            if current is not None and current == (email, org_uuid):
-                if require_session:
-                    raise SessionError(
-                        f"Account-{account_num} ({email}) is the active default "
-                        "login, so this launch would run plain claude on the "
-                        "default login rather than in a session profile (a "
-                        "second copy of the active credential would drift). "
-                        "Switch the default login to another account first, "
-                        "or run `claude` directly."
-                    )
-                print(
-                    dimmed(
-                        f"Account-{account_num} ({email}) is already the active "
-                        "default login — launching claude directly."
-                    )
-                )
-                self._exec(claude_bin, claude_args, env=dict(os.environ))
-
-        scrubbed = [v for v in AUTH_OVERRIDE_ENV_VARS if os.environ.get(v)]
-        if scrubbed:
-            warning(
-                f"Ignoring {', '.join(scrubbed)} for this session — it would "
-                f"override the selected account inside Claude Code."
-            )
-
-        session_dir, account_num, email = self.setup_session(
-            identifier, share, share_history
-        )
-
-        print(
-            f"{accent('Launching')} Account-{account_num} ({email}) "
-            f"{muted('[session mode]')}"
-        )
-        env = {
-            k: v for k, v in os.environ.items() if k not in AUTH_OVERRIDE_ENV_VARS
-        }
-        env["CLAUDE_CONFIG_DIR"] = str(session_dir)
-        self._exec(claude_bin, claude_args, env=env)
-
-    def exec_default(self, claude_args: list[str]) -> NoReturn:
-        """Launch plain Claude Code with the current default login.
-
-        Used when no isolated profile is wanted. Equivalent to typing `claude`
-        directly: the unmodified environment is passed through (no session
-        profile, no auth-override scrubbing), so whatever the default login
-        resolves to is what runs.
-        """
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            raise SessionError(
-                "'claude' was not found on PATH. Install Claude Code first."
-            )
-        self._exec(claude_bin, claude_args, env=dict(os.environ))
-
-    def _exec(self, claude_bin: str, claude_args: list[str], env: dict[str, str]) -> NoReturn:
-        """Hand the terminal over to claude. Never returns.
-
-        POSIX: ``execvpe`` replaces the openswap process entirely (the lock is
-        already released — an exec'd claude must never inherit a held flock).
-        Windows: ``os.exec*`` detaches from the console confusingly, so stay
-        resident as a thin wrapper and mirror claude's exit code.
-        """
-        argv = [claude_bin, *claude_args]
-        if sys.platform == "win32":
-            try:
-                rc = subprocess.run(argv, env=env).returncode
-            except KeyboardInterrupt:
-                rc = 130  # Ctrl+C went to claude; just mirror the exit
-            sys.exit(rc)
-        os.execvpe(claude_bin, argv, env)
-        raise AssertionError("unreachable")  # pragma: no cover
-
     def _ensure_not_api_key(self, account_num: str, email: str) -> None:
         """Reject API-key accounts from isolated profile bootstrap.
 
@@ -642,7 +513,7 @@ class SessionManager:
     ) -> tuple[Path, str, str]:
         """Ensure a valid session profile exists; returns (dir, num, email)."""
         account_num, email, org_uuid = self.switcher.resolve_account(identifier)
-        # Defense-in-depth: also guard here (run() guards before its fast path).
+        # Kickoff must not bootstrap an API-key slot into an isolated profile.
         self._ensure_not_api_key(account_num, email)
         session_dir = session_dir_for(self.switcher.backup_dir, account_num, email)
 
@@ -794,7 +665,7 @@ class SessionManager:
                     f"validation. Log in with that account and re-add it: "
                     f"openswap --add-account --slot {account_num}"
                 )
-        # Lock released here, before any exec.
+        # Lock released here. Kickoff uses returning subprocess.run, not exec.
 
         return session_dir, account_num, email
 
@@ -846,8 +717,8 @@ class SessionManager:
                 f"Re-add with: openswap --add-account --slot {account_num}"
             )
 
-        # The pre-lock refresh (see run(): the consume gate must not run
-        # under this lock — its POST is network and the FileLock is
+        # The pre-lock refresh (see setup_session: the consume gate must not
+        # run under this lock — its POST is network and the FileLock is
         # non-reentrant) may have already rotated the backup; the read
         # above picked that successor up. No POST happens here.
 
@@ -1020,10 +891,9 @@ class SessionManager:
         """Mirror shared items from ~/.claude into the profile (or undo it).
 
         ``share`` governs SHARED_ITEMS (customizations) and the mcpServers
-        mirror (see ``_sync_mcp_servers`` — its --no-share removal is gated
-        on the adoption marker); ``share_history`` governs HISTORY_ITEMS
-        (conversation history) — independent concerns, so ``--no-share
-        --share-history`` gives a bare profile with unified history.
+        mirror (see ``_sync_mcp_servers``; removal is gated on the adoption
+        marker). ``share_history`` governs HISTORY_ITEMS (conversation
+        history). Kickoff always passes ``share_history=False``.
         Idempotent; runs on every launch. Deliberately sources from the
         default ``~/.claude`` (not ``get_claude_config_home()``): sharing
         always mirrors the default profile, even when ``CLAUDE_CONFIG_DIR``
@@ -1035,8 +905,8 @@ class SessionManager:
         if not session_dir.is_dir():
             return
         self._sync_mcp_servers(session_dir, share)
-        # History links are POSIX-only (run() rejects the flag on Windows;
-        # this also drops any links left by a POSIX→Windows profile move).
+        # History links are POSIX-only (also drops links left by a
+        # POSIX→Windows profile move).
         if self.switcher.platform == Platform.WINDOWS:
             share_history = False
         active_items = (SHARED_ITEMS if share else ()) + (

@@ -35,7 +35,7 @@
 | Identity | `engine/identity.py` | `(email, organizationUuid)` |
 | Consume | `engine/consume.py` | One-time refresh CAS + unclaimed stash |
 | Switch / capture | `engine/switch.py` | Classify outgoing live bytes before write |
-| Isolated session profile | `session.py` | Idle-slot kickoff bootstrap; must not POSIX-`exec` the extra |
+| Isolated session profile | `session.py` | Idle-slot kickoff bootstrap (`setup_session`). No terminal launch (`openswap run` is gone). Must not POSIX-`exec` the extra |
 | Idle-slot kickoff profile | `engine/session_profile.py` | Isolated `CLAUDE_CONFIG_DIR`; live kickoff is `claude -p` in place |
 | Snapshot assembler | `engine/snapshot.py` | Store-only (`fetch=set()`) is roster-only: **does not read idle or active-slot backup credentials**. Unread idle is not `USAGE_NO_CREDENTIALS`. At most one live credential read per snapshot. |
 | Auto-switch | `autoswitch.py` | UI-agnostic events; CLI and extra host it. Runtime: `autoswitch_state.json` |

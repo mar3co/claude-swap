@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from openswap import macos_keychain
-from openswap import session as session_mod
 from openswap.credentials import (
     CLAUDE_CODE_KEYCHAIN_SERVICE,
     CLAUDE_CODE_MANAGED_KEYCHAIN_SERVICE,
@@ -305,7 +304,7 @@ class TestAddAccountGuard:
 
 
 # ---------------------------------------------------------------------------
-# Session-mode guard
+# Isolated-profile guard (kickoff)
 # ---------------------------------------------------------------------------
 
 
@@ -323,15 +322,6 @@ class TestSessionGuard:
         assert "do not support API-key accounts" in text
         assert "openswap run" not in text
         assert "openswap switch" in text or "extra" in text
-
-    def test_run_rejects_before_exec(self, temp_home: Path, monkeypatch):
-        mgr = SessionManager(self._seed_api_key_account())
-        monkeypatch.setattr(session_mod.shutil, "which", lambda name: "/fake/claude")
-        with pytest.raises(SessionError, match="isolated profiles") as exc:
-            mgr.run("2", [], share=True)
-        text = str(exc.value)
-        assert "do not support API-key accounts" in text
-        assert "openswap run" not in text
 
 
 # ---------------------------------------------------------------------------
