@@ -4,7 +4,9 @@
 uv run pytest
 ```
 
-`pyproject.toml` sets `-n auto`. About 2300 tests. CI runs on macOS, and still on Ubuntu and Windows as a test farm (we do not ship those platforms).
+`pyproject.toml` sets `-n auto`. About 2230 tests. CI runs on macOS, and still on Ubuntu and Windows as a test farm (we do not ship those platforms).
+
+The suite describes the product we ship: engine, extra, widget, kickoff, and advertised CLI. Cut verbs (`tui` / `watch` / `run` / `map` / `unmap`) have gone-stub tests only. Isolated-profile tests cover kickoff bootstrap, not a terminal session launch.
 
 ## Boundaries
 
