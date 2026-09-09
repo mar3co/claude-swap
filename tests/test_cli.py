@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -549,6 +550,59 @@ class TestCLI:
             cli.main()
         assert exc.value.code == 0
         assert called.get("ran") is True
+
+    def test_frozen_no_args_without_terminal_starts_menubar(self, monkeypatch):
+        called = {}
+
+        class _FakeSwitcher:
+            def __init__(self, *a, **k):
+                pass
+            def _is_running_in_container(self):
+                return False
+
+        def _fake_run(switcher):
+            called["ran"] = True
+            return 0
+
+        monkeypatch.setattr(cli, "ClaudeAccountSwitcher", _FakeSwitcher)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "argv", ["openswap"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO())
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.setattr("openswap.menubar.run", _fake_run, raising=False)
+        monkeypatch.setattr(cli.os, "geteuid", lambda: 1000, raising=False)
+
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+        assert exc.value.code == 0
+        assert called.get("ran") is True
+
+    def test_frozen_no_args_with_terminal_prints_help(self, monkeypatch, capsys):
+        called = {}
+
+        class _FakeSwitcher:
+            def __init__(self, *a, **k):
+                pass
+            def _is_running_in_container(self):
+                return False
+
+        def _fake_run(switcher):
+            called["ran"] = True
+            return 0
+
+        monkeypatch.setattr(cli, "ClaudeAccountSwitcher", _FakeSwitcher)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "argv", ["openswap"])
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.setattr("openswap.menubar.run", _fake_run, raising=False)
+        monkeypatch.setattr(cli.os, "geteuid", lambda: 1000, raising=False)
+
+        with pytest.raises(SystemExit) as exc:
+            cli.main()
+        assert exc.value.code == 0
+        assert "Commands:" in capsys.readouterr().out
+        assert called.get("ran") is not True
 
     def _service_harness(self, monkeypatch, argv):
         """Drive `openswap menubar <service flag>` with launch_agent stubbed out."""
