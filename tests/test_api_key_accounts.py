@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from openswap import macos_keychain
-from openswap import session as session_mod
 from openswap.credentials import (
     CLAUDE_CODE_KEYCHAIN_SERVICE,
     CLAUDE_CODE_MANAGED_KEYCHAIN_SERVICE,

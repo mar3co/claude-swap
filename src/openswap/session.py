@@ -179,11 +179,9 @@ def mark_session_stale(session_dir: Path) -> bool:
         return False
 
 # Env vars that make claude bypass account OAuth entirely (verified against
-# claude 2.1.175). Dropped from the auth-status probe (they'd fake "logged in"
-# for the wrong reason) AND scrubbed from the session launch env with a
-# warning: isolated-profile launch is an explicit request for that account, so
-# letting an exported API key silently hijack the session would defeat it. The
-# same-account fast path (plain claude, untouched env) does not scrub.
+# claude 2.1.175). Dropped from the auth-status probe and from kickoff's
+# subprocess env: they'd fake "logged in" for the wrong reason, or let an
+# exported API key hijack the isolated profile.
 AUTH_OVERRIDE_ENV_VARS = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -667,7 +665,7 @@ class SessionManager:
                     f"validation. Log in with that account and re-add it: "
                     f"openswap --add-account --slot {account_num}"
                 )
-        # Lock released here, before any exec.
+        # Lock released here. Kickoff uses returning subprocess.run, not exec.
 
         return session_dir, account_num, email
 
@@ -719,8 +717,8 @@ class SessionManager:
                 f"Re-add with: openswap --add-account --slot {account_num}"
             )
 
-        # The pre-lock refresh (see run(): the consume gate must not run
-        # under this lock — its POST is network and the FileLock is
+        # The pre-lock refresh (see setup_session: the consume gate must not
+        # run under this lock — its POST is network and the FileLock is
         # non-reentrant) may have already rotated the backup; the read
         # above picked that successor up. No POST happens here.
 
