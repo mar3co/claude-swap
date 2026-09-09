@@ -10,7 +10,7 @@ After `rumps` attaches the status item, a short timer steals the click for the p
 
 ## Split: pure vs AppKit
 
-`menubar.py` helpers (`format_title`, `status_item_length`, `MenuBarSettings`, notification copy, panel snapshot adapters) must stay import-safe without rumps. Tests in `tests/test_menubar.py` never import AppKit.
+`menubar_display.py` holds import-safe helpers (`format_title`, `status_item_length`, `MenuBarSettings`, notification copy, panel snapshot adapters). `menubar.py` is the rumps app and re-exports those helpers. Tests in `tests/test_menubar.py` import `openswap.menubar` and never import AppKit.
 
 `menubar_panel.py` is AppKit-only: popover, bars, Dark Mode colors, `fit_status_item`.
 

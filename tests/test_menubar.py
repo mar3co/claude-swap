@@ -1861,6 +1861,14 @@ def test_launch_claude_login_missing_claude():
         )
 
 
+def test_display_helpers_import_without_rumps():
+    """The split helper module must stay import-safe when rumps is absent."""
+    import openswap.menubar_display as display
+
+    assert display.format_title
+    assert display.MenuBarSettings
+
+
 def test_run_without_rumps_raises_clean_error(monkeypatch):
     """A missing menubar extra surfaces as ClaudeSwitchError, not a traceback.
 
@@ -1871,5 +1879,7 @@ def test_run_without_rumps_raises_clean_error(monkeypatch):
     it into the error type the CLI renders with the install hint.
     """
     monkeypatch.setitem(sys.modules, "rumps", None)
-    with pytest.raises(ClaudeSwitchError, match=r"openswap\[menubar\]"):
+    with pytest.raises(ClaudeSwitchError, match=r"uv tool install --force --editable") as exc:
         menubar.run(switcher=None)
+    assert "pip install" not in str(exc.value)
+    assert "rumps" in str(exc.value)
