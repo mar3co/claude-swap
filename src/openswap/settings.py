@@ -1,12 +1,13 @@
-"""Tool settings persisted at ``<backup_root>/settings.json``.
+"""Shared policy persisted at ``<backup_root>/settings.json``.
 
-One versioned JSON file for user-tunable openswap preferences, written
-atomically with the backup dir's 0600/0700 modes. v1 carries the
-``autoswitch`` and ``ui`` sections; other sections can be added additively.
-Unknown keys (future fields, other tools' experiments) survive a round trip.
+This is CLI + extra *policy* (``autoswitch.*``, CLI ``ui.theme``), not extra
+display (``menubar_settings.json``) and not engine cooldown state
+(``autoswitch_state.json``). Written atomically with the backup dir's
+0600/0700 modes. v1 carries the ``autoswitch`` and ``ui`` sections; other
+sections can be added additively. Unknown keys survive a round trip.
 
-Reading is forgiving — a missing or corrupt file yields defaults with a logged
-warning, never a crash — so a bad hand edit degrades to default behavior.
+Reading is forgiving: a missing or corrupt file yields defaults with a logged
+warning, never a crash, so a bad hand edit degrades to default behavior.
 """
 
 from __future__ import annotations
@@ -218,9 +219,8 @@ def _read_raw(path: Path) -> dict:
     return raw
 
 
-def load_settings(backup_root: Path) -> AutoSwitchSettings:
-    """Load the autoswitch section; missing/corrupt file or fields → defaults."""
-    raw = _read_raw(settings_path(backup_root))
+def _autoswitch_from_raw(raw: dict) -> AutoSwitchSettings:
+    """Parse the autoswitch section of an already-read settings.json object."""
     section = raw.get("autoswitch")
     if not isinstance(section, dict):
         return AutoSwitchSettings()
@@ -235,9 +235,8 @@ def load_settings(backup_root: Path) -> AutoSwitchSettings:
     return _clamped(settings)
 
 
-def load_ui_settings(backup_root: Path) -> UiSettings:
-    """Load the ui section; missing/corrupt file or unknown theme → default."""
-    raw = _read_raw(settings_path(backup_root))
+def _ui_from_raw(raw: dict) -> UiSettings:
+    """Parse the ui section of an already-read settings.json object."""
     section = raw.get("ui")
     default = UiSettings()
     if not isinstance(section, dict):
@@ -250,6 +249,16 @@ def load_ui_settings(backup_root: Path) -> UiSettings:
         )
         return default
     return UiSettings(theme=theme)
+
+
+def load_settings(backup_root: Path) -> AutoSwitchSettings:
+    """Load the autoswitch section; missing/corrupt file or fields → defaults."""
+    return _autoswitch_from_raw(_read_raw(settings_path(backup_root)))
+
+
+def load_ui_settings(backup_root: Path) -> UiSettings:
+    """Load the ui section; missing/corrupt file or unknown theme → default."""
+    return _ui_from_raw(_read_raw(settings_path(backup_root)))
 
 
 def save_settings(backup_root: Path, settings: AutoSwitchSettings) -> None:
@@ -414,8 +423,8 @@ def effective_settings(backup_root: Path) -> list[tuple[SettingSpec, object, boo
     """
     raw = _read_raw(settings_path(backup_root))
     loaded = {
-        "autoswitch": load_settings(backup_root),
-        "ui": load_ui_settings(backup_root),
+        "autoswitch": _autoswitch_from_raw(raw),
+        "ui": _ui_from_raw(raw),
     }
     rows = []
     for spec in SETTING_SPECS.values():

@@ -38,6 +38,7 @@ from openswap.kickoff import (
 )
 from openswap.autoswitch import record_manual_switch
 from openswap.paths import get_backup_root
+from openswap.settings import atomic_write_json
 from openswap.engine import SENTINEL_NOTES, USAGE_API_KEY, USAGE_RELOGIN_REQUIRED
 
 REFRESH_CHOICES: tuple[int, ...] = (30, 60, 300)
@@ -57,6 +58,12 @@ _HOLD_WINDOW = {
     "soonest-5h": "5-hour",
 }
 TITLE_PCT_CHOICES: tuple[str, ...] = ("off", "5h", "7d", "both")
+MENUBAR_SETTINGS_FILENAME = "menubar_settings.json"
+
+
+def menubar_settings_path(backup_root: Path) -> Path:
+    """Extra display + kickoff file. Not ``settings.json`` (shared policy)."""
+    return backup_root / MENUBAR_SETTINGS_FILENAME
 
 
 def title_shows_5h(title_pct: str) -> bool:
@@ -128,14 +135,26 @@ def ensure_notification_identity(
     return path
 
 
+def _json_matches_field(value: object, default: object) -> bool:
+    """True when a JSON value is safe to assign onto a MenuBarSettings field.
+
+    ``bool`` is a subclass of ``int``, so ``isinstance(True, int)`` is True.
+    A JSON ``true`` must not become ``refresh_interval`` or ``kickoff_hour``.
+    """
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, type(default))
+
+
 @dataclass
 class MenuBarSettings:
-    """User-configurable menu bar display behavior, persisted as JSON.
+    """Extra display + kickoff, persisted as ``menubar_settings.json``.
 
-    Only display preferences and the auto-switch on/off toggle live here.
-    Auto-switch *policy* (threshold, cooldown, hysteresis, …) is core config,
-    read/written through ``openswap.settings`` (the ``autoswitch.*`` keys),
-    so the CLI and the menu bar share one source of truth.
+    Auto-switch *policy* (threshold, cooldown, hysteresis) lives in
+    ``settings.json`` via ``openswap.settings``, so the CLI and extra share it.
+    Engine cooldown / last switch / quarantine live in ``autoswitch_state.json``.
     """
 
     show_account_name: bool = True
@@ -155,7 +174,8 @@ class MenuBarSettings:
 
         Unknown keys are ignored; a value whose type doesn't match the field
         default is dropped (that field keeps its default). A missing or
-        unparseable file yields all-defaults.
+        unparseable file yields all-defaults. ``title_pct`` must be one of
+        ``TITLE_PCT_CHOICES``.
         """
         defaults = cls()
         try:
@@ -166,14 +186,19 @@ class MenuBarSettings:
             return defaults
         kwargs = {}
         for f in fields(cls):
-            if f.name in raw and isinstance(raw[f.name], type(getattr(defaults, f.name))):
-                kwargs[f.name] = raw[f.name]
+            if f.name not in raw:
+                continue
+            value = raw[f.name]
+            if not _json_matches_field(value, getattr(defaults, f.name)):
+                continue
+            if f.name == "title_pct" and value not in TITLE_PCT_CHOICES:
+                continue
+            kwargs[f.name] = value
         return cls(**kwargs)
 
     def save(self, path: Path) -> None:
-        """Write settings as pretty JSON, creating parent directories."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        """Atomically write settings (0600 file, 0700 parent, through a symlink)."""
+        atomic_write_json(path, asdict(self))
 
 
 def settings_page_rows(

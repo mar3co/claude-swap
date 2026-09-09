@@ -59,7 +59,7 @@ def run(switcher) -> int:
     from openswap.settings import load_settings, set_setting
     from openswap.snapshot_source import SnapshotSource
 
-    settings_path = switcher.backup_dir / "menubar_settings.json"
+    settings_path = menubar_settings_path(switcher.backup_dir)
     log_path = switcher.backup_dir / "openswap.log"
 
     class MenuBarApp(rumps.App):

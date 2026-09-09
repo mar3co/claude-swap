@@ -12,8 +12,9 @@
         │                  │                  │
         └────────┬─────────┴────────┬─────────┘
                  │                  │
-            engine.Engine         settings.json
-            (engine/)             autoswitch_state.json
+            engine.Engine         settings.json           (shared policy)
+            (engine/)             menubar_settings.json   (extra display)
+                                  autoswitch_state.json   (cooldown / last switch)
                  │
             usage_store.py
                  │
@@ -37,9 +38,9 @@
 | Isolated session profile | `session.py` | Idle-slot kickoff bootstrap; must not POSIX-`exec` the extra |
 | Idle-slot kickoff profile | `engine/session_profile.py` | Isolated `CLAUDE_CONFIG_DIR`; live kickoff is `claude -p` in place |
 | Snapshot assembler | `engine/snapshot.py` | Store-only (`fetch=set()`) is roster-only: **does not read idle or active-slot backup credentials**. Unread idle is not `USAGE_NO_CREDENTIALS`. At most one live credential read per snapshot. |
-| Auto-switch policy | `autoswitch.py` | UI-agnostic events; CLI and extra host it |
-| Shared policy knobs | `settings.py` | `autoswitch.*` in `settings.json` |
-| Extra display knobs | `menubar.MenuBarSettings` | `menubar_settings.json` only |
+| Auto-switch | `autoswitch.py` | UI-agnostic events; CLI and extra host it. Runtime: `autoswitch_state.json` |
+| Shared policy knobs | `settings.py` | `autoswitch.*` and CLI `ui.theme` in `settings.json` (`openswap config`) |
+| Extra display knobs | `menubar_display.MenuBarSettings` | `menubar_settings.json` only (popover Settings) |
 | Popover UI | `menubar_panel.py` | AppKit, imported after rumps |
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
 | Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; `updated_at` is last usage measurement, not extra paint time |
@@ -55,15 +56,15 @@ MIT / Cetinkol remains on `LICENSE` while inherited files (`oauth.py`, parts of 
 
 | Path | Who |
 | --- | --- |
-| `~/Library/Application Support/OpenSwap/settings.json` | CLI + extra (policy). First run moves `~/.claude-swap-backup` here |
-| `~/Library/Application Support/OpenSwap/menubar_settings.json` | Extra (title, auto on/off, kickoff) |
-| `~/Library/Application Support/OpenSwap/autoswitch_state.json` | Engine (cooldown, last switch, quarantine). Extra stamps `lastSwitchAt` after a hand switch |
+| `~/Library/Application Support/OpenSwap/settings.json` | CLI + extra policy (`openswap config`). First run moves `~/.claude-swap-backup` here |
+| `~/Library/Application Support/OpenSwap/menubar_settings.json` | Extra display + kickoff (popover Settings). Atomic 0600 write |
+| `~/Library/Application Support/OpenSwap/autoswitch_state.json` | Engine cooldown, last switch, quarantine. Extra stamps `lastSwitchAt` after a hand switch |
 | `~/Library/Application Support/OpenSwap/widget-snapshot.json` | Extra → widget |
 | `~/Library/LaunchAgents/com.opensoft.openswap.menubar.plist` | Extra service |
 | `~/Library/LaunchAgents/com.opensoft.openswap.widget.plist` | Widget host |
 | `~/Applications/OpenSwap.app` | Signed WidgetKit host |
 
-Credentials on macOS are Keychain, not files in the backup dir.
+Credentials on macOS are Keychain, not files in that directory. Widget layout is per-widget in Edit Widget (App Intents), not these JSON files.
 
 ## Product surface
 

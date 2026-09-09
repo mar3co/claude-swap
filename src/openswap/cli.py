@@ -369,7 +369,7 @@ Examples:
   openswap auto --once; echo $?       # single tick, outcome in exit code
   openswap auto --dry-run             # log decisions, never actually switch
 
-Defaults live in settings.json in the backup root; flags override them.
+Defaults live in settings.json (shared policy); flags override them.
         """,
     )
     parser.add_argument(
@@ -510,10 +510,11 @@ def _config_command(argv: list[str]) -> None:
     """Handle `openswap config [list|get KEY|set KEY VALUE|unset KEY|path]`.
 
     Pre-dispatched before the main parser is built, like `auto`
-    (same limitation: `config` must be the first argument). Edits
-    settings.json in the backup root with strict validation — unlike loading,
-    which forgivingly clamps — so a typo'd key or out-of-range value errors
-    loudly here instead of silently degrading at `openswap auto` time.
+    (same limitation: `config` must be the first argument). Edits shared
+    policy in settings.json with strict validation, unlike loading, which
+    forgivingly clamps. A typo'd key or out-of-range value errors loudly
+    here instead of silently degrading at `openswap auto` time. Extra display
+    and kickoff are menubar_settings.json (popover Settings), not this command.
     """
     from openswap.settings import (
         SETTING_SPECS,
@@ -532,8 +533,8 @@ def _config_command(argv: list[str]) -> None:
     parser = argparse.ArgumentParser(
         prog="openswap config",
         description=(
-            "Read and edit openswap settings (settings.json in the "
-            "backup root)."
+            "Read and edit shared policy (settings.json). Extra display "
+            "and kickoff live in menubar_settings.json."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
@@ -545,7 +546,7 @@ Examples:
   openswap config get autoswitch.threshold
   openswap config set autoswitch.threshold 80
   openswap config unset autoswitch.threshold   # back to the default
-  openswap config path                         # where settings.json lives
+  openswap config path                         # where settings.json (policy) lives
         """,
     )
     parser.add_argument(
@@ -577,7 +578,7 @@ Examples:
     p_set.add_argument("value", metavar="VALUE")
     p_unset = sub.add_parser("unset", help="Remove one setting (revert to the default)")
     p_unset.add_argument("key", metavar="KEY")
-    sub.add_parser("path", help="Print the settings.json location")
+    sub.add_parser("path", help="Print the settings.json (policy) location")
 
     args = parser.parse_args(argv)
     json_mode = bool(getattr(args, "json", False))
@@ -885,7 +886,7 @@ Commands:
   %(prog)s swap <a> <b>               exchange two accounts' slot numbers
   %(prog)s move <a> <slot>            assign an account to a slot (swaps if taken)
   %(prog)s auto                       auto-switch when nearing rate limits
-  %(prog)s config [set KEY VALUE]     show or change settings (settings.json)
+  %(prog)s config [set KEY VALUE]     show or change shared policy (settings.json)
   %(prog)s unclaimed [--purge ID]     list or drop stashed credential entries
   %(prog)s export <path>              export accounts
   %(prog)s import <path>              import accounts

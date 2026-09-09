@@ -115,7 +115,12 @@ def test_settings_ignores_unknown_and_bad_types(tmp_path: Path):
     path = tmp_path / "menubar_settings.json"
     path.write_text(
         json.dumps(
-            {"refresh_interval": "fast", "bogus": 1, "show_account_name": False}
+            {
+                "refresh_interval": "fast",
+                "bogus": 1,
+                "show_account_name": False,
+                "kickoff_hour": True,
+            }
         ),
         encoding="utf-8",
     )
@@ -123,6 +128,54 @@ def test_settings_ignores_unknown_and_bad_types(tmp_path: Path):
     # bad-typed refresh_interval falls back to default; valid bool is kept
     assert s.refresh_interval == 60
     assert s.show_account_name is False
+    # bool is a subclass of int: JSON true must not become kickoff_hour=1
+    assert s.kickoff_hour == 7
+
+
+def test_settings_invalid_title_pct_falls_back_to_default(tmp_path: Path):
+    path = menubar.menubar_settings_path(tmp_path)
+    path.write_text(json.dumps({"title_pct": "nope", "show_icon": True}), encoding="utf-8")
+    s = menubar.MenuBarSettings.load(path)
+    assert s.title_pct == "both"
+    assert s.show_icon is True
+
+
+def test_menubar_settings_path_constant(tmp_path: Path):
+    assert menubar.MENUBAR_SETTINGS_FILENAME == "menubar_settings.json"
+    assert menubar.menubar_settings_path(tmp_path) == tmp_path / "menubar_settings.json"
+
+
+def test_menubar_run_uses_settings_path_helper():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    run = text[text.index("def run") : text.index("class MenuBarApp")]
+    assert "menubar_settings_path" in run
+    assert '"menubar_settings.json"' not in run
+
+
+def test_settings_save_writes_through_symlink(tmp_path: Path):
+    repo = tmp_path / "repo"
+    live = tmp_path / "live"
+    repo.mkdir()
+    live.mkdir()
+    tracked = repo / "menubar_settings.json"
+    tracked.write_text(json.dumps({"show_icon": False}), encoding="utf-8")
+    link = live / "menubar_settings.json"
+    link.symlink_to(tracked)
+
+    menubar.MenuBarSettings(show_icon=True, title_pct="5h").save(link)
+
+    assert link.is_symlink()
+    loaded = menubar.MenuBarSettings.load(tracked)
+    assert loaded.show_icon is True
+    assert loaded.title_pct == "5h"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX modes")
+def test_settings_save_hardens_mode(tmp_path: Path):
+    path = menubar.menubar_settings_path(tmp_path)
+    menubar.MenuBarSettings(show_account_name=False).save(path)
+    assert (path.stat().st_mode & 0o777) == 0o600
+    assert (tmp_path.stat().st_mode & 0o777) == 0o700
 
 
 def test_auto_strategy_choices_match_core_settings():
