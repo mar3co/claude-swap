@@ -341,6 +341,31 @@ class TestInstallWrap:
         settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
         assert settings["statusLine"]["command"] == "~/.claude/statusline.sh"
 
+    def test_install_migrates_legacy_backup_before_write(self, tmp_path: Path):
+        from openswap.paths import LEGACY_BACKUP_DIRNAME
+
+        backup = _backup_root(tmp_path)
+        legacy = tmp_path / LEGACY_BACKUP_DIRNAME
+        if backup.resolve() == legacy.resolve():
+            pytest.skip("legacy and new backup roots coincide")
+        legacy.mkdir()
+        (legacy / "sequence.json").write_text(
+            json.dumps({"accounts": {"1": {"email": "a@x.com", "organizationUuid": ""}}}),
+            encoding="utf-8",
+        )
+        (tmp_path / ".claude").mkdir()
+        result = subprocess.run(
+            [sys.executable, "-m", "openswap", "statusline", "--install"],
+            capture_output=True,
+            text=True,
+            env=_env(tmp_path),
+        )
+        assert result.returncode == 0, result.stderr
+        assert not legacy.exists()
+        assert (backup / "sequence.json").exists()
+        wrap = sl.load_wrap(backup)
+        assert wrap["created"] is True
+
 
 class TestPaint:
     def test_wraps_inner_stdout_and_appends_name(self, tmp_path: Path):

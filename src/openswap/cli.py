@@ -790,6 +790,18 @@ def _statusline_command(argv: list[str]) -> int:
     backup = paths.get_backup_root()
     config_home = paths.get_claude_config_home()
 
+    if args.install or args.uninstall:
+        try:
+            if paths.migrate_legacy_backup_dir(backup):
+                print(
+                    f"openswap: migrated data from {paths.get_legacy_backup_root()} "
+                    f"to {backup}",
+                    file=sys.stderr,
+                )
+        except ClaudeSwitchError as e:
+            error(f"Error: {e}")
+            return 1
+
     if args.install:
         try:
             result = sl.install(config_home, backup, command=sl.paint_command())
