@@ -791,7 +791,11 @@ def _statusline_command(argv: list[str]) -> int:
     config_home = paths.get_claude_config_home()
 
     if args.install:
-        result = sl.install(config_home, backup, command=sl.paint_command())
+        try:
+            result = sl.install(config_home, backup, command=sl.paint_command())
+        except (ClaudeSwitchError, OSError) as e:
+            error(f"Error: {e}")
+            return 1
         if result.get("already"):
             print("Claude Code status line already wraps OpenSwap.")
             return 0
@@ -803,7 +807,11 @@ def _statusline_command(argv: list[str]) -> int:
         return 0
 
     if args.uninstall:
-        result = sl.uninstall(config_home, backup)
+        try:
+            result = sl.uninstall(config_home, backup)
+        except (ClaudeSwitchError, OSError) as e:
+            error(f"Error: {e}")
+            return 1
         if result.get("restored"):
             print("Claude Code status line restored.")
         else:

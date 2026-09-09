@@ -15,6 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from openswap.exceptions import ConfigError
 from openswap.fsutil import replace_with_retry
 from openswap.settings import SETTINGS_SCHEMA_VERSION, atomic_write_json, settings_path
 
@@ -69,7 +70,7 @@ def append_label(text: str, label: str) -> str:
     if idx is None:
         return label + ("\n" if ended_nl else "")
     current = lines[idx].rstrip()
-    if current.endswith(label):
+    if current.endswith(f" · {label}"):
         result = "\n".join(lines)
         return result + ("\n" if ended_nl else "")
     lines[idx] = f"{current} · {label}"
@@ -83,6 +84,29 @@ def _read_json(path: Path) -> dict:
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return {}
     return raw if isinstance(raw, dict) else {}
+
+
+def _read_json_for_write(path: Path) -> dict:
+    """Absent → {}. Existing but unreadable → ConfigError. Never overwrite unread."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeDecodeError) as e:
+        raise ConfigError(
+            f"could not read {path}: {e}; refusing to overwrite it unread"
+        ) from e
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ConfigError(
+            f"{path} is not valid JSON ({e}); refusing to overwrite it unread"
+        ) from e
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"{path} is not a JSON object; refusing to overwrite it unread"
+        )
+    return raw
 
 
 def live_identity(config_path: Path) -> tuple[str, str] | None:
@@ -187,7 +211,7 @@ def save_wrap(
     created: bool,
 ) -> None:
     path = settings_path(backup_root)
-    raw = _read_json(path)
+    raw = _read_json_for_write(path)
     if inner_command is None and not created:
         raw.pop("statusline", None)
     else:
@@ -229,14 +253,20 @@ def paint_command() -> str:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    """Atomic JSON write that does not chmod Claude's directory."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    """Atomic JSON write that does not chmod Claude's directory.
+
+    Writes THROUGH a symlink, never over it (same shape as
+    ``atomic_write_json``). A rename swaps a directory entry, so replacing
+    onto a chezmoi/stow/nix link would detach it.
+    """
+    target = Path(os.path.realpath(path)) if path.is_symlink() else path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
     try:
         os.write(fd, json.dumps(data, indent=2).encode("utf-8") + b"\n")
         os.close(fd)
         fd = -1
-        replace_with_retry(tmp_path, str(path))
+        replace_with_retry(tmp_path, str(target))
     except BaseException:
         if fd >= 0:
             os.close(fd)
@@ -254,7 +284,10 @@ def install(
     command: str = PAINT_COMMAND,
 ) -> dict:
     settings_file = config_home / "settings.json"
-    settings = _read_json(settings_file)
+    # Read both files before writing either: a torn OpenSwap settings.json
+    # must not leave Claude already wrapped.
+    settings = _read_json_for_write(settings_file)
+    _read_json_for_write(settings_path(backup_root))
     block = settings.get("statusLine")
     current = None
     if isinstance(block, dict):
@@ -269,15 +302,18 @@ def install(
     block["type"] = "command"
     block["command"] = command
     settings["statusLine"] = block
-    _write_json(settings_file, settings)
+    # Wrap state first: if Claude write then fails, retry still has inner
+    # and will not take the already-wrapped path that forgets it.
     save_wrap(backup_root, inner_command=inner, created=created)
+    _write_json(settings_file, settings)
     return {"already": False, "created": created}
 
 
 def uninstall(config_home: Path, backup_root: Path) -> dict:
-    wrap = load_wrap(backup_root)
     settings_file = config_home / "settings.json"
-    settings = _read_json(settings_file)
+    settings = _read_json_for_write(settings_file)
+    _read_json_for_write(settings_path(backup_root))
+    wrap = load_wrap(backup_root)
     block = settings.get("statusLine")
     command = None
     if isinstance(block, dict):

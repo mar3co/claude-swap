@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from openswap import statusline as sl
+from openswap.exceptions import ConfigError
 from openswap.models import Platform
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
@@ -54,6 +55,9 @@ class TestAppendLabel:
 
     def test_does_not_duplicate_an_existing_name(self):
         assert sl.append_label("5h 23% · work\n", "work") == "5h 23% · work\n"
+
+    def test_path_suffix_is_not_already_labeled(self):
+        assert sl.append_label("Opus  ~/work\n", "work") == "Opus  ~/work · work\n"
 
 
 class TestAccountLabel:
@@ -256,6 +260,87 @@ class TestInstallWrap:
         settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
         assert "statusLine" not in settings
 
+    def test_install_refuses_torn_claude_settings(self, tmp_path: Path):
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        torn = claude / "settings.json"
+        torn.write_text("{not json", encoding="utf-8")
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+        with pytest.raises(ConfigError, match="overwrite"):
+            sl.install(claude, backup, command="openswap statusline")
+        assert torn.read_text(encoding="utf-8") == "{not json"
+
+    def test_install_refuses_torn_openswap_settings(self, tmp_path: Path):
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+        (backup / "settings.json").write_text("{nope", encoding="utf-8")
+        with pytest.raises(ConfigError, match="overwrite"):
+            sl.install(claude, backup, command="openswap statusline")
+        assert not (claude / "settings.json").exists()
+        assert (backup / "settings.json").read_text(encoding="utf-8") == "{nope"
+
+    def test_uninstall_refuses_torn_claude_settings(self, tmp_path: Path):
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+        sl.install(claude, backup, command="openswap statusline")
+        torn = claude / "settings.json"
+        torn.write_text("{not json", encoding="utf-8")
+        with pytest.raises(ConfigError, match="overwrite"):
+            sl.uninstall(claude, backup)
+        assert torn.read_text(encoding="utf-8") == "{not json"
+
+    def test_install_writes_through_symlink(self, tmp_path: Path):
+        repo = tmp_path / "dotfiles"
+        repo.mkdir()
+        tracked = repo / "claude-settings.json"
+        tracked.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        link = claude / "settings.json"
+        link.symlink_to(tracked)
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+        sl.install(claude, backup, command="openswap statusline")
+        assert link.is_symlink(), "the dotfiles link must survive the write"
+        data = json.loads(tracked.read_text(encoding="utf-8"))
+        assert data["theme"] == "dark"
+        assert data["statusLine"]["command"] == "openswap statusline"
+
+    def test_save_wrap_refuses_torn_settings(self, tmp_path: Path):
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+        torn = backup / "settings.json"
+        torn.write_text("{nope", encoding="utf-8")
+        with pytest.raises(ConfigError, match="overwrite"):
+            sl.save_wrap(backup, inner_command="~/old.sh", created=False)
+        assert torn.read_text(encoding="utf-8") == "{nope"
+
+    def test_install_keeps_inner_if_claude_write_fails(self, tmp_path: Path, monkeypatch):
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        (claude / "settings.json").write_text(
+            json.dumps({"statusLine": {"type": "command", "command": "~/.claude/statusline.sh"}}),
+            encoding="utf-8",
+        )
+        backup = tmp_path / "OpenSwap"
+        backup.mkdir()
+
+        def boom(*_a, **_k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(sl, "_write_json", boom)
+        with pytest.raises(OSError, match="disk full"):
+            sl.install(claude, backup, command="openswap statusline")
+        wrap = sl.load_wrap(backup)
+        assert wrap["innerCommand"] == "~/.claude/statusline.sh"
+        settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
+        assert settings["statusLine"]["command"] == "~/.claude/statusline.sh"
+
 
 class TestPaint:
     def test_wraps_inner_stdout_and_appends_name(self, tmp_path: Path):
@@ -287,7 +372,12 @@ class TestPaint:
             ),
             encoding="utf-8",
         )
-        inner = "printf '%s\\n' '5h 23%  7d 41%'"
+        script = tmp_path / "inner.py"
+        script.write_text(
+            "import sys; sys.stdout.write('5h 23%  7d 41%\\n')\n",
+            encoding="utf-8",
+        )
+        inner = subprocess.list2cmdline([sys.executable, str(script)])
         out = sl.paint(
             "{}",
             inner_command=inner,
