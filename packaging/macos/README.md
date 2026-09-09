@@ -8,7 +8,7 @@ in-bundle reload helper. Not a product install path (that is plan 008).
 From the repo root:
 
 ```bash
-export OPENSWAP_SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)'
+export OPENSWAP_SIGN_IDENTITY='the codesigning identity recorded in plan 007 Step 0'
 # one-time: xcrun notarytool store-credentials openswap-notary
 ./packaging/macos/build.sh
 ```
