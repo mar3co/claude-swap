@@ -79,6 +79,14 @@ def test_notification_identity_is_noop_off_macos(tmp_path: Path):
     assert not (executable.parent / "Info.plist").exists()
 
 
+def test_notification_identity_is_noop_when_frozen(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    executable = tmp_path / "OpenSwap"
+    result = menubar.ensure_notification_identity(executable, platform="darwin")
+    assert result is None
+    assert not (tmp_path / "Info.plist").exists()
+
+
 # --- settings ------------------------------------------------------------------
 
 def test_settings_defaults_when_file_missing(tmp_path: Path):

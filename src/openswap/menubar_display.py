@@ -105,6 +105,11 @@ def ensure_notification_identity(
     """
     if platform != "darwin":
         return None
+    if getattr(sys, "frozen", False):
+        # Inside a real .app bundle Contents/Info.plist already carries the
+        # bundle id, and writing next to the executable would break the
+        # code signature.
+        return None
     path = (executable or Path(sys.executable)).parent / "Info.plist"
     data: dict = {}
     try:
