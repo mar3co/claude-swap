@@ -72,6 +72,7 @@ _CORE_HELP_VERBS = (
     "menubar",
     "widget",
     "auto",
+    "statusline",
 )
 
 

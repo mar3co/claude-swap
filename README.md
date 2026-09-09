@@ -63,5 +63,6 @@ The `cswap` command still works as an alias during the rename.
 | `openswap menubar` | macOS extra |
 | `openswap widget --install` | macOS widget |
 | `openswap upgrade` | Pull this checkout and reinstall |
+| `openswap statusline --install` | Opt-in: wrap Claude Code status line |
 
 `openswap help` lists everything. [CLI reference](https://github.com/mar3co/openswap/wiki/CLI-Reference).
