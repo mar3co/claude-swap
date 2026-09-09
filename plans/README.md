@@ -19,8 +19,13 @@ Commit style: `feat(menubar): …` / `fix(…): …` / `docs: …`. Origin is
 | 003  | Show live Claude Code sessions after a switch | P1 | S | 001 | DONE |
 | 004  | Move Settings into the popover | P2 | M | 001, 003 | DONE |
 | 005  | Widget tap-to-switch and accessory families | P2 | M | 001 | DONE |
+| 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | TODO |
+| 008  | Ship the single app: cask, install/upgrade rewiring, release CI | P1 | L | 007 verdict | NOT WRITTEN |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
+
+007 was added 2026-09-09 (planned at `92722b1`). 008 is only outlined in
+007's maintenance notes; write it after 007 records its spike verdict.
 
 001 and 006 share no files and may run in parallel. 002–005 all touch the extra
 and/or widget; run them only after 001 is merged into the executor’s base.
@@ -37,6 +42,13 @@ and/or widget; run them only after 001 is merged into the executor’s base.
 
 ## Findings considered and rejected
 
+- Homebrew *formula* (Python virtualenv with pyobjc resources) as a first
+  step (2026-09-09): throwaway once the single .app exists, and it does
+  nothing for the widget's Xcode requirement. Go straight to the cask.
+- Full Swift rewrite (2026-09-09): ~27k lines of tested Python; Swift is only
+  required for WidgetKit, which is already Swift.
+- py2app instead of PyInstaller (2026-09-09): needs a framework Python build;
+  uv's interpreters are not. Revisit only if 007's PyInstaller freeze fails.
 - Chrome / claude.ai cookie sync (upstream #256): large and security-sensitive.
 - Rewriting the rumps extra in Swift: the popover already works; WidgetKit is
   the part that had to be Swift.
