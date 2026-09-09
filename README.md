@@ -17,7 +17,7 @@ cd openswap
 uv tool install --editable '.[menubar]'
 ```
 
-Update with `openswap upgrade` (`git pull` plus `uv tool install --force --editable '.[menubar]'`, then refresh LaunchAgents). OpenSwap is not on PyPI.
+Update with `openswap upgrade` (pull this checkout, reinstall the tool, refresh the extra and widget if installed). OpenSwap is not on PyPI.
 
 ## Quick start
 
@@ -62,5 +62,6 @@ The `cswap` command still works as an alias during the rename.
 | `openswap config` | Shared settings (`autoswitch.*`) |
 | `openswap menubar` | macOS extra |
 | `openswap widget --install` | macOS widget |
+| `openswap upgrade` | Pull this checkout and reinstall |
 
 `openswap help` lists everything. [CLI reference](https://github.com/mar3co/openswap/wiki/CLI-Reference).
