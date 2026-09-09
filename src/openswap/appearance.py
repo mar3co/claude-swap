@@ -176,6 +176,8 @@ def cli_should_probe(argv: list[str], *, colors_enabled: bool) -> bool:
         return False
     if "--json" in argv:
         return False
+    if argv and argv[0] == "statusline":
+        return False
     return True
 
 

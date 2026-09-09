@@ -759,6 +759,73 @@ The menu bar extra must be running so the widget has live usage numbers.
         return 1
 
 
+def _statusline_command(argv: list[str]) -> int:
+    """Handle ``openswap statusline`` (paint) and ``--install`` / ``--uninstall``.
+
+    Pre-dispatched so paint never constructs the engine. Always exit 0 on
+    paint: a crashed status line is worse than a missing name.
+    """
+    parser = argparse.ArgumentParser(
+        prog=f"{_prog_name()} statusline",
+        description=(
+            "Opt-in Claude Code status line. Wraps your existing status line "
+            "and appends the OpenSwap account name next to the percentages."
+        ),
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--install",
+        action="store_true",
+        help="Wrap ~/.claude/settings.json statusLine (creates one if missing)",
+    )
+    group.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Restore the previous statusLine, or remove one we created",
+    )
+    args = parser.parse_args(argv)
+
+    from openswap import statusline as sl
+
+    backup = paths.get_backup_root()
+    config_home = paths.get_claude_config_home()
+
+    if args.install:
+        result = sl.install(config_home, backup, command=sl.paint_command())
+        if result.get("already"):
+            print("Claude Code status line already wraps OpenSwap.")
+            return 0
+        if result.get("created"):
+            print("Claude Code status line installed (account name only).")
+        else:
+            print("Claude Code status line now wraps your existing command.")
+        print(dimmed("OpenSwap appends the current account name next to the percentages."))
+        return 0
+
+    if args.uninstall:
+        result = sl.uninstall(config_home, backup)
+        if result.get("restored"):
+            print("Claude Code status line restored.")
+        else:
+            print("OpenSwap was not wrapping the Claude Code status line.")
+        return 0
+
+    try:
+        stdin = sys.stdin.read()
+        wrap = sl.load_wrap(backup)
+        sys.stdout.write(
+            sl.paint(
+                stdin,
+                inner_command=wrap.get("innerCommand"),
+                config_path=paths.get_global_config_path(),
+                sequence_path=backup / "sequence.json",
+            )
+        )
+    except Exception:
+        pass
+    return 0
+
+
 def _menubar_service(args) -> int:
     """Handle ``menubar --install-service|--uninstall-service|--service-status``.
 
@@ -825,6 +892,8 @@ def main() -> None:
         return  # only reachable in tests where sys.exit is mocked
     if argv and argv[0] == "widget":
         sys.exit(_widget_command(argv[1:]))
+    if argv and argv[0] == "statusline":
+        sys.exit(_statusline_command(argv[1:]))
     if len(sys.argv) > 1 and sys.argv[1] == "config":
         _config_command(sys.argv[2:])
         return
@@ -893,6 +962,7 @@ Commands:
   %(prog)s menubar                    macOS menu bar extra
   %(prog)s menubar --install-service  keep the extra running via launchd
   %(prog)s widget --install           macOS Desktop / Notification Center widget
+  %(prog)s statusline --install       opt-in: wrap Claude Code status line
   %(prog)s purge                      remove all openswap data
 
 Aliases: ls=list  rm=remove""",

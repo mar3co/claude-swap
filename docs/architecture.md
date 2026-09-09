@@ -45,6 +45,7 @@
 | 5h kickoff policy | `kickoff.py` | Pure; extra decides *when* |
 | Widget JSON | `widget_snapshot.py` | Extra writes cards plus combined remaining; `updated_at` is last usage measurement, not extra paint time |
 | Widget build | `widget_install.py` | `xcodebuild` + LaunchAgent |
+| Claude Code status line | `statusline.py` | Opt-in wrap of `~/.claude/settings.json` `statusLine`. Paint reads live `.claude.json` + roster only (no Engine, no network). Wrap target lives in `settings.json` `statusline` (not a fourth file). |
 
 The extra is a thin shell. It must not re-implement quota math, ranking, or credential writes. It must not call `_get_current_account`, `_account_kind`, or `_get_sequence_data`; kind and live `(email, orgUuid)` are on the snapshot / `Engine.live_identity`.
 
@@ -72,7 +73,7 @@ OpenSwap ships for macOS (extra, widget, kickoff, Keychain). The engine still ha
 
 ## Constraints we keep
 
-- Do not change the user’s default `~/.claude` login except via `switcher` (kickoff pings the live login **in place**).
+- Do not change the user’s default `~/.claude` login except via `switcher` (kickoff pings the live login **in place**). Status line install writes only `~/.claude/settings.json` `statusLine`, never `.claude.json`.
 - Do not `os.exec*` the extra process (`kickoff` uses returning `subprocess.run`).
 - Do not put WidgetKit inside the Python extra (impossible); snapshot + Darwin notification + host `.app` is the split.
 - Do not default `show_icon` on. Compact the extra when the asterisk is off ([Menu bar](menubar.md)).

@@ -290,6 +290,10 @@ class TestCliShouldProbe:
     def test_plain_command_with_colors_probes(self):
         assert appearance.cli_should_probe(["list"], colors_enabled=True) is True
 
+    def test_statusline_never_probes(self):
+        # OSC 11 on stdout would corrupt the Claude Code status line.
+        assert appearance.cli_should_probe(["statusline"], colors_enabled=True) is False
+
 
 def test_query_short_circuits_under_tmux(monkeypatch):
     """Inside tmux the OSC 11 probe is skipped (never waits out the timeout)."""
