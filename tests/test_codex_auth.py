@@ -16,7 +16,7 @@ def _auth(email="a@x.com", account_id="acc-1", plan="plus", refresh="rt-1") -> s
     claims = {"email": email, "https://api.openai.com/auth": {
         "chatgpt_account_id": account_id, "chatgpt_plan_type": plan}}
     return json.dumps({
-        "auth_mode": "chatgpt", "OPENAI_API_KEY": None,
+        "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "email": email,
         "tokens": {"id_token": _jwt(claims), "access_token": "at",
                    "refresh_token": refresh, "account_id": account_id},
         "last_refresh": "2026-09-10T00:00:00Z",
