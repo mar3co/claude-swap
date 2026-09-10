@@ -258,7 +258,8 @@ that directory." Step 12 amends that sentence to name the Codex exception.
 
 ## Git workflow
 
-- Branch: `advisor/009-codex-cli-support`
+- Branch: `claude/009-codex-plan` (the open PR's branch; this plan file is
+  its first commit). Work on it directly.
 - Commits (one per phase at minimum; per step is fine):
   - `feat(engine): account-engine protocol; freshen_backup moves into Engine`
   - `feat(codex): auth.json identity, app-server usage, CodexEngine`
@@ -266,7 +267,9 @@ that directory." Step 12 amends that sentence to name the Codex exception.
   - `feat(kickoff): codex exec ping for Codex slots`
   - `feat(menubar): Codex cards, switch, rotation, kickoff in the extra and widget`
   - `docs: Codex provider in architecture and README`
-- Do NOT push. No AI attribution trailers.
+- Push to `origin` after each phase gate so the PR shows progress. Never
+  push to `upstream`, never force-push, never merge. No AI attribution
+  trailers in commits or the PR.
 
 ## Design
 
