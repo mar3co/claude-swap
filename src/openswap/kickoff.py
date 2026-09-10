@@ -18,6 +18,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
+from openswap.codex.auth import CODEX_HOME_ENV
 from openswap.exceptions import SessionError
 from openswap.session import AUTH_OVERRIDE_ENV_VARS
 
@@ -237,6 +238,55 @@ def invoke_kickoff(
     argv = build_kickoff_argv(claude_bin)
     env = build_kickoff_env(session_dir, environ)
     cwd = str(session_dir) if session_dir is not None else None
+    return run_fn(
+        argv,
+        env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def build_codex_kickoff_argv(codex_bin: str) -> list[str]:
+    return [codex_bin, "exec", KICKOFF_PROMPT]
+
+
+def build_codex_kickoff_env(home, environ=None) -> dict[str, str]:
+    """``CODEX_HOME`` pinned to the slot home; ``None`` pings the live login."""
+    src = os.environ if environ is None else environ
+    env = {k: v for k, v in src.items() if k != "OPENAI_API_KEY"}
+    if home is not None:
+        env[CODEX_HOME_ENV] = str(home)
+    else:
+        env.pop(CODEX_HOME_ENV, None)
+    return env
+
+
+def invoke_codex_kickoff(
+    home=None,
+    *,
+    which=None,
+    run=None,
+    timeout=KICKOFF_TIMEOUT_S,
+    environ=None,
+):
+    """Headless ``codex exec`` ping against one Codex login.
+
+    ``home`` is the slot ``CODEX_HOME`` for an idle slot. ``None`` pings the
+    live login (no ``CODEX_HOME``). Uses a returning ``subprocess.run``.
+    """
+    which_fn = shutil.which if which is None else which
+    run_fn = subprocess.run if run is None else run
+    codex_bin = which_fn("codex")
+    if not codex_bin:
+        raise SessionError(
+            "'codex' was not found on PATH. Install Codex CLI first."
+        )
+    argv = build_codex_kickoff_argv(codex_bin)
+    env = build_codex_kickoff_env(home, environ)
+    cwd = str(home) if home is not None else None
     return run_fn(
         argv,
         env=env,

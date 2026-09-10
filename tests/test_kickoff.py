@@ -15,6 +15,7 @@ from openswap.kickoff import (
     build_kickoff_argv,
     build_kickoff_env,
     format_kickoff_time,
+    invoke_codex_kickoff,
     invoke_kickoff,
     kickoff_account_eligible,
     kickoff_backoff_active,
@@ -164,6 +165,35 @@ def test_invoke_kickoff_source_uses_subprocess_not_exec():
     assert "os.execvp(" not in src
     assert "os.exec(" not in src
     assert "run_fn(" in src
+
+
+def test_invoke_codex_kickoff_exec_argv_and_home(tmp_path):
+    captured = {}
+    def fake_which(name): return "/opt/fake/codex" if name == "codex" else None
+    def fake_run(argv, **kw):
+        captured["argv"] = list(argv); captured["kw"] = kw
+        return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+    invoke_codex_kickoff(tmp_path, which=fake_which, run=fake_run, environ={"PATH": "/usr/bin", "OPENAI_API_KEY": "sk"})
+    assert captured["argv"] == ["/opt/fake/codex", "exec", KICKOFF_PROMPT]
+    assert captured["kw"]["env"]["CODEX_HOME"] == str(tmp_path)
+    assert "OPENAI_API_KEY" not in captured["kw"]["env"]
+
+def test_invoke_codex_kickoff_live_login_has_no_codex_home():
+    captured = {}
+    def fake_run(argv, **kw):
+        captured["kw"] = kw
+        return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+    invoke_codex_kickoff(None, which=lambda n: "/opt/fake/codex", run=fake_run,
+                         environ={"PATH": "/usr/bin", "CODEX_HOME": "/elsewhere"})
+    assert "CODEX_HOME" not in captured["kw"]["env"]
+    assert captured["kw"]["cwd"] is None
+
+def test_invoke_codex_kickoff_missing_binary_raises():
+    with pytest.raises(SessionError, match="codex"):
+        invoke_codex_kickoff(None, which=lambda n: None, run=lambda *a, **k: None)
+
+def test_invoke_codex_kickoff_source_uses_subprocess_not_exec():
+    src = inspect.getsource(invoke_codex_kickoff); assert "os.exec" not in src
 
 
 def test_invoke_kickoff_missing_claude_raises(tmp_path: Path):
