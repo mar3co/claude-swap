@@ -259,6 +259,7 @@ class AutoSwitchEvent:
 
     kind: ClassVar[str] = "event"
     ts: str = field(default_factory=_now_iso, kw_only=True)
+    provider: str = field(default="claude", kw_only=True)
 
     def _fields(self) -> dict:
         return {}
@@ -268,10 +269,17 @@ class AutoSwitchEvent:
             "schemaVersion": SCHEMA_VERSION,
             "event": self.kind,
             "ts": self.ts,
+            "provider": self.provider,
             **self._fields(),
         }
 
-    def human(self) -> str:  # pragma: no cover - overridden
+    def human(self) -> str:
+        text = self._human()
+        if self.provider != "claude":
+            return f"[{self.provider}] {text}"
+        return text
+
+    def _human(self) -> str:  # pragma: no cover - overridden
         return self.kind
 
 
@@ -312,7 +320,7 @@ class PollEvent(AutoSwitchEvent):
         err = self.fetch_errors.get(num)
         return f"? ({err})" if err else "?"
 
-    def human(self) -> str:
+    def _human(self) -> str:
         if self.active is None:
             return "poll: no active account"
         num = self.active.get("number")
@@ -352,7 +360,7 @@ class SwitchEvent(AutoSwitchEvent):
             "dryRun": self.dry_run,
         }
 
-    def human(self) -> str:
+    def _human(self) -> str:
         src = (
             f"Account-{self.from_ref.get('number')}" if self.from_ref else "(none)"
         )
@@ -374,7 +382,7 @@ class NoSwitchEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"reason": self.reason, "detail": self.detail}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return f"no switch: {self.reason}" + (f" ({self.detail})" if self.detail else "")
 
 
@@ -388,7 +396,7 @@ class QuarantineEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"number": self.number, "email": self.email, "reason": self.reason}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return (
             f"Account-{self.number} ({self.email}) quarantined: {self.reason}. "
             f"Log in with it and run 'openswap --add-account --slot {self.number}' "
@@ -406,7 +414,7 @@ class UnquarantineEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"number": self.number, "email": self.email, "reason": self.reason}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return f"Account-{self.number} ({self.email}) back in rotation ({self.reason})"
 
 
@@ -418,7 +426,7 @@ class AllExhaustedEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"earliestResetAt": self.earliest_reset_at}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         if self.earliest_reset_at:
             return f"all accounts exhausted; earliest reset {self.earliest_reset_at}"
         return "all accounts exhausted; no reset time known"
@@ -433,7 +441,7 @@ class SleepEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"seconds": round(self.seconds, 1), "until": self.until}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return f"sleeping {self.seconds / 60:.0f}m (until {self.until})"
 
 
@@ -446,7 +454,7 @@ class ErrorEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"message": self.message, "transient": self.transient}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return f"error: {self.message}" + (" (will retry)" if self.transient else "")
 
 
@@ -462,7 +470,7 @@ class ConfigWarningEvent(AutoSwitchEvent):
     def _fields(self) -> dict:
         return {"message": self.message}
 
-    def human(self) -> str:
+    def _human(self) -> str:
         return f"warning: {self.message}"
 
 
@@ -2179,6 +2187,9 @@ class AutoSwitchEngine:
         return datetime.fromtimestamp(earliest, tz=timezone.utc)
 
     def _emit(self, event: AutoSwitchEvent) -> None:
+        provider = getattr(self.switcher, "provider", "claude")
+        if event.provider != provider:
+            event = replace(event, provider=provider)
         self.on_event(event)
 
     # -- loop -------------------------------------------------------------------

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import replace
 
 from openswap import __version__, paths, printer
 from openswap.exceptions import ClaudeSwitchError
@@ -480,6 +481,7 @@ Examples:
   openswap auto --dry-run             # log decisions, never actually switch
 
 Defaults live in settings.json (shared policy); flags override them.
+Codex rotation runs alongside; its outcome is logged, not returned.
         """,
     )
     parser.add_argument(
@@ -573,6 +575,11 @@ Defaults live in settings.json (shared policy); flags override them.
             line = dimmed(line)
         print(f"{stamp}  {line}", flush=True)
 
+    def _prefixed(emit, provider: str):
+        def wrapped(event: AutoSwitchEvent) -> None:
+            emit(replace(event, provider=provider))
+        return wrapped
+
     try:
         switcher = ClaudeAccountSwitcher(debug=args.debug)
         if sys.platform != "win32":
@@ -581,18 +588,37 @@ Defaults live in settings.json (shared policy); flags override them.
                 sys.exit(1)
 
         settings = merged_with_cli(load_settings(switcher.backup_dir), args)
+        emit = jsonl_emit if args.json else human_emit
         engine = AutoSwitchEngine(
             switcher,
             settings,
-            jsonl_emit if args.json else human_emit,
+            emit,
             dry_run=args.dry_run,
         )
 
+        from openswap.codex.engine import CodexEngine
+
+        codex = CodexEngine(debug=args.debug)
+        codex_engine = None
+        if codex.switchable_account_numbers():
+            codex_engine = AutoSwitchEngine(
+                codex, settings, _prefixed(emit, "codex"), dry_run=args.dry_run,
+                state_path=codex.state_dir / "autoswitch_state.json",
+            )
+
         if args.once:
-            sys.exit(engine.tick().value)
+            outcome = engine.tick()
+            if codex_engine is not None:
+                codex_engine.tick()
+            sys.exit(outcome.value)
 
         # Loop mode: SIGTERM (systemd stop) exits the loop cleanly.
-        signal.signal(signal.SIGTERM, lambda *_: engine.stop())
+        def _stop_all(*_):
+            engine.stop()
+            if codex_engine is not None:
+                codex_engine.stop()
+
+        signal.signal(signal.SIGTERM, _stop_all)
         if not args.json:
             print(
                 dimmed(
@@ -601,7 +627,13 @@ Defaults live in settings.json (shared policy); flags override them.
                     f"{' (dry-run)' if args.dry_run else ''} — Ctrl-C to stop"
                 )
             )
-        sys.exit(engine.run_loop())
+        if codex_engine is not None:
+            import threading
+            threading.Thread(target=codex_engine.run_loop, daemon=True).start()
+        try:
+            sys.exit(engine.run_loop())
+        finally:
+            _stop_all()
     except ClaudeSwitchError as e:
         if args.json:
             print(json.dumps(error_envelope(e)))

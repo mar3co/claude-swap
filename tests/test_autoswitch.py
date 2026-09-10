@@ -7044,3 +7044,53 @@ class TestFreshenRoutesThroughGate:
         assert gate_calls["args"][0] == "2"
         assert "called" not in direct, "freshen must not POST outside the gate"
 
+
+from openswap.codex.engine import CodexEngine
+from tests.test_codex_auth import _auth
+
+
+def codex_harness(tmp_path, clock):
+    """Two OAuth Codex slots, slot 1 live; app-server never called (usage is injected)."""
+    home = tmp_path / "codex-home"
+    eng = CodexEngine(backup_dir=tmp_path / "backup", home=home,
+                      codex_bin=lambda: "/opt/codex",
+                      read_limits=lambda *a, **k: (_ for _ in ()).throw(AssertionError("no fetch")),
+                      clock=clock)
+    home.mkdir()
+    (home / "auth.json").write_text(_auth(email="a@x.com", account_id="acc-a", refresh="rt-a"))
+    eng.add_account()
+    (home / "auth.json").write_text(_auth(email="b@x.com", account_id="acc-b", refresh="rt-b"))
+    eng.add_account()
+    eng.switch_to("1", json_output=True)
+    return eng, home
+
+
+def _codex_auto(eng, clock, events):
+    return AutoSwitchEngine(eng, AutoSwitchSettings(), events.append, dry_run=False,
+                            state_path=eng.state_dir / "autoswitch_state.json", clock=clock)
+
+
+def test_codex_engine_switches_when_over_threshold(tmp_path, monkeypatch):
+    clock = FakeClock(); events = []
+    eng, home = codex_harness(tmp_path, clock)
+    now = clock()
+    entries = {"1": _entry_for(_usage(95.0), now), "2": _entry_for(_usage(10.0), now)}
+    monkeypatch.setattr(eng, "usage_entries_by_account", lambda fetch=None, *, scheduled=False: entries)
+    outcome = _codex_auto(eng, clock, events).tick()
+    assert outcome is TickOutcome.SWITCHED
+    assert eng.current_account_number() == "2"
+    assert "rt-b" in (home / "auth.json").read_text()
+    assert (eng.state_dir / "autoswitch_state.json").exists()
+    assert not (tmp_path / "backup" / "autoswitch_state.json").exists()   # never the Claude file
+    assert [e.kind for e in events if e.kind == "switch"] and all(e.provider == "codex" for e in events)
+
+
+def test_codex_slot_is_never_quarantined_for_missing_claude_oauth(tmp_path, monkeypatch):
+    clock = FakeClock(); events = []
+    eng, home = codex_harness(tmp_path, clock)
+    now = clock()
+    entries = {"1": _entry_for(_usage(95.0), now), "2": _entry_for(_usage(10.0), now)}
+    monkeypatch.setattr(eng, "usage_entries_by_account", lambda fetch=None, *, scheduled=False: entries)
+    _codex_auto(eng, clock, events).tick()
+    assert not [e for e in events if e.kind == "quarantine"]
+
