@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import sys
+
 import pytest
 from openswap.codex.engine import CodexEngine, CodexAuthError, CodexSwitchError
 from openswap.engine.protocol import AccountEngine
@@ -35,7 +37,8 @@ def test_add_captures_live_login_into_slot_dir(tmp_path):
     assert num == "1"
     slot = eng.slots_dir / "1" / "auth.json"
     assert slot.read_text() == (home / "auth.json").read_text()
-    assert oct(slot.stat().st_mode & 0o777) == "0o600"
+    if sys.platform != "win32":
+        assert oct(slot.stat().st_mode & 0o777) == "0o600"
     assert eng.current_account_number() == "1"
     assert eng.live_identity() == ("a@x.com", "acc-a")
     assert eng.slot_identity("1") == ("a@x.com", "acc-a")
