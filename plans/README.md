@@ -21,6 +21,7 @@ Commit style: `feat(menubar): …` / `fix(…): …` / `docs: …`. Origin is
 | 005  | Widget tap-to-switch and accessory families | P2 | M | 001 | DONE |
 | 007  | Spike: single notarized OpenSwap.app (PyInstaller + WidgetKit) | P1 | M | — | IN PROGRESS |
 | 008  | Ship the single app: cask, install/upgrade rewiring, release CI | P1 | L | 007 verdict | NOT WRITTEN |
+| 009  | Codex CLI accounts: provider seam, CodexEngine, CLI, auto, kickoff, extra, widget | P2 | L | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -32,6 +33,13 @@ CI artifact records `spctl` `source=Notarized Developer ID`.
 
 001 and 006 share no files and may run in parallel. 002–005 all touch the extra
 and/or widget; run them only after 001 is merged into the executor’s base.
+
+009 was added 2026-09-10 (planned at `b00dce8`) from a feasibility spike:
+Codex CLI is a good second provider (plain `auth.json`, `CODEX_HOME`
+isolation, `codex app-server` rate limits without spending quota); the
+ChatGPT desktop app is not a rotation target. It is independent of 007/008
+but touches `menubar.py`, so do not run it concurrently with 008's
+install/upgrade rewiring. Three phases with a green-suite gate between them.
 
 ## Dependency notes
 
