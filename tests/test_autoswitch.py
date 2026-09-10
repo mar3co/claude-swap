@@ -109,6 +109,7 @@ class EngineHarness:
         # Keep the usage store on the same fake clock as the engine so
         # freshness/claims/poll scheduling are deterministic in tests.
         self.switcher._usage_store.clock = self.clock
+        self.switcher.clock = self.clock
         self.engine = self._make_engine()
 
     def _make_engine(self, **kwargs) -> AutoSwitchEngine:
@@ -6854,6 +6855,16 @@ class TestReviewFindings202:
         )
         sw = next(e for e in harness.events if isinstance(e, SwitchEvent))
         assert sw.trigger == "at-limit"
+
+def test_freshen_delegates_to_engine(harness, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        harness.engine.switcher, "freshen_backup",
+        lambda number, email: calls.append((number, email)) or "ok",
+    )
+    assert harness.engine._freshen_target("2", "b@x.com") == "ok"
+    assert calls == [("2", "b@x.com")]
+
 
 class TestFreshenRoutesThroughGate:
     """M2: autoswitch's freshen no longer POSTs a raw snapshot — it routes

@@ -12,9 +12,10 @@ import json
 from pathlib import Path
 
 from openswap.engine import Engine, SENTINEL_NOTES
+from openswap.engine.protocol import AccountEngine
 from openswap.json_output import USAGE_API_KEY, USAGE_NO_CREDENTIALS, USAGE_RELOGIN_REQUIRED
 from openswap.models import AccountSnapshot, AccountsSnapshot, Platform
-from openswap.usage_store import FetchRecord
+from openswap.usage_store import FetchRecord, UsageEntry
 
 API_KEY = "sk-ant-api03-" + "a1b2c3d4e5" * 4
 PERSONAL_ORG = ""
@@ -268,3 +269,15 @@ def test_unread_idle_is_not_no_credentials(temp_home: Path) -> None:
     snap = s.accounts_snapshot(fetch=set())
     ads = next(a for a in snap.accounts if a.number == "2")
     assert ads.usage.sentinel is None or ads.usage.sentinel != USAGE_NO_CREDENTIALS
+
+
+def test_engine_satisfies_account_engine_protocol():
+    s = _linux_engine()
+    assert isinstance(s, AccountEngine)
+    assert s.provider == "claude"
+
+
+def test_account_snapshot_defaults_to_claude_provider():
+    entry = UsageEntry()
+    snap = AccountSnapshot("1", "a@x.com", "", "", True, "oauth", True, entry)
+    assert snap.provider == "claude"

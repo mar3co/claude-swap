@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from openswap.engine.notes import *  # noqa: F403
 from openswap.engine.consume import ConsumeMixin
+from openswap.engine.freshen import FreshenMixin
 from openswap.engine.identity import IdentityMixin
 from openswap.engine.live import LiveMixin
 from openswap.engine.session_profile import SessionProfileMixin
@@ -20,8 +21,11 @@ class Engine(
     SwitchMixin,
     SessionProfileMixin,
     SnapshotMixin,
+    FreshenMixin,
 ):
     """Multi-account switcher for Claude Code. Extra, autoswitch, kickoff, and CLI call this."""
+
+    provider = "claude"
 
     def __init__(self, debug: bool = False):
         self.home = Path.home()
