@@ -165,11 +165,12 @@ def combined_window(accounts: list[dict], label: str, now: float) -> dict | None
 
 def build_combined(accounts: list[dict], now: float) -> dict:
     """``five_hour`` / ``seven_day`` combined blocks; omit a key when empty."""
+    claude = [c for c in accounts if c.get("provider") != "codex"]
     out: dict = {}
-    five = combined_window(accounts, "5h", now)
+    five = combined_window(claude, "5h", now)
     if five is not None:
         out["five_hour"] = five
-    seven = combined_window(accounts, "7d", now)
+    seven = combined_window(claude, "7d", now)
     if seven is not None:
         out["seven_day"] = seven
     return out

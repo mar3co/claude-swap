@@ -304,3 +304,15 @@ def test_build_combined_two_healthy_accounts():
     assert five["total"] == 2
     assert five["switch_num"] == "1"
     assert five["hottest_title"] == "Ads Online"
+
+
+def test_combined_excludes_codex_cards():
+    snap_with_one_claude_and_one_codex = {
+        "accounts": [
+            (1, "a@x.com", True, _USAGE, _USAGE, "personal", "", False, None),
+            ("codex:1", "c@x.com", True, _USAGE, _USAGE, "", "plus", False, None),
+        ]
+    }
+    payload = ws.build_widget_payload(snap_with_one_claude_and_one_codex, now=_NOW)
+    assert payload["combined"]["five_hour"]["total"] == 1
+    assert [c["num"] for c in payload["accounts"]] == ["1", "codex:1"]

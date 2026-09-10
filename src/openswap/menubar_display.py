@@ -1004,6 +1004,9 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
         note = extra_note_for_display(display)
         usage = display if isinstance(display, dict) else last_good
         title, subtitle = account_card_names(email, alias, org_name)
+        is_codex = str(num).startswith("codex:")
+        if is_codex:
+            title = f"Codex · {title}"
         as_of = now
         if needs_relogin and isinstance(fetched_at, (int, float)):
             as_of = float(fetched_at)
@@ -1029,6 +1032,7 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
                 "needs_relogin": needs_relogin,
                 "fetched_at": fetched_at,
                 "windows": windows,
+                "provider": "codex" if is_codex else "claude",
             }
         )
     return cards
@@ -1356,10 +1360,11 @@ EMPTY_SNAPSHOT: dict = {
     "active_org": None,
     "identities": {},
     "kinds": {},
+    "codex_active_num": None,
 }
 
 
-def _adapt_snapshot(snap) -> dict:
+def _adapt_snapshot(snap, codex_snap=None) -> dict:
     """Adapt an ``AccountsSnapshot`` to the menu bar's render dict.
 
     Shape: ``{"accounts": [(num, email, is_active, display_usage, last_good, alias, org_name, disabled, fetched_at), ...],
@@ -1400,6 +1405,24 @@ def _adapt_snapshot(snap) -> dict:
             active_num = str(acc.number)
             active_last_good = acc.usage.last_good
             active_fetched_at = acc.usage.fetched_at
+    codex_active_num = None
+    if codex_snap is not None:
+        for acc in codex_snap.accounts:
+            display = _account_display_usage(acc.usage)
+            org_name = getattr(acc, "org_name", "") or ""
+            num = f"codex:{acc.number}"
+            accounts.append(
+                (
+                    num, acc.email, acc.is_active, display, acc.usage.last_good,
+                    acc.alias, org_name, acc.disabled, acc.usage.fetched_at,
+                )
+            )
+            identities[num] = (
+                acc.email, getattr(acc, "org_uuid", "") or "",
+            )
+            kinds[num] = getattr(acc, "kind", "oauth")
+            if acc.is_active:
+                codex_active_num = str(acc.number)
     return {
         "accounts": accounts,
         "active_email": active_email,
@@ -1411,6 +1434,7 @@ def _adapt_snapshot(snap) -> dict:
         "active_org": active_org,
         "identities": identities,
         "kinds": kinds,
+        "codex_active_num": codex_active_num,
     }
 
 

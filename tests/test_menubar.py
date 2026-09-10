@@ -1945,3 +1945,40 @@ def test_run_without_rumps_raises_clean_error(monkeypatch):
         menubar.run(switcher=None)
     assert "pip install" not in str(exc.value)
     assert "rumps" in str(exc.value)
+
+
+from openswap.models import AccountSnapshot, AccountsSnapshot
+from openswap.usage_store import UsageEntry
+
+
+def test_adapt_snapshot_appends_codex_rows_namespaced():
+    claude = AccountsSnapshot(active_number="2", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "a@x.com", "", "", False, "oauth", True, UsageEntry()),
+        AccountSnapshot("2", "b@x.com", "Ads Online", "org-b", True, "oauth", True, UsageEntry()),))
+    codex = AccountsSnapshot(active_number="1", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "c@x.com", "plus", "acc-c", True, "oauth", True, UsageEntry(), provider="codex"),))
+    out = menubar._adapt_snapshot(claude, codex)
+    assert [row[0] for row in out["accounts"]] == ["1", "2", "codex:1"]
+    assert out["accounts"][2][6] == "plus"                 # org_name slot carries the plan
+    assert out["kinds"]["codex:1"] == "oauth"
+    assert out["identities"]["codex:1"] == ("c@x.com", "acc-c")
+    assert out["codex_active_num"] == "1"
+    assert out["active_num"] == "2" and out["active_email"] == "b@x.com"   # Claude only
+
+
+def test_adapt_snapshot_without_codex_is_unchanged():
+    claude = AccountsSnapshot(active_number="1", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "a@x.com", "", "", True, "oauth", True, UsageEntry()),))
+    out = menubar._adapt_snapshot(claude)
+    assert [row[0] for row in out["accounts"]] == ["1"]
+    assert out["codex_active_num"] is None
+
+
+def test_panel_accounts_prefixes_codex_title_and_sets_provider():
+    snap = {"accounts": [
+        (1, "a@x.com", True, _USAGE, _USAGE, "", "", False, None),
+        ("codex:1", "c@x.com", True, _USAGE, _USAGE, "", "plus", False, None)]}
+    cards = menubar.panel_accounts(snap, now=_NOW)
+    assert cards[0]["provider"] == "claude"
+    assert cards[1]["provider"] == "codex" and cards[1]["title"] == "Codex · plus"
+    assert cards[1]["num"] == "codex:1"
