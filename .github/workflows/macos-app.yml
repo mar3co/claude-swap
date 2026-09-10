@@ -61,6 +61,16 @@ jobs:
       - name: Freeze (sign and notarize when identity is set)
         run: bash packaging/macos/build.sh
 
+      # build.sh exits 0 when it cannot sign, so a green run is not by itself
+      # proof of a shippable app. Assert it on the one path that ships.
+      - name: Tag builds must be signed, notarized, and stapled
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          APP=packaging/macos/dist/OpenSwap.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+
       - name: Upload OpenSwap.app
         uses: actions/upload-artifact@v4
         with:
