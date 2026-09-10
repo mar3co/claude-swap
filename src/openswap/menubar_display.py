@@ -1077,7 +1077,10 @@ def hold_cache_after_event(hold_event, hold_slot, tick_slot, event):
 
     Poll events record the tick's decision-time slot and must not clear it
     when there is not yet a cached hold. Only a switch clears the cache.
+    Codex events never update the Claude hold line.
     """
+    if getattr(event, "provider", "claude") != "claude":
+        return hold_event, hold_slot, tick_slot
     poll_slot = poll_tick_slot(event)
     if poll_slot is not None:
         tick_slot = poll_slot
@@ -1485,5 +1488,17 @@ def live_slot_changed(snapshot: dict, live_num: str | int | None) -> bool:
     snap_s = str(snap) if snap is not None else None
     live_s = str(live_num) if live_num is not None else None
     return snap_s != live_s
+
+
+def codex_live_slot_changed(snapshot: dict, live_num: str | int | None) -> bool:
+    """True when the live Codex slot differs from the snapshot."""
+    snap = snapshot.get("codex_active_num")
+    snap_s = str(snap) if snap is not None else None
+    live_s = str(live_num) if live_num is not None else None
+    return snap_s != live_s
+
+
+def codex_restart_hint() -> str:
+    return "Restart Codex to apply."
 
 

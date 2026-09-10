@@ -1509,9 +1509,10 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
                 sys.exit(_menubar_service(args))
             # menubar is import-safe without the extra; a missing rumps
             # surfaces from run() as a ClaudeSwitchError with the install hint.
+            from openswap.codex.engine import CodexEngine
             from openswap.menubar import run as menubar_run
 
-            sys.exit(menubar_run(switcher))
+            sys.exit(menubar_run(switcher, codex=CodexEngine()))
     except ClaudeSwitchError as e:
         # In JSON mode keep stdout pure JSON: emit the structured error envelope
         # there (exit 1) instead of a red stderr line.

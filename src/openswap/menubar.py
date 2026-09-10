@@ -27,9 +27,11 @@ from openswap.menubar_display import (  # noqa: F401  tests poke these
     _rolled_weekly_window,
     _usage_log_key,
     ensure_notification_identity,
+    codex_live_slot_changed,
+    codex_restart_hint,
 )
 
-def run(switcher) -> int:
+def run(switcher, codex=None) -> int:
     """Entry point for ``openswap menubar``. Blocks until the user quits."""
     ensure_notification_identity()
     try:
@@ -66,6 +68,7 @@ def run(switcher) -> int:
         def __init__(self):
             super().__init__("openswap", quit_button=None)
             self.switcher = switcher
+            self.codex = codex
             self.settings = MenuBarSettings.load(settings_path)
             # The supported paced read path: per refresh it fetches only the
             # active account plus (at most once per freshness window) one stale
@@ -73,16 +76,21 @@ def run(switcher) -> int:
             # of a full pass per tick — which kept every token at its per-account
             # rate-limit edge. Reused across refreshes to hold its pacing state.
             self._snapshot_source = SnapshotSource(switcher)
+            self._codex_source = SnapshotSource(codex) if codex is not None else None
             self.snapshot = dict(EMPTY_SNAPSHOT)
             self._dirty = False
             self._snapshot_at = 0.0
             self._refreshing = False
             self._config_path = switcher._get_claude_config_path()
             self._config_mtime = 0.0
+            from openswap.codex.auth import auth_path
+            self._codex_auth_path = auth_path(codex.home) if codex is not None else None
+            self._codex_auth_mtime = 0.0
             self._last_usage_log: dict = {}  # account num -> last-logged (5h, 7d) key
             # Auto-switch engine (the same one `openswap auto` runs), hosted in a
             # background thread while enabled.
             self._engine = None
+            self._codex_engine = None
             self._engine_events: list = []
             self._hold_event = None
             self._hold_slot = None
@@ -138,7 +146,18 @@ def run(switcher) -> int:
                     # Keep the last good snapshot rather than blanking the menu.
                     self.switcher._logger.debug("menubar snapshot failed", exc_info=True)
                     return
-                snap = _adapt_snapshot(raw)
+                codex_raw = None
+                if self._codex_source is not None:
+                    try:
+                        codex_raw = self._codex_source.take(
+                            full=full, store_only=self._codex_engine is not None
+                        )
+                    except Exception:
+                        self.switcher._logger.debug(
+                            "codex snapshot failed", exc_info=True
+                        )
+                        codex_raw = None
+                snap = _adapt_snapshot(raw, codex_raw)
                 self._log_usage(snap)
                 now = time.time()
                 snap["hold_line"] = self._hold_line_for(snap)
@@ -222,16 +241,30 @@ def run(switcher) -> int:
             # share an address.
             if self._refreshing:
                 return  # a worker is already in-flight; it refreshes the marker
+            changed = False
             try:
                 mtime = self._config_path.stat().st_mtime
             except OSError:
-                return
-            if mtime == self._config_mtime:
-                return
-            self._config_mtime = mtime
-            if live_slot_changed(
-                self.snapshot, self.switcher.current_account_number()
-            ):
+                mtime = None
+            if mtime is not None and mtime != self._config_mtime:
+                self._config_mtime = mtime
+                if live_slot_changed(
+                    self.snapshot, self.switcher.current_account_number()
+                ):
+                    changed = True
+            if self.codex is not None and self._codex_auth_path is not None:
+                try:
+                    cmtime = self._codex_auth_path.stat().st_mtime
+                except OSError:
+                    cmtime = None
+                else:
+                    if cmtime != self._codex_auth_mtime:
+                        self._codex_auth_mtime = cmtime
+                        if codex_live_slot_changed(
+                            self.snapshot, self.codex.current_account_number()
+                        ):
+                            changed = True
+            if changed:
                 # Do not clear the hold cache here: the engine may already have
                 # recorded a reason for the new slot. Display is gated by
                 # hold_event_for_snapshot so an old hold cannot caption a new card.
@@ -260,6 +293,25 @@ def run(switcher) -> int:
                 self._hold_slot = None
                 self._tick_slot = None
             threading.Thread(target=self._run_engine, args=(engine,), daemon=True).start()
+            if self.codex is not None and self.codex.switchable_account_numbers():
+                try:
+                    from openswap.autoswitch import STATE_FILENAME
+                    ceng = AutoSwitchEngine(
+                        self.codex,
+                        load_settings(self.switcher.backup_dir),
+                        self._on_engine_event,
+                        dry_run=False,
+                        state_path=self.codex.state_dir / STATE_FILENAME,
+                    )
+                    ceng.on_event = lambda event, e=ceng: self._on_engine_event(event, e)
+                    self._codex_engine = ceng
+                    threading.Thread(
+                        target=self._run_engine, args=(ceng,), daemon=True
+                    ).start()
+                except Exception as e:
+                    self.switcher._logger.debug(
+                        "codex auto-switch engine failed to start: %s", e
+                    )
 
         def _run_engine(self, engine):
             try:
@@ -285,13 +337,17 @@ def run(switcher) -> int:
         def _stop_engine(self):
             with self._event_lock:
                 engine = self._engine
+                codex_engine = self._codex_engine
                 self._engine = None
+                self._codex_engine = None
                 self._hold_event = None
                 self._hold_slot = None
                 self._tick_slot = None
                 self._engine_events = []
             if engine is not None:
                 engine.stop()
+            if codex_engine is not None:
+                codex_engine.stop()
 
         def _restart_engine(self):
             """Apply changed core settings by restarting the running engine."""
@@ -304,9 +360,13 @@ def run(switcher) -> int:
             # Runs on the engine thread; must not raise. Queue for the main
             # thread, which surfaces notifications and reacts on the sync tick.
             with self._event_lock:
-                if self._engine is None:
+                if self._engine is None and self._codex_engine is None:
                     return
-                if engine is not None and engine is not self._engine:
+                if (
+                    engine is not None
+                    and engine is not self._engine
+                    and engine is not self._codex_engine
+                ):
                     return
                 self._engine_events.append(event)
                 self._hold_event, self._hold_slot, self._tick_slot = (
@@ -548,6 +608,10 @@ def run(switcher) -> int:
         def _add_menu(self, rumps):
             menu = rumps.MenuItem("Add account")
             menu.add(rumps.MenuItem("From current login", callback=self.on_add_login))
+            if self.codex is not None:
+                menu.add(rumps.MenuItem(
+                    "From current Codex login", callback=self.on_add_codex_login
+                ))
             if hasattr(self.switcher, "add_account_from_token"):
                 menu.add(rumps.MenuItem("From API key or setup token…", callback=self.on_add_token))
             return menu
@@ -620,13 +684,18 @@ def run(switcher) -> int:
                 self._show_error(str(e))
                 return None
 
-        def _finish_manual_switch(self, result, dest_name, *, close_panel):
+        def _finish_manual_switch(self, result, dest_name, *, close_panel, provider="claude"):
             if result is None:
                 return
             if should_notify_manual_switch(result):
                 self._clear_hold_event()
-                record_manual_switch(self.switcher.backup_dir)
-                self._notify_switched(dest_name)
+                stamp_dir = (
+                    self.codex.state_dir
+                    if provider == "codex" and self.codex is not None
+                    else self.switcher.backup_dir
+                )
+                record_manual_switch(stamp_dir)
+                self._notify_switched(dest_name, provider=provider)
                 self.refresh_async()
                 self._apply_hold_line()
             if (
@@ -677,7 +746,11 @@ def run(switcher) -> int:
                         break
             return account_short_name(email, alias)
 
-        def _notify_switched(self, dest_name: str):
+        def _notify_switched(self, dest_name: str, *, provider: str = "claude"):
+            if provider == "codex":
+                copy = notification_copy_for_manual_switch(dest_name, running=False)
+                self._notify(NotificationCopy(title=copy.title, body=codex_restart_hint()))
+                return
             running = bool(self.snapshot.get("claude_running", True))
             self._notify(notification_copy_for_manual_switch(dest_name, running=running))
 
@@ -700,6 +773,19 @@ def run(switcher) -> int:
                 return None
 
         def _on_account_click(self, num, *, close_panel):
+            from openswap.codex import split_provider_num
+            provider, n = split_provider_num(num)
+            if provider == "codex":
+                if self.codex is None:
+                    return
+                result = self._run_switch(
+                    lambda: self.codex.switch_to(n, json_output=True)
+                )
+                self._finish_manual_switch(
+                    result, self._name_for_num(num), close_panel=close_panel,
+                    provider="codex",
+                )
+                return
             if self._slot_needs_relogin(num):
                 self._repair_relogin(num, close_panel=close_panel)
                 return
@@ -840,7 +926,17 @@ def run(switcher) -> int:
                     ok="Remove",
                     cancel="Cancel",
                 ) == 1:  # 1 == OK
-                    if self._guard(lambda: self.switcher.remove_account(str(num), assume_yes=True)):
+                    from openswap.codex import split_provider_num
+                    provider, n = split_provider_num(num)
+                    if provider == "codex" and self.codex is not None:
+                        ok = self._guard(
+                            lambda: self.codex.remove_account(n, assume_yes=True)
+                        )
+                    else:
+                        ok = self._guard(
+                            lambda: self.switcher.remove_account(str(num), assume_yes=True)
+                        )
+                    if ok:
                         self.refresh_async()
             return cb
 
@@ -848,14 +944,26 @@ def run(switcher) -> int:
             # `disabled` is this row's current state; selecting it flips it.
             target = not disabled
             def cb(_sender):
-                if self._guard(
-                    lambda: self.switcher.set_account_disabled(str(num), target)
-                ):
+                from openswap.codex import split_provider_num
+                provider, n = split_provider_num(num)
+                if provider == "codex" and self.codex is not None:
+                    ok = self._guard(
+                        lambda: self.codex.set_account_disabled(n, target)
+                    )
+                else:
+                    ok = self._guard(
+                        lambda: self.switcher.set_account_disabled(str(num), target)
+                    )
+                if ok:
                     self.refresh_async()
             return cb
 
         def on_add_login(self, _sender):
             if self._guard(self.switcher.add_account):
+                self.refresh_async()
+
+        def on_add_codex_login(self, _sender):
+            if self.codex is not None and self._guard(self.codex.add_account):
                 self.refresh_async()
 
         def on_add_token(self, _sender):
@@ -1044,7 +1152,19 @@ def run(switcher) -> int:
                         continue
                     name = account_short_name(email, alias or None, num)
                     try:
-                        if kickoff_uses_default_login(is_active=bool(is_active)):
+                        from openswap.codex import split_provider_num
+                        from openswap.kickoff import invoke_codex_kickoff
+                        provider, slot_n = split_provider_num(num)
+                        if provider == "codex":
+                            if self.codex is None:
+                                continue
+                            if kickoff_uses_default_login(is_active=bool(is_active)):
+                                proc = invoke_codex_kickoff()
+                            else:
+                                proc = invoke_codex_kickoff(
+                                    self.codex.slots_dir / slot_n
+                                )
+                        elif kickoff_uses_default_login(is_active=bool(is_active)):
                             proc = invoke_kickoff()
                         else:
                             session_dir, _, _ = mgr.setup_session(

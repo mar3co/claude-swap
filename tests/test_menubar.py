@@ -1982,3 +1982,24 @@ def test_panel_accounts_prefixes_codex_title_and_sets_provider():
     assert cards[0]["provider"] == "claude"
     assert cards[1]["provider"] == "codex" and cards[1]["title"] == "Codex · plus"
     assert cards[1]["num"] == "codex:1"
+
+
+def test_codex_live_slot_changed():
+    snap = {"codex_active_num": "1"}
+    assert menubar.codex_live_slot_changed(snap, "2") is True
+    assert menubar.codex_live_slot_changed(snap, "1") is False
+    assert menubar.codex_live_slot_changed(snap, None) is True
+    assert menubar.codex_live_slot_changed({"codex_active_num": None}, None) is False
+
+
+def test_codex_restart_hint():
+    assert menubar.codex_restart_hint() == "Restart Codex to apply."
+
+
+def test_hold_cache_ignores_codex_events():
+    held = NoSwitchEvent(reason="cooldown")
+    codex_sw = SwitchEvent(
+        trigger="proactive", from_ref=None, to_ref=None, provider="codex"
+    )
+    ev, slot, tick = menubar.hold_cache_after_event(held, "1", "1", codex_sw)
+    assert ev is held and slot == "1" and tick == "1"

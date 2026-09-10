@@ -141,6 +141,7 @@ HEADER_H = 36.0
 HOLD_LINE_H = 16.0
 RUNNING_LINE_H = 16.0
 FOOTER_H = 38.0
+SECTION_H = 18.0
 SETTINGS_TOGGLE_H = 30.0
 SETTINGS_GROUP_H = 22.0
 SETTINGS_CHOICE_LABEL_H = 16.0
@@ -884,6 +885,8 @@ class MenuBarPanel:
             for card in cards:
                 body_h += _card_height(card)
             body_h += CARD_GAP * (len(cards) - 1)
+            if any(card.get("provider") == "codex" for card in cards):
+                body_h += SECTION_H
 
         hold_h = HOLD_LINE_H if hold_line else 0.0
         running_h = RUNNING_LINE_H if running_line else 0.0
@@ -946,7 +949,19 @@ class MenuBarPanel:
                 )
             )
         else:
+            sectioned = False
             for card in cards:
+                if card.get("provider") == "codex" and not sectioned:
+                    root.addSubview_(
+                        _label(
+                            "Codex",
+                            font_small,
+                            pal["muted"],
+                            NSMakeRect(PAD, y, inner_w, SECTION_H),
+                        )
+                    )
+                    y += SECTION_H
+                    sectioned = True
                 card_h = _card_height(card)
                 card_view = _CardView.alloc().initWithCard_onSwitch_(
                     card, self._on_switch
