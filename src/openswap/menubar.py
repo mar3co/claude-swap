@@ -271,9 +271,34 @@ def run(switcher, codex=None) -> int:
                 self.refresh_async()
 
         # ---- auto-switch engine ----------------------------------------------
+        def _ensure_codex_engine(self):
+            if self._codex_engine is not None:
+                return
+            if self.codex is None or not self.codex.switchable_account_numbers():
+                return
+            try:
+                from openswap.autoswitch import STATE_FILENAME
+                ceng = AutoSwitchEngine(
+                    self.codex,
+                    load_settings(self.switcher.backup_dir),
+                    self._on_engine_event,
+                    dry_run=False,
+                    state_path=self.codex.state_dir / STATE_FILENAME,
+                )
+                ceng.on_event = lambda event, e=ceng: self._on_engine_event(event, e)
+                self._codex_engine = ceng
+                threading.Thread(
+                    target=self._run_engine, args=(ceng,), daemon=True
+                ).start()
+            except Exception as e:
+                self.switcher._logger.debug(
+                    "codex auto-switch engine failed to start: %s", e
+                )
+
         def _start_engine(self):
             """Run the core AutoSwitchEngine (live) in a background thread."""
             if self._engine is not None:
+                self._ensure_codex_engine()
                 return
             try:
                 engine = AutoSwitchEngine(
@@ -293,25 +318,7 @@ def run(switcher, codex=None) -> int:
                 self._hold_slot = None
                 self._tick_slot = None
             threading.Thread(target=self._run_engine, args=(engine,), daemon=True).start()
-            if self.codex is not None and self.codex.switchable_account_numbers():
-                try:
-                    from openswap.autoswitch import STATE_FILENAME
-                    ceng = AutoSwitchEngine(
-                        self.codex,
-                        load_settings(self.switcher.backup_dir),
-                        self._on_engine_event,
-                        dry_run=False,
-                        state_path=self.codex.state_dir / STATE_FILENAME,
-                    )
-                    ceng.on_event = lambda event, e=ceng: self._on_engine_event(event, e)
-                    self._codex_engine = ceng
-                    threading.Thread(
-                        target=self._run_engine, args=(ceng,), daemon=True
-                    ).start()
-                except Exception as e:
-                    self.switcher._logger.debug(
-                        "codex auto-switch engine failed to start: %s", e
-                    )
+            self._ensure_codex_engine()
 
         def _run_engine(self, engine):
             try:
@@ -965,6 +972,8 @@ def run(switcher, codex=None) -> int:
         def on_add_codex_login(self, _sender):
             if self.codex is not None and self._guard(self.codex.add_account):
                 self.refresh_async()
+                if self._engine is not None:
+                    self._ensure_codex_engine()
 
         def on_add_token(self, _sender):
             # A menu-bar (accessory) app isn't the active app, so a modal
@@ -1175,9 +1184,12 @@ def run(switcher, codex=None) -> int:
                             results.append((name, True, ""))
                             self._kickoff_succeeded_nums.add(str(num))
                         else:
-                            err = (
-                                proc.stderr or proc.stdout or "claude exited with an error"
-                            ).strip()
+                            fallback = (
+                                "codex exited with an error"
+                                if provider == "codex"
+                                else "claude exited with an error"
+                            )
+                            err = (proc.stderr or proc.stdout or fallback).strip()
                             results.append((name, False, err[:200]))
                     except Exception as e:
                         results.append((name, False, str(e)))

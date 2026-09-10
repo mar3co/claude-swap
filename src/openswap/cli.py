@@ -403,7 +403,9 @@ def _codex_command(argv: list[str]) -> int:
                     args.target, json_output=args.json, force=args.force
                 )
             else:
-                result = eng.switch(strategy=args.strategy, json_output=args.json)
+                result = eng.switch(
+                    strategy=args.strategy, json_output=args.json, force=args.force
+                )
             if args.json:
                 print(json.dumps(result, indent=2))
             elif result:

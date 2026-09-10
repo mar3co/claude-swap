@@ -7094,3 +7094,20 @@ def test_codex_slot_is_never_quarantined_for_missing_claude_oauth(tmp_path, monk
     _codex_auto(eng, clock, events).tick()
     assert not [e for e in events if e.kind == "quarantine"]
 
+
+def test_codex_unmanaged_live_does_not_switch(tmp_path, monkeypatch):
+    clock = FakeClock(); events = []
+    eng, home = codex_harness(tmp_path, clock)
+    (home / "auth.json").write_text(
+        _auth(email="stranger@x.com", account_id="acc-s", refresh="rt-s")
+    )
+    now = clock()
+    entries = {"1": _entry_for(_usage(95.0), now), "2": _entry_for(_usage(10.0), now)}
+    monkeypatch.setattr(eng, "usage_entries_by_account", lambda fetch=None, *, scheduled=False: entries)
+    outcome = _codex_auto(eng, clock, events).tick()
+    assert outcome is TickOutcome.NO_ACTION
+    assert any(
+        e.kind == "no-switch" and e.reason == "unmanaged-active-account" for e in events
+    )
+    assert "rt-s" in (home / "auth.json").read_text()
+

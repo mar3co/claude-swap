@@ -491,7 +491,10 @@ def notification_copy_for_event(
         parts = []
         if src:
             parts.append(f"Was {src}.")
-        hint = switch_restart_hint(running)
+        if getattr(event, "provider", "claude") == "codex":
+            hint = codex_restart_hint()
+        else:
+            hint = switch_restart_hint(running)
         if hint:
             parts.append(hint)
         return NotificationCopy(title=f"Switched to {dest}", body=" ".join(parts))

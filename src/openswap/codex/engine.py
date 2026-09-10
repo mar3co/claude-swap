@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable
@@ -118,10 +119,22 @@ class CodexEngine:
         path.parent.mkdir(parents=True, exist_ok=True)
         if os.name != "nt":
             os.chmod(path.parent, 0o700)
-        tmp = path.parent / (path.name + ".tmp")
-        tmp.write_text(text, encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        try:
+            os.write(fd, text.encode("utf-8"))
+            os.close(fd)
+            fd = -1
+            if os.name != "nt":
+                os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, path)
+        except BaseException:
+            if fd >= 0:
+                os.close(fd)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def _write_slot(self, num: str, text: str) -> None:
         self._write_auth_file(self._slot_auth_path(num), text)
@@ -187,13 +200,31 @@ class CodexEngine:
                     return str(num)
         return None
 
-    def _capture_live(self, num: str) -> None:
-        live = self._live_text()
-        if not live:
-            return
-        slot = self._slot_text(num)
-        if live != slot and (auth_fingerprint(live) != auth_fingerprint(slot) or live != slot):
-            self._write_slot(num, live)
+    def _live_slot(self, live: str | None = None) -> str | None:
+        text = self._live_text() if live is None else live
+        ident = parse_auth(text)
+        if ident is None:
+            return None
+        return self._find_slot(ident, text)
+
+    def _capture_live(self, num: str) -> bool:
+        """Copy live ``auth.json`` into ``num`` only when live still is that slot.
+
+        Returns True when the live login matches ``num``. False if unmanaged,
+        a different slot, or the roster lock is busy.
+        """
+        lock = self._lock()
+        if not lock.acquire():
+            return False
+        try:
+            live = self._live_text()
+            if self._live_slot(live) != str(num):
+                return False
+            if live != self._slot_text(num):
+                self._write_slot(num, live)
+            return True
+        finally:
+            lock.release()
 
     # -- identity / roster lookups -------------------------------------------
 
@@ -224,8 +255,8 @@ class CodexEngine:
         raise AccountNotFoundError(f"No account found with identifier: {identifier}")
 
     def current_account_number(self) -> str | None:
-        num = self._read_roster().get("activeAccountNumber")
-        return str(num) if num is not None and num != "" else None
+        """Slot of the live login; ``None`` when there is none or it's unmanaged."""
+        return self._live_slot()
 
     def has_live_login(self) -> bool:
         return parse_auth(self._live_text()) is not None
@@ -364,6 +395,15 @@ class CodexEngine:
         return sorted(rows, key=lambda r: int(r[0]) if str(r[0]).isdigit() else 0)
 
     def remove_account(self, identifier: str, assume_yes: bool = False) -> None:
+        num, email, _acc = self.resolve_account(identifier)
+        if not assume_yes:
+            confirm = input(
+                f"Are you sure you want to permanently remove "
+                f"Account-{num} ({email})? [y/N] "
+            )
+            if confirm.lower() != "y":
+                print(dimmed("Cancelled"))
+                return
         with self._lock():
             num, _email, _acc = self.resolve_account(identifier)
             data = self._read_roster()
@@ -405,6 +445,9 @@ class CodexEngine:
                     )
             data = self._read_roster()
             if from_num == str(num):
+                if str(data.get("activeAccountNumber") or "") != str(num):
+                    data["activeAccountNumber"] = str(num)
+                    self._write_roster(data)
                 result = {
                     "switched": False,
                     "from": self._ref(str(num), email),
@@ -425,7 +468,7 @@ class CodexEngine:
             }
 
     def switch(
-        self, strategy: str | None = None, json_output: bool = False
+        self, strategy: str | None = None, json_output: bool = False, force: bool = False
     ) -> dict | None:
         if strategy not in (None, "best", "next-available"):
             raise ValueError(f"unknown switch strategy: {strategy!r}")
@@ -439,7 +482,7 @@ class CodexEngine:
             target = self._best_slot(nums) or active or nums[0]
         else:
             target = self._next_available(active, nums)
-        return self.switch_to(target, json_output=json_output)
+        return self.switch_to(target, json_output=json_output, force=force)
 
     def _next_after(self, active: str | None, nums: list[str]) -> str:
         data = self._read_roster()
@@ -493,8 +536,7 @@ class CodexEngine:
     def accounts_snapshot(self, fetch: set[str] | None = None) -> AccountsSnapshot:
         data = self._read_roster()
         entries = self._collect_usage_entries(fetch=fetch)
-        active = data.get("activeAccountNumber")
-        active_s = str(active) if active is not None and active != "" else None
+        live_slot = self._live_slot()
         accounts: list[AccountSnapshot] = []
         for num in self._seq_nums(data):
             rec = self._record(data, num)
@@ -509,7 +551,7 @@ class CodexEngine:
                     email=rec.get("email", "") or (ident.email if ident else ""),
                     org_name=rec.get("planType", "") or (ident.plan_type if ident else ""),
                     org_uuid=rec.get("accountId", "") or (ident.account_id if ident else ""),
-                    is_active=str(num) == active_s,
+                    is_active=str(num) == live_slot,
                     kind=kind,
                     switchable=switchable,
                     usage=entry,
@@ -519,7 +561,7 @@ class CodexEngine:
                 )
             )
         return AccountsSnapshot(
-            active_number=active_s,
+            active_number=live_slot,
             accounts=tuple(accounts),
             taken_at=self.clock(),
         )
@@ -532,8 +574,7 @@ class CodexEngine:
         identities: dict[str, tuple[str, str]] = {}
         sentinels: dict[str, str] = {}
         homes: dict[str, Path] = {}
-        active = data.get("activeAccountNumber")
-        active_s = str(active) if active is not None and active != "" else None
+        live_slot = self._live_slot()
         for num in nums:
             rec = self._record(data, num)
             email = rec.get("email", "") or ""
@@ -547,7 +588,7 @@ class CodexEngine:
             if ident.kind == "api_key" or rec.get("kind") == "api_key":
                 sentinels[num] = USAGE_API_KEY
                 continue
-            homes[num] = self.home if num == active_s else self._slot_dir(num)
+            homes[num] = self.home if num == live_slot else self._slot_dir(num)
         models = self._poll_inputs[1] if self._poll_inputs else ()
         store = self._usage_store
         entries = store.entries(identities, models)
@@ -583,8 +624,8 @@ class CodexEngine:
                 except Exception as exc:
                     self._logger.debug("codex usage read failed for %s: %r", num, exc)
                     records[num] = FetchRecord(error="app-server")
-                if home == self.home and num == active_s:
-                    self._capture_live(num)
+                if home == self.home and not self._capture_live(num):
+                    records[num] = FetchRecord(error="app-server")
             store.record(records, identities, claims, None)
             entries = store.entries(identities, models)
         return {

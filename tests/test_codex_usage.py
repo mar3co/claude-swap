@@ -46,10 +46,16 @@ def test_read_rate_limits_handshake_then_request(tmp_path: Path):
     captured = {}
     def popen(argv, **kwargs):
         captured["argv"] = argv; captured["env"] = kwargs["env"]; return proc
-    result = read_rate_limits(tmp_path, codex_bin="/opt/codex", popen=popen, environ={"PATH": "/usr/bin"})
+    result = read_rate_limits(
+        tmp_path,
+        codex_bin="/opt/codex",
+        popen=popen,
+        environ={"PATH": "/usr/bin", "OPENAI_API_KEY": "sk-env"},
+    )
     assert result == limits
     assert captured["argv"] == ["/opt/codex", "app-server"]
     assert captured["env"]["CODEX_HOME"] == str(tmp_path)
+    assert "OPENAI_API_KEY" not in captured["env"]
     sent = [json.loads(l) for l in proc.stdin.getvalue().splitlines()]
     assert sent[0]["method"] == "initialize" and sent[0]["id"] == 1
     assert sent[1] == {"method": "initialized"}

@@ -156,3 +156,75 @@ def test_alias_and_remove(tmp_path):
     eng.remove_account("work", assume_yes=True)
     assert eng.accounts_snapshot(fetch=set()).accounts == ()
     assert not (eng.slots_dir / "1").exists()
+
+
+def test_snapshot_does_not_clobber_slot_when_live_is_another_account(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(home, email="a@x.com", account_id="acc-a", refresh="rt-a")
+    eng.add_account()
+    _login(home, email="b@x.com", account_id="acc-b", refresh="rt-b")
+    eng.add_account()
+    slot2 = (eng.slots_dir / "2" / "auth.json").read_text()
+    # Out-of-band login as slot 1; roster still says 2 is active.
+    _login(home, email="a@x.com", account_id="acc-a", refresh="rt-a-new")
+    snap = eng.accounts_snapshot()
+    assert (eng.slots_dir / "2" / "auth.json").read_text() == slot2
+    assert "rt-a-new" in (eng.slots_dir / "1" / "auth.json").read_text()
+    assert eng.current_account_number() == "1"
+    assert snap.active_number == "1"
+    assert snap.accounts[0].is_active is True
+    assert snap.accounts[1].is_active is False
+
+
+def test_snapshot_does_not_clobber_slot_when_live_is_unmanaged(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(home, email="a@x.com", account_id="acc-a", refresh="rt-a")
+    eng.add_account()
+    slot1 = (eng.slots_dir / "1" / "auth.json").read_text()
+    _login(home, email="stranger@x.com", account_id="acc-s", refresh="rt-s")
+    snap = eng.accounts_snapshot()
+    assert (eng.slots_dir / "1" / "auth.json").read_text() == slot1
+    assert eng.current_account_number() is None
+    assert eng.has_live_login() is True
+    assert snap.active_number is None
+    assert snap.accounts[0].is_active is False
+
+
+def test_already_active_repairs_stale_roster(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(home, email="a@x.com", account_id="acc-a")
+    eng.add_account()
+    _login(home, email="b@x.com", account_id="acc-b")
+    eng.add_account()
+    data = eng._read_roster()
+    data["activeAccountNumber"] = "1"
+    eng._write_roster(data)
+    assert eng.current_account_number() == "2"
+    result = eng.switch_to("2", json_output=True)
+    assert result["reason"] == "already-active"
+    assert str(eng._read_roster()["activeAccountNumber"]) == "2"
+
+
+def test_remove_prompts_unless_assume_yes(tmp_path, monkeypatch):
+    eng, home = _engine(tmp_path)
+    _login(home, email="a@x.com")
+    eng.add_account()
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "n")
+    eng.remove_account("1")
+    assert (eng.slots_dir / "1" / "auth.json").exists()
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "y")
+    eng.remove_account("1")
+    assert not (eng.slots_dir / "1").exists()
+
+
+def test_switch_strategy_forwards_force(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(home, email="a@x.com", account_id="acc-a")
+    eng.add_account()
+    _login(home, email="b@x.com", account_id="acc-b")
+    eng.add_account()
+    _login(home, email="stranger@x.com", account_id="acc-s")
+    with pytest.raises(CodexSwitchError, match="not managed"):
+        eng.switch(json_output=True)
+    result = eng.switch(json_output=True, force=True)
+    assert result["switched"] is True

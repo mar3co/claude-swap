@@ -2003,3 +2003,26 @@ def test_hold_cache_ignores_codex_events():
     )
     ev, slot, tick = menubar.hold_cache_after_event(held, "1", "1", codex_sw)
     assert ev is held and slot == "1" and tick == "1"
+
+
+def test_codex_switch_event_toast_says_restart_codex():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "a@x.com"},
+        to_ref={"number": 2, "email": "b@x.com"},
+        provider="codex",
+    )
+    copy = menubar.notification_copy_for_event(ev, running=True)
+    assert copy is not None
+    assert copy.title == "Switched to b"
+    assert "Restart Codex to apply." in copy.body
+    assert "Claude Code" not in copy.body
+
+
+def test_add_codex_login_starts_codex_autoswitch_if_needed():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    assert "def _ensure_codex_engine" in src
+    start = src.index("def on_add_codex_login")
+    end = src.index("def on_add_token")
+    assert "_ensure_codex_engine" in src[start:end]

@@ -81,6 +81,7 @@ def read_rate_limits(
 ) -> dict:
     """``rateLimits`` for the login in ``home`` (its ``CODEX_HOME``)."""
     env = dict(os.environ if environ is None else environ)
+    env.pop("OPENAI_API_KEY", None)
     env[CODEX_HOME_ENV] = str(home)
     proc = popen(
         [codex_bin, "app-server"],
