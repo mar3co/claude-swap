@@ -386,11 +386,24 @@ def account_card_names(email, alias, org_name) -> tuple[str, str]:
     return title, subtitle
 
 
-def _alias_lookup(number, email: str | None, aliases: dict[str, str] | None) -> str | None:
+def _alias_key(number, provider: str = "claude") -> str:
+    key = str(number)
+    if provider == "codex" and not key.startswith("codex:"):
+        return f"codex:{key}"
+    return key
+
+
+def _alias_lookup(
+    number,
+    email: str | None,
+    aliases: dict[str, str] | None,
+    *,
+    provider: str = "claude",
+) -> str | None:
     if not aliases:
         return None
     if number is not None:
-        found = aliases.get(str(number))
+        found = aliases.get(_alias_key(number, provider))
         if found:
             return found
     if email:
@@ -398,12 +411,19 @@ def _alias_lookup(number, email: str | None, aliases: dict[str, str] | None) -> 
     return None
 
 
-def _name_from_ref(ref: dict | None, aliases: dict[str, str] | None) -> str:
+def _name_from_ref(
+    ref: dict | None,
+    aliases: dict[str, str] | None,
+    *,
+    provider: str = "claude",
+) -> str:
     if not isinstance(ref, dict):
         return "unknown"
     email = ref.get("email")
     number = ref.get("number")
-    alias = ref.get("alias") or _alias_lookup(number, email, aliases)
+    alias = ref.get("alias") or _alias_lookup(
+        number, email, aliases, provider=provider
+    )
     return account_short_name(email, alias, number)
 
 
@@ -482,23 +502,36 @@ def notification_copy_for_event(
     ``running`` is true (a live Claude Code session or IDE lock).
     """
     kind = getattr(event, "kind", None)
+    provider = getattr(event, "provider", "claude")
     if kind == "switch":
         if getattr(event, "dry_run", False):
             return None
-        dest = _name_from_ref(getattr(event, "to_ref", None), aliases)
+        dest = _name_from_ref(
+            getattr(event, "to_ref", None), aliases, provider=provider
+        )
         src_ref = getattr(event, "from_ref", None)
-        src = _name_from_ref(src_ref, aliases) if src_ref else None
+        src = (
+            _name_from_ref(src_ref, aliases, provider=provider) if src_ref else None
+        )
         parts = []
         if src:
             parts.append(f"Was {src}.")
-        hint = switch_restart_hint(running)
+        if provider == "codex":
+            hint = codex_restart_hint()
+        else:
+            hint = switch_restart_hint(running)
         if hint:
             parts.append(hint)
         return NotificationCopy(title=f"Switched to {dest}", body=" ".join(parts))
     if kind == "account-quarantined":
         name = account_short_name(
             getattr(event, "email", None),
-            _alias_lookup(getattr(event, "number", None), getattr(event, "email", None), aliases),
+            _alias_lookup(
+                getattr(event, "number", None),
+                getattr(event, "email", None),
+                aliases,
+                provider=provider,
+            ),
             getattr(event, "number", None),
         )
         return NotificationCopy(
@@ -1004,6 +1037,9 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
         note = extra_note_for_display(display)
         usage = display if isinstance(display, dict) else last_good
         title, subtitle = account_card_names(email, alias, org_name)
+        is_codex = str(num).startswith("codex:")
+        if is_codex:
+            title = f"Codex · {title}"
         as_of = now
         if needs_relogin and isinstance(fetched_at, (int, float)):
             as_of = float(fetched_at)
@@ -1029,6 +1065,7 @@ def panel_accounts(snapshot: dict, now: float | None = None) -> list[dict]:
                 "needs_relogin": needs_relogin,
                 "fetched_at": fetched_at,
                 "windows": windows,
+                "provider": "codex" if is_codex else "claude",
             }
         )
     return cards
@@ -1073,7 +1110,10 @@ def hold_cache_after_event(hold_event, hold_slot, tick_slot, event):
 
     Poll events record the tick's decision-time slot and must not clear it
     when there is not yet a cached hold. Only a switch clears the cache.
+    Codex events never update the Claude hold line.
     """
+    if getattr(event, "provider", "claude") != "claude":
+        return hold_event, hold_slot, tick_slot
     poll_slot = poll_tick_slot(event)
     if poll_slot is not None:
         tick_slot = poll_slot
@@ -1356,10 +1396,11 @@ EMPTY_SNAPSHOT: dict = {
     "active_org": None,
     "identities": {},
     "kinds": {},
+    "codex_active_num": None,
 }
 
 
-def _adapt_snapshot(snap) -> dict:
+def _adapt_snapshot(snap, codex_snap=None) -> dict:
     """Adapt an ``AccountsSnapshot`` to the menu bar's render dict.
 
     Shape: ``{"accounts": [(num, email, is_active, display_usage, last_good, alias, org_name, disabled, fetched_at), ...],
@@ -1400,6 +1441,24 @@ def _adapt_snapshot(snap) -> dict:
             active_num = str(acc.number)
             active_last_good = acc.usage.last_good
             active_fetched_at = acc.usage.fetched_at
+    codex_active_num = None
+    if codex_snap is not None:
+        for acc in codex_snap.accounts:
+            display = _account_display_usage(acc.usage)
+            org_name = getattr(acc, "org_name", "") or ""
+            num = f"codex:{acc.number}"
+            accounts.append(
+                (
+                    num, acc.email, acc.is_active, display, acc.usage.last_good,
+                    acc.alias, org_name, acc.disabled, acc.usage.fetched_at,
+                )
+            )
+            identities[num] = (
+                acc.email, getattr(acc, "org_uuid", "") or "",
+            )
+            kinds[num] = getattr(acc, "kind", "oauth")
+            if acc.is_active:
+                codex_active_num = str(acc.number)
     return {
         "accounts": accounts,
         "active_email": active_email,
@@ -1411,6 +1470,7 @@ def _adapt_snapshot(snap) -> dict:
         "active_org": active_org,
         "identities": identities,
         "kinds": kinds,
+        "codex_active_num": codex_active_num,
     }
 
 
@@ -1461,5 +1521,17 @@ def live_slot_changed(snapshot: dict, live_num: str | int | None) -> bool:
     snap_s = str(snap) if snap is not None else None
     live_s = str(live_num) if live_num is not None else None
     return snap_s != live_s
+
+
+def codex_live_slot_changed(snapshot: dict, live_num: str | int | None) -> bool:
+    """True when the live Codex slot differs from the snapshot."""
+    snap = snapshot.get("codex_active_num")
+    snap_s = str(snap) if snap is not None else None
+    live_s = str(live_num) if live_num is not None else None
+    return snap_s != live_s
+
+
+def codex_restart_hint() -> str:
+    return "Restart Codex to apply."
 
 

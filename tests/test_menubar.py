@@ -1245,6 +1245,12 @@ def test_kickoff_skips_setup_session_for_the_live_default_login():
     assert "invoke_kickoff()" in run or "invoke_kickoff(None)" in run
 
 
+def test_codex_active_kickoff_pings_engine_home():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    run = text[text.index("def _run_kickoff") : text.index("def _drain_kickoff_results")]
+    assert "invoke_codex_kickoff(self.codex.home)" in run
+
+
 def test_format_title_truncates_long_local_part():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="off")
     title = menubar.format_title("averylonglocalpart@example.com", None, s)
@@ -1945,3 +1951,138 @@ def test_run_without_rumps_raises_clean_error(monkeypatch):
         menubar.run(switcher=None)
     assert "pip install" not in str(exc.value)
     assert "rumps" in str(exc.value)
+
+
+from openswap.models import AccountSnapshot, AccountsSnapshot
+from openswap.usage_store import UsageEntry
+
+
+def test_adapt_snapshot_appends_codex_rows_namespaced():
+    claude = AccountsSnapshot(active_number="2", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "a@x.com", "", "", False, "oauth", True, UsageEntry()),
+        AccountSnapshot("2", "b@x.com", "Ads Online", "org-b", True, "oauth", True, UsageEntry()),))
+    codex = AccountsSnapshot(active_number="1", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "c@x.com", "plus", "acc-c", True, "oauth", True, UsageEntry(), provider="codex"),))
+    out = menubar._adapt_snapshot(claude, codex)
+    assert [row[0] for row in out["accounts"]] == ["1", "2", "codex:1"]
+    assert out["accounts"][2][6] == "plus"                 # org_name slot carries the plan
+    assert out["kinds"]["codex:1"] == "oauth"
+    assert out["identities"]["codex:1"] == ("c@x.com", "acc-c")
+    assert out["codex_active_num"] == "1"
+    assert out["active_num"] == "2" and out["active_email"] == "b@x.com"   # Claude only
+
+
+def test_adapt_snapshot_without_codex_is_unchanged():
+    claude = AccountsSnapshot(active_number="1", taken_at=0.0, accounts=(
+        AccountSnapshot("1", "a@x.com", "", "", True, "oauth", True, UsageEntry()),))
+    out = menubar._adapt_snapshot(claude)
+    assert [row[0] for row in out["accounts"]] == ["1"]
+    assert out["codex_active_num"] is None
+
+
+def test_panel_accounts_prefixes_codex_title_and_sets_provider():
+    snap = {"accounts": [
+        (1, "a@x.com", True, _USAGE, _USAGE, "", "", False, None),
+        ("codex:1", "c@x.com", True, _USAGE, _USAGE, "", "plus", False, None)]}
+    cards = menubar.panel_accounts(snap, now=_NOW)
+    assert cards[0]["provider"] == "claude"
+    assert cards[1]["provider"] == "codex" and cards[1]["title"] == "Codex · plus"
+    assert cards[1]["num"] == "codex:1"
+
+
+def test_codex_live_slot_changed():
+    snap = {"codex_active_num": "1"}
+    assert menubar.codex_live_slot_changed(snap, "2") is True
+    assert menubar.codex_live_slot_changed(snap, "1") is False
+    assert menubar.codex_live_slot_changed(snap, None) is True
+    assert menubar.codex_live_slot_changed({"codex_active_num": None}, None) is False
+
+
+def test_codex_restart_hint():
+    assert menubar.codex_restart_hint() == "Restart Codex to apply."
+
+
+def test_hold_cache_ignores_codex_events():
+    held = NoSwitchEvent(reason="cooldown")
+    codex_sw = SwitchEvent(
+        trigger="proactive", from_ref=None, to_ref=None, provider="codex"
+    )
+    ev, slot, tick = menubar.hold_cache_after_event(held, "1", "1", codex_sw)
+    assert ev is held and slot == "1" and tick == "1"
+
+
+def test_codex_switch_event_toast_says_restart_codex():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "a@x.com"},
+        to_ref={"number": 2, "email": "b@x.com"},
+        provider="codex",
+    )
+    copy = menubar.notification_copy_for_event(ev, running=True)
+    assert copy is not None
+    assert copy.title == "Switched to b"
+    assert "Restart Codex to apply." in copy.body
+    assert "Claude Code" not in copy.body
+
+
+def test_codex_switch_toast_does_not_use_claude_slot_alias():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "codex-a@x.com"},
+        to_ref={"number": 2, "email": "codex-b@x.com"},
+        provider="codex",
+    )
+    aliases = {
+        "1": "work",
+        "2": "personal",
+        "codex:1": "codex-one",
+        "codex:2": "codex-two",
+        "work@x.com": "work",
+        "codex-a@x.com": "codex-one",
+        "codex-b@x.com": "codex-two",
+    }
+    copy = menubar.notification_copy_for_event(ev, aliases, running=True)
+    assert copy is not None
+    assert copy.title == "Switched to codex-two"
+    assert "Was codex-one." in copy.body
+    assert "work" not in copy.title
+    assert "personal" not in copy.title
+    assert "work" not in copy.body
+
+
+def test_codex_switch_toast_falls_back_to_email_not_claude_alias():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref=None,
+        to_ref={"number": 1, "email": "codex@x.com"},
+        provider="codex",
+    )
+    copy = menubar.notification_copy_for_event(ev, aliases={"1": "work"})
+    assert copy is not None
+    assert copy.title == "Switched to codex"
+    assert "work" not in copy.title
+
+
+def test_add_codex_login_starts_codex_autoswitch_if_needed():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    assert "def _ensure_codex_engine" in src
+    start = src.index("def on_add_codex_login")
+    end = src.index("def on_add_token")
+    assert "_ensure_codex_engine" in src[start:end]
+
+
+def test_codex_enable_starts_codex_autoswitch_if_needed():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    start = src.index("def _make_toggle_disabled")
+    end = src.index("def on_add_login")
+    assert "_ensure_codex_engine" in src[start:end]
+
+
+def test_codex_snapshot_retries_codex_autoswitch_start():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    start = src.index("def _worker")
+    end = src.index("def _log_usage")
+    assert "_ensure_codex_engine" in src[start:end]

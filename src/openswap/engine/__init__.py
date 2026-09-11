@@ -4,6 +4,7 @@ Extra, autoswitch, kickoff, and CLI talk only to :class:`Engine`.
 """
 
 from openswap.engine.engine import Engine
+from openswap.engine.protocol import AccountEngine
 from openswap.engine.notes import (
     ERROR_NOTES,
     KEYRING_SERVICE,
@@ -26,6 +27,7 @@ from openswap.json_output import (
 )
 
 __all__ = [
+    "AccountEngine",
     "Engine",
     "ERROR_NOTES",
     "KEYRING_SERVICE",

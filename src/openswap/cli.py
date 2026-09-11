@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import replace
 
 from openswap import __version__, paths, printer
 from openswap.exceptions import ClaudeSwitchError
@@ -343,6 +344,107 @@ Examples:
         sys.exit(130)
 
 
+def _codex_command(argv: list[str]) -> int:
+    """Handle ``openswap codex add|list|switch|remove|disable|enable|alias``."""
+    parser = argparse.ArgumentParser(
+        prog=f"{_prog_name()} codex",
+        description="Manage Codex CLI accounts as a second provider beside Claude.",
+    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    sub = parser.add_subparsers(dest="verb", required=True)
+
+    add_p = sub.add_parser("add", help="Capture the current Codex login")
+    add_p.add_argument("--alias", metavar="NAME", help="Short alias for the new slot")
+
+    list_p = sub.add_parser("list", help="List managed Codex accounts")
+    list_p.add_argument("--json", action="store_true", help="Emit JSON")
+
+    sw = sub.add_parser("switch", help="Switch the live Codex login")
+    sw.add_argument("target", nargs="?", metavar="NUM|EMAIL|ALIAS")
+    sw.add_argument(
+        "--strategy",
+        choices=["best", "next-available"],
+        help="Pick a target by remaining quota instead of a slot",
+    )
+    sw.add_argument("--force", action="store_true", help="Overwrite an unmanaged live login")
+    sw.add_argument("--json", action="store_true", help="Emit JSON")
+
+    rm = sub.add_parser("remove", help="Remove a Codex account")
+    rm.add_argument("target", metavar="NUM|EMAIL|ALIAS")
+    rm.add_argument("-y", "--yes", action="store_true", dest="assume_yes")
+
+    dis = sub.add_parser("disable", help="Hold a Codex account out of rotation")
+    dis.add_argument("target", metavar="NUM|EMAIL|ALIAS")
+    en = sub.add_parser("enable", help="Return a Codex account to rotation")
+    en.add_argument("target", metavar="NUM|EMAIL|ALIAS")
+
+    al = sub.add_parser("alias", help="Set or unset a Codex account alias")
+    al.add_argument("target", metavar="NUM|EMAIL|ALIAS")
+    al.add_argument("name", nargs="?", metavar="NAME")
+    al.add_argument("--unset", action="store_true", help="Remove the alias")
+
+    args = parser.parse_args(argv)
+    from openswap.codex.engine import CodexEngine
+
+    try:
+        eng = CodexEngine(debug=args.debug)
+        if args.verb == "add":
+            num = eng.add_account(alias=args.alias)
+            print(f"Added Codex account {num} ({eng.account_email(num)})")
+            return 0
+        if args.verb == "list":
+            payload = eng.list_accounts(json_output=args.json)
+            if args.json:
+                print(json.dumps(payload, indent=2))
+            return 0
+        if args.verb == "switch":
+            if args.target:
+                result = eng.switch_to(
+                    args.target, json_output=args.json, force=args.force
+                )
+            else:
+                result = eng.switch(
+                    strategy=args.strategy, json_output=args.json, force=args.force
+                )
+            if args.json:
+                print(json.dumps(result, indent=2))
+            elif result:
+                dest = (result.get("to") or {}).get("email") or ""
+                if result.get("switched"):
+                    print(f"Switched Codex login to {dest}")
+                else:
+                    print(f"Codex login already {dest or 'active'}")
+            return 0 if result and result.get("switched") else 2
+        if args.verb == "remove":
+            eng.remove_account(args.target, assume_yes=args.assume_yes)
+            return 0
+        if args.verb == "disable":
+            eng.set_account_disabled(args.target, True)
+            print(f"Disabled Codex account {args.target}")
+            return 0
+        if args.verb == "enable":
+            eng.set_account_disabled(args.target, False)
+            print(f"Enabled Codex account {args.target}")
+            return 0
+        if args.verb == "alias":
+            if args.unset:
+                num = eng.unset_alias(args.target)
+                print(f"Removed alias for Codex account {num}")
+            else:
+                if not args.name:
+                    parser.error("NAME is required (or pass --unset)")
+                num, normalized = eng.set_alias(args.target, args.name)
+                print(f"Set alias '{normalized}' for Codex account {num}")
+            return 0
+    except ClaudeSwitchError as e:
+        error(f"Error: {e}")
+        return 1
+    except KeyboardInterrupt:
+        print(f"\n{dimmed('Operation cancelled')}")
+        return 130
+    return 1
+
+
 def _auto_command(argv: list[str]) -> None:
     """Handle `openswap auto [--once] [--json] [...]`.
 
@@ -380,6 +482,7 @@ Examples:
   openswap auto --dry-run             # log decisions, never actually switch
 
 Defaults live in settings.json (shared policy); flags override them.
+Codex rotation runs alongside; its outcome is logged, not returned.
         """,
     )
     parser.add_argument(
@@ -473,6 +576,11 @@ Defaults live in settings.json (shared policy); flags override them.
             line = dimmed(line)
         print(f"{stamp}  {line}", flush=True)
 
+    def _prefixed(emit, provider: str):
+        def wrapped(event: AutoSwitchEvent) -> None:
+            emit(replace(event, provider=provider))
+        return wrapped
+
     try:
         switcher = ClaudeAccountSwitcher(debug=args.debug)
         if sys.platform != "win32":
@@ -481,18 +589,37 @@ Defaults live in settings.json (shared policy); flags override them.
                 sys.exit(1)
 
         settings = merged_with_cli(load_settings(switcher.backup_dir), args)
+        emit = jsonl_emit if args.json else human_emit
         engine = AutoSwitchEngine(
             switcher,
             settings,
-            jsonl_emit if args.json else human_emit,
+            emit,
             dry_run=args.dry_run,
         )
 
+        from openswap.codex.engine import CodexEngine
+
+        codex = CodexEngine(debug=args.debug)
+        codex_engine = None
+        if codex.switchable_account_numbers():
+            codex_engine = AutoSwitchEngine(
+                codex, settings, _prefixed(emit, "codex"), dry_run=args.dry_run,
+                state_path=codex.state_dir / "autoswitch_state.json",
+            )
+
         if args.once:
-            sys.exit(engine.tick().value)
+            outcome = engine.tick()
+            if codex_engine is not None:
+                codex_engine.tick()
+            sys.exit(outcome.value)
 
         # Loop mode: SIGTERM (systemd stop) exits the loop cleanly.
-        signal.signal(signal.SIGTERM, lambda *_: engine.stop())
+        def _stop_all(*_):
+            engine.stop()
+            if codex_engine is not None:
+                codex_engine.stop()
+
+        signal.signal(signal.SIGTERM, _stop_all)
         if not args.json:
             print(
                 dimmed(
@@ -501,7 +628,13 @@ Defaults live in settings.json (shared policy); flags override them.
                     f"{' (dry-run)' if args.dry_run else ''} — Ctrl-C to stop"
                 )
             )
-        sys.exit(engine.run_loop())
+        if codex_engine is not None:
+            import threading
+            threading.Thread(target=codex_engine.run_loop, daemon=True).start()
+        try:
+            sys.exit(engine.run_loop())
+        finally:
+            _stop_all()
     except ClaudeSwitchError as e:
         if args.json:
             print(json.dumps(error_envelope(e)))
@@ -920,6 +1053,8 @@ def main() -> None:
     if argv and argv[0] == "auto":
         _auto_command(argv[1:])
         return  # only reachable in tests where sys.exit is mocked
+    if argv and argv[0] == "codex":
+        sys.exit(_codex_command(argv[1:]))
     if argv and argv[0] == "widget":
         sys.exit(_widget_command(argv[1:]))
     if argv and argv[0] == "statusline":
@@ -988,6 +1123,7 @@ Commands:
   %(prog)s swap <a> <b>               exchange two accounts' slot numbers
   %(prog)s move <a> <slot>            assign an account to a slot (swaps if taken)
   %(prog)s auto                       auto-switch when nearing rate limits
+  %(prog)s codex add|list|switch|remove  Codex CLI accounts (second provider)
   %(prog)s config [set KEY VALUE]     show or change shared policy (settings.json)
   %(prog)s unclaimed [--purge ID]     list or drop stashed credential entries
   %(prog)s export <path>              export accounts
@@ -1320,6 +1456,14 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
                 show_token_status=args.token_status,
                 json_output=args.json,
             )
+            if not args.json:
+                from openswap.codex.engine import CodexEngine
+
+                codex = CodexEngine(debug=args.debug)
+                if codex.accounts_snapshot(fetch=set()).accounts:
+                    print()
+                    print(accent("Codex"))
+                    codex.list_accounts()
         elif args.switch:
             from openswap.settings import load_settings, parse_model_names
 
@@ -1366,9 +1510,10 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
                 sys.exit(_menubar_service(args))
             # menubar is import-safe without the extra; a missing rumps
             # surfaces from run() as a ClaudeSwitchError with the install hint.
+            from openswap.codex.engine import CodexEngine
             from openswap.menubar import run as menubar_run
 
-            sys.exit(menubar_run(switcher))
+            sys.exit(menubar_run(switcher, codex=CodexEngine()))
     except ClaudeSwitchError as e:
         # In JSON mode keep stdout pure JSON: emit the structured error envelope
         # there (exit 1) instead of a red stderr line.

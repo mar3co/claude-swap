@@ -30,6 +30,8 @@
 | Concern | Module | Notes |
 | --- | --- | --- |
 | Accounts, swap, credentials | `engine/` (`Engine` façade) | Extra, autoswitch, kickoff, and CLI `list`/`status`/`switch` call only the public façade. `switcher.py` is a one-release shim (`ClaudeAccountSwitcher` is `Engine`). |
+| Consumer-facing engine surface | `engine/protocol.py` | `AccountEngine` Protocol both the Claude `Engine` and `CodexEngine` implement. |
+| Codex accounts | `codex/` | Roster, slot homes, app-server usage, switch. Each slot dir is that account's `CODEX_HOME`. |
 | Live Claude Code store | `engine/live.py` | Keychain `"Claude Code-credentials"` / `"Claude Code"`; degraded vs empty |
 | Roster + backup Keychain | `engine/slots.py` | `sequence.json`; backups service `"openswap"`, account `account-{n}-{email}` |
 | Identity | `engine/identity.py` | `(email, organizationUuid)` |
@@ -60,16 +62,21 @@ MIT / Cetinkol remains on `LICENSE` while inherited files (`oauth.py`, parts of 
 | `~/Library/Application Support/OpenSwap/settings.json` | CLI + extra policy (`openswap config`). First run moves `~/.claude-swap-backup` here |
 | `~/Library/Application Support/OpenSwap/menubar_settings.json` | Extra display + kickoff (popover Settings). Atomic 0600 write |
 | `~/Library/Application Support/OpenSwap/autoswitch_state.json` | Engine cooldown, last switch, quarantine. Extra stamps `lastSwitchAt` after a hand switch |
+| `~/Library/Application Support/OpenSwap/codex/` | Codex roster (`sequence.json`), slot homes (`slots/<n>/auth.json`), usage cache, Codex autoswitch state |
 | `~/Library/Application Support/OpenSwap/widget-snapshot.json` | Extra → widget |
 | `~/Library/LaunchAgents/com.opensoft.openswap.menubar.plist` | Extra service |
 | `~/Library/LaunchAgents/com.opensoft.openswap.widget.plist` | Widget host |
 | `~/Applications/OpenSwap.app` | Signed WidgetKit host |
 
-Credentials on macOS are Keychain, not files in that directory. Widget layout is per-widget in Edit Widget (App Intents), not these JSON files.
+Claude credentials on macOS are Keychain; Codex slots are 0600 `auth.json` files under `codex/slots/<n>/` because each slot doubles as a `CODEX_HOME`. Widget layout is per-widget in Edit Widget (App Intents), not these JSON files.
 
 ## Product surface
 
 OpenSwap ships for macOS (extra, widget, kickoff, Keychain). The engine still has Windows/Linux branches from upstream; we do not promise those platforms. API-key slots (`openswap add-token`, extra → Add account) are first-class to switch to. They have no 5h/7d quota, so kickoff and autoswitch skip them unless `autoswitch.includeApiKeyAccounts` is on.
+
+### Two providers, two rotations
+
+Claude Code and Codex CLI are independent rotations: one live Claude login and one live Codex login. They never pool. Codex slots are namespaced as `"codex:<n>"` in the extra and widget. Combined remaining counts Claude cards only.
 
 ## Constraints we keep
 

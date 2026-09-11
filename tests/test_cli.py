@@ -510,7 +510,7 @@ class TestCLI:
             def _is_running_in_container(self):
                 return False
 
-        def _fake_run(switcher):
+        def _fake_run(switcher, codex=None):
             called["ran"] = True
             return 0
 
@@ -536,7 +536,7 @@ class TestCLI:
             def _is_running_in_container(self):
                 return False
 
-        def _fake_run(switcher):
+        def _fake_run(switcher, codex=None):
             called["ran"] = True
             return 0
 
@@ -560,7 +560,7 @@ class TestCLI:
             def _is_running_in_container(self):
                 return False
 
-        def _fake_run(switcher):
+        def _fake_run(switcher, codex=None):
             called["ran"] = True
             return 0
 
@@ -586,7 +586,7 @@ class TestCLI:
             def _is_running_in_container(self):
                 return False
 
-        def _fake_run(switcher):
+        def _fake_run(switcher, codex=None):
             called["ran"] = True
             return 0
 
@@ -615,7 +615,7 @@ class TestCLI:
             def _is_running_in_container(self):
                 return False
 
-        def _fake_menubar(switcher):
+        def _fake_menubar(switcher, codex=None):
             seen["menubar_ran"] = True
             return 0
 
