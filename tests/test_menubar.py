@@ -2025,10 +2025,64 @@ def test_codex_switch_event_toast_says_restart_codex():
     assert "Claude Code" not in copy.body
 
 
+def test_codex_switch_toast_does_not_use_claude_slot_alias():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref={"number": 1, "email": "codex-a@x.com"},
+        to_ref={"number": 2, "email": "codex-b@x.com"},
+        provider="codex",
+    )
+    aliases = {
+        "1": "work",
+        "2": "personal",
+        "codex:1": "codex-one",
+        "codex:2": "codex-two",
+        "work@x.com": "work",
+        "codex-a@x.com": "codex-one",
+        "codex-b@x.com": "codex-two",
+    }
+    copy = menubar.notification_copy_for_event(ev, aliases, running=True)
+    assert copy is not None
+    assert copy.title == "Switched to codex-two"
+    assert "Was codex-one." in copy.body
+    assert "work" not in copy.title
+    assert "personal" not in copy.title
+    assert "work" not in copy.body
+
+
+def test_codex_switch_toast_falls_back_to_email_not_claude_alias():
+    ev = SwitchEvent(
+        trigger="proactive",
+        from_ref=None,
+        to_ref={"number": 1, "email": "codex@x.com"},
+        provider="codex",
+    )
+    copy = menubar.notification_copy_for_event(ev, aliases={"1": "work"})
+    assert copy is not None
+    assert copy.title == "Switched to codex"
+    assert "work" not in copy.title
+
+
 def test_add_codex_login_starts_codex_autoswitch_if_needed():
     import inspect
     src = inspect.getsource(menubar.run)
     assert "def _ensure_codex_engine" in src
     start = src.index("def on_add_codex_login")
     end = src.index("def on_add_token")
+    assert "_ensure_codex_engine" in src[start:end]
+
+
+def test_codex_enable_starts_codex_autoswitch_if_needed():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    start = src.index("def _make_toggle_disabled")
+    end = src.index("def on_add_login")
+    assert "_ensure_codex_engine" in src[start:end]
+
+
+def test_codex_snapshot_retries_codex_autoswitch_start():
+    import inspect
+    src = inspect.getsource(menubar.run)
+    start = src.index("def _worker")
+    end = src.index("def _log_usage")
     assert "_ensure_codex_engine" in src[start:end]

@@ -183,6 +183,7 @@ def run(switcher, codex=None) -> int:
                     self._relogin_notified = curr_relogin
                 from openswap.widget_snapshot import publish_widget_snapshot
                 publish_widget_snapshot(snap, now=self._snapshot_at)
+                self._ensure_codex_engine()
             finally:
                 self._refreshing = False
 
@@ -272,7 +273,7 @@ def run(switcher, codex=None) -> int:
 
         # ---- auto-switch engine ----------------------------------------------
         def _ensure_codex_engine(self):
-            if self._codex_engine is not None:
+            if self._codex_engine is not None or self._engine is None:
                 return
             if self.codex is None or not self.codex.switchable_account_numbers():
                 return
@@ -963,6 +964,8 @@ def run(switcher, codex=None) -> int:
                     )
                 if ok:
                     self.refresh_async()
+                    if provider == "codex" and not target:
+                        self._ensure_codex_engine()
             return cb
 
         def on_add_login(self, _sender):

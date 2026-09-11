@@ -386,11 +386,24 @@ def account_card_names(email, alias, org_name) -> tuple[str, str]:
     return title, subtitle
 
 
-def _alias_lookup(number, email: str | None, aliases: dict[str, str] | None) -> str | None:
+def _alias_key(number, provider: str = "claude") -> str:
+    key = str(number)
+    if provider == "codex" and not key.startswith("codex:"):
+        return f"codex:{key}"
+    return key
+
+
+def _alias_lookup(
+    number,
+    email: str | None,
+    aliases: dict[str, str] | None,
+    *,
+    provider: str = "claude",
+) -> str | None:
     if not aliases:
         return None
     if number is not None:
-        found = aliases.get(str(number))
+        found = aliases.get(_alias_key(number, provider))
         if found:
             return found
     if email:
@@ -398,12 +411,19 @@ def _alias_lookup(number, email: str | None, aliases: dict[str, str] | None) -> 
     return None
 
 
-def _name_from_ref(ref: dict | None, aliases: dict[str, str] | None) -> str:
+def _name_from_ref(
+    ref: dict | None,
+    aliases: dict[str, str] | None,
+    *,
+    provider: str = "claude",
+) -> str:
     if not isinstance(ref, dict):
         return "unknown"
     email = ref.get("email")
     number = ref.get("number")
-    alias = ref.get("alias") or _alias_lookup(number, email, aliases)
+    alias = ref.get("alias") or _alias_lookup(
+        number, email, aliases, provider=provider
+    )
     return account_short_name(email, alias, number)
 
 
@@ -482,16 +502,21 @@ def notification_copy_for_event(
     ``running`` is true (a live Claude Code session or IDE lock).
     """
     kind = getattr(event, "kind", None)
+    provider = getattr(event, "provider", "claude")
     if kind == "switch":
         if getattr(event, "dry_run", False):
             return None
-        dest = _name_from_ref(getattr(event, "to_ref", None), aliases)
+        dest = _name_from_ref(
+            getattr(event, "to_ref", None), aliases, provider=provider
+        )
         src_ref = getattr(event, "from_ref", None)
-        src = _name_from_ref(src_ref, aliases) if src_ref else None
+        src = (
+            _name_from_ref(src_ref, aliases, provider=provider) if src_ref else None
+        )
         parts = []
         if src:
             parts.append(f"Was {src}.")
-        if getattr(event, "provider", "claude") == "codex":
+        if provider == "codex":
             hint = codex_restart_hint()
         else:
             hint = switch_restart_hint(running)
@@ -501,7 +526,12 @@ def notification_copy_for_event(
     if kind == "account-quarantined":
         name = account_short_name(
             getattr(event, "email", None),
-            _alias_lookup(getattr(event, "number", None), getattr(event, "email", None), aliases),
+            _alias_lookup(
+                getattr(event, "number", None),
+                getattr(event, "email", None),
+                aliases,
+                provider=provider,
+            ),
             getattr(event, "number", None),
         )
         return NotificationCopy(
