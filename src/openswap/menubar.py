@@ -1168,7 +1168,7 @@ def run(switcher, codex=None) -> int:
                             if self.codex is None:
                                 continue
                             if kickoff_uses_default_login(is_active=bool(is_active)):
-                                proc = invoke_codex_kickoff()
+                                proc = invoke_codex_kickoff(self.codex.home)
                             else:
                                 proc = invoke_codex_kickoff(
                                     self.codex.slots_dir / slot_n

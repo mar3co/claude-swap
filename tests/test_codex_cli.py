@@ -1,6 +1,7 @@
 import json
 import sys
 import pytest
+from openswap import paths
 from openswap.cli import main
 from tests.test_codex_auth import _auth
 
@@ -61,3 +62,14 @@ def test_codex_list_json_has_provider(temp_home, capsys, monkeypatch):
     assert payload["provider"] == "codex"
     assert payload["accounts"][0]["email"] == "c@x.com"
     assert payload["accounts"][0]["organizationName"] == "plus"
+
+
+def test_codex_remove_cancel_does_not_claim_success(temp_home, capsys, monkeypatch):
+    _one_codex_account(temp_home, monkeypatch)
+    capsys.readouterr()
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "n")
+    assert run_cli(["codex", "remove", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "Cancelled" in out
+    assert "Removed" not in out
+    assert (paths.get_backup_root() / "codex" / "slots" / "1" / "auth.json").exists()

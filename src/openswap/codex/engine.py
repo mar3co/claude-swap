@@ -13,6 +13,7 @@ from typing import Callable
 from openswap.codex.auth import (
     CodexIdentity,
     auth_fingerprint,
+    auth_last_refresh,
     auth_path,
     codex_home,
     parse_auth,
@@ -207,11 +208,28 @@ class CodexEngine:
             return None
         return self._find_slot(ident, text)
 
+    def _slot_is_newer(self, slot: str, live: str) -> bool:
+        slot_ts = auth_last_refresh(slot)
+        live_ts = auth_last_refresh(live)
+        if slot_ts is None or live_ts is None:
+            return False
+        try:
+            return slot_ts > live_ts
+        except TypeError:
+            return False
+
+    def _write_slot_from_live(self, num: str, live: str) -> None:
+        slot = self._slot_text(num)
+        if live == slot or self._slot_is_newer(slot, live):
+            return
+        self._write_slot(num, live)
+
     def _capture_live(self, num: str) -> bool:
         """Copy live ``auth.json`` into ``num`` only when live still is that slot.
 
         Returns True when the live login matches ``num``. False if unmanaged,
-        a different slot, or the roster lock is busy.
+        a different slot, or the roster lock is busy. Skips the write when
+        the slot already holds a newer ``last_refresh`` generation.
         """
         lock = self._lock()
         if not lock.acquire():
@@ -220,8 +238,7 @@ class CodexEngine:
             live = self._live_text()
             if self._live_slot(live) != str(num):
                 return False
-            if live != self._slot_text(num):
-                self._write_slot(num, live)
+            self._write_slot_from_live(num, live)
             return True
         finally:
             lock.release()
@@ -405,7 +422,7 @@ class CodexEngine:
                 print(dimmed("Cancelled"))
                 return
         with self._lock():
-            num, _email, _acc = self.resolve_account(identifier)
+            num, email, _acc = self.resolve_account(identifier)
             data = self._read_roster()
             accounts = dict(data.get("accounts") or {})
             accounts.pop(str(num), None)
@@ -418,6 +435,7 @@ class CodexEngine:
             slot_dir = self._slot_dir(num)
             if slot_dir.exists():
                 shutil.rmtree(slot_dir)
+        print(f"{accent('Removed')} Account-{num} ({email})")
 
     def switch_to(
         self, identifier: str, json_output: bool = False, force: bool = False
@@ -434,7 +452,7 @@ class CodexEngine:
             if live_ident is not None:
                 matched = self._find_slot(live_ident, live)
                 if matched is not None:
-                    self._write_slot(matched, live)
+                    self._write_slot_from_live(matched, live)
                     from_num = matched
                     from_email = live_ident.email
                 elif not force:
@@ -617,15 +635,20 @@ class CodexEngine:
                     records[num] = FetchRecord(error="codex-not-installed")
                     continue
                 home = homes.get(num, self._slot_dir(num))
+                live_before = self._live_text() if home == self.home else None
+                fetched_ok = False
                 try:
                     limits = self._read_limits(home, codex_bin=bin_path)
                     usage = rate_limits_to_usage(limits, now)
                     records[num] = FetchRecord(usage=usage, error=None)
+                    fetched_ok = True
                 except Exception as exc:
                     self._logger.debug("codex usage read failed for %s: %r", num, exc)
                     records[num] = FetchRecord(error="app-server")
-                if home == self.home and not self._capture_live(num):
-                    records[num] = FetchRecord(error="app-server")
+                if home == self.home:
+                    live_changed = live_before != self._live_text()
+                    if (fetched_ok or live_changed) and not self._capture_live(num):
+                        records[num] = FetchRecord(error="app-server")
             store.record(records, identities, claims, None)
             entries = store.entries(identities, models)
         return {

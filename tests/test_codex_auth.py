@@ -12,14 +12,20 @@ def _jwt(claims: dict) -> str:
         return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
     return f"{b64({'alg': 'none'})}.{b64(claims)}.sig"
 
-def _auth(email="a@x.com", account_id="acc-1", plan="plus", refresh="rt-1") -> str:
+def _auth(
+    email="a@x.com",
+    account_id="acc-1",
+    plan="plus",
+    refresh="rt-1",
+    last_refresh="2026-09-10T00:00:00Z",
+) -> str:
     claims = {"email": email, "https://api.openai.com/auth": {
         "chatgpt_account_id": account_id, "chatgpt_plan_type": plan}}
     return json.dumps({
         "auth_mode": "chatgpt", "OPENAI_API_KEY": None, "email": email,
         "tokens": {"id_token": _jwt(claims), "access_token": "at",
                    "refresh_token": refresh, "account_id": account_id},
-        "last_refresh": "2026-09-10T00:00:00Z",
+        "last_refresh": last_refresh,
     })
 
 def test_codex_home_env_and_default(monkeypatch, tmp_path):
@@ -32,6 +38,11 @@ def test_decode_jwt_claims_tolerates_garbage():
     assert decode_jwt_claims("not.a.jwt") == {}
     assert decode_jwt_claims("") == {}
     assert decode_jwt_claims(_jwt({"email": "e"}))["email"] == "e"
+
+
+def test_decode_jwt_claims_non_utf8_payload():
+    # Valid base64, not UTF-8: json.loads(bytes) raises UnicodeDecodeError.
+    assert decode_jwt_claims("x.////.y") == {}
 
 def test_parse_auth_oauth_identity():
     ident = parse_auth(_auth())

@@ -231,3 +231,95 @@ def test_switch_strategy_forwards_force(tmp_path):
         eng.switch(json_output=True)
     result = eng.switch(json_output=True, force=True)
     assert result["switched"] is True
+
+
+def test_capture_live_does_not_overwrite_newer_slot(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(
+        home,
+        email="a@x.com",
+        account_id="acc-a",
+        refresh="rt-old",
+        last_refresh="2026-01-01T00:00:00Z",
+    )
+    eng.add_account()
+    (eng.slots_dir / "1" / "auth.json").write_text(
+        _auth(
+            email="a@x.com",
+            account_id="acc-a",
+            refresh="rt-new",
+            last_refresh="2026-09-10T00:00:00Z",
+        )
+    )
+    assert eng._capture_live("1") is True
+    slot = (eng.slots_dir / "1" / "auth.json").read_text()
+    assert "rt-new" in slot
+    assert "rt-old" not in slot
+
+
+def test_failed_live_usage_does_not_capture_unchanged_live(tmp_path):
+    # Same last_refresh so a generation check alone would still copy live.
+    eng, home = _engine(tmp_path)
+    _login(
+        home,
+        email="a@x.com",
+        account_id="acc-a",
+        refresh="rt-live",
+        last_refresh="2026-09-10T00:00:00Z",
+    )
+    eng.add_account()
+    (eng.slots_dir / "1" / "auth.json").write_text(
+        _auth(
+            email="a@x.com",
+            account_id="acc-a",
+            refresh="rt-slot",
+            last_refresh="2026-09-10T00:00:00Z",
+        )
+    )
+    _login(
+        home,
+        email="a@x.com",
+        account_id="acc-a",
+        refresh="rt-live",
+        last_refresh="2026-09-10T00:00:00Z",
+    )
+    eng._read_limits = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    eng.accounts_snapshot()
+    assert "rt-slot" in (eng.slots_dir / "1" / "auth.json").read_text()
+
+
+def test_switch_does_not_capture_outgoing_over_newer_slot(tmp_path):
+    eng, home = _engine(tmp_path)
+    _login(
+        home,
+        email="a@x.com",
+        account_id="acc-a",
+        refresh="rt-a1",
+        last_refresh="2026-01-01T00:00:00Z",
+    )
+    eng.add_account()
+    _login(
+        home,
+        email="b@x.com",
+        account_id="acc-b",
+        refresh="rt-b1",
+        last_refresh="2026-01-01T00:00:00Z",
+    )
+    eng.add_account()
+    (eng.slots_dir / "2" / "auth.json").write_text(
+        _auth(
+            email="b@x.com",
+            account_id="acc-b",
+            refresh="rt-b2",
+            last_refresh="2026-09-10T00:00:00Z",
+        )
+    )
+    _login(
+        home,
+        email="b@x.com",
+        account_id="acc-b",
+        refresh="rt-b1",
+        last_refresh="2026-01-01T00:00:00Z",
+    )
+    eng.switch_to("1", json_output=True)
+    assert "rt-b2" in (eng.slots_dir / "2" / "auth.json").read_text()

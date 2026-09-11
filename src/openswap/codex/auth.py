@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Mapping
 
@@ -71,6 +72,18 @@ def parse_auth(text: str) -> CodexIdentity | None:
     if data.get("auth_mode") == "apiKey" or data.get("OPENAI_API_KEY"):
         return CodexIdentity(email="", account_id="", plan_type="", kind="api_key")
     return None
+
+
+def auth_last_refresh(text: str) -> datetime | None:
+    """Parsed ``last_refresh`` timestamp, or None if missing/unparseable."""
+    data = _load(text) or {}
+    raw = data.get("last_refresh")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def auth_fingerprint(text: str) -> str | None:

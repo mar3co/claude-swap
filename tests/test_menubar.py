@@ -1245,6 +1245,12 @@ def test_kickoff_skips_setup_session_for_the_live_default_login():
     assert "invoke_kickoff()" in run or "invoke_kickoff(None)" in run
 
 
+def test_codex_active_kickoff_pings_engine_home():
+    text = Path(menubar.__file__).read_text(encoding="utf-8")
+    run = text[text.index("def _run_kickoff") : text.index("def _drain_kickoff_results")]
+    assert "invoke_codex_kickoff(self.codex.home)" in run
+
+
 def test_format_title_truncates_long_local_part():
     s = menubar.MenuBarSettings(show_account_name=True, title_pct="off")
     title = menubar.format_title("averylonglocalpart@example.com", None, s)

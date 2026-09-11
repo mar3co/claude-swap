@@ -417,7 +417,6 @@ def _codex_command(argv: list[str]) -> int:
             return 0 if result and result.get("switched") else 2
         if args.verb == "remove":
             eng.remove_account(args.target, assume_yes=args.assume_yes)
-            print(f"Removed Codex account {args.target}")
             return 0
         if args.verb == "disable":
             eng.set_account_disabled(args.target, True)
